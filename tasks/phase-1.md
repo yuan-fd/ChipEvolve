@@ -1,7 +1,8 @@
 # P1 任务：通用核心契约与 Workflow Runtime
 
-status: approved-next
+status: completed
 depends_on: P0 accepted
+implementation_commit: e750370d0a95c708cb5f9a0ee297dcb0de609db6
 
 ## 目标
 
@@ -44,7 +45,7 @@ depends_on: P0 accepted
 3. retry 创建新 Attempt；旧 Attempt 和事件保持不变。
 4. worker lease 过期后旧 Attempt 记为 lost，并按 policy 有界恢复。
 5. cancel/timeout 终止进程组并生成结构化 Failure/Event。
-6. Adapter 无法访问未声明工作目录，产物越界被拒绝。
+6. Adapter 使用受控 cwd/环境，只有 workspace 内声明产物可登记；绝对路径、越界路径和未声明种类被拒绝。P1 不把普通子进程宣称为恶意代码 OS 沙箱。
 7. echo/test adapter 完成一次全链：TaskSpec → Run → StageRun → Attempt → Artifact/Event → terminal status。
 8. 原 22 项测试和 P1 新测试全部通过。
 9. `var/`、共享工具链和第三方源码没有修改。
@@ -55,3 +56,11 @@ depends_on: P0 accepted
 - 允许项目内代码、测试和文档修改；允许本地 commit，不 push。
 - 若必须改变 ADR-0001/0002、核心 ID/Attempt 不可变语义或安全边界，暂停汇报。
 - 同一根因最多三次尝试，第三次失败记录证据并标记阻塞。
+
+## 完成证据
+
+- `python3 -m pytest -q`：49 passed。
+- contract/registry/runtime/adapter/legacy projection 均有自动测试。
+- echo TaskSpec→Run→StageRun→Attempt→Artifact/Metric/Event→terminal 全链通过。
+- timeout/cancel 终止进程组并保留结构化 Failure/Event。
+- `var/`、共享工具链和固定第三方源码未修改。

@@ -1,10 +1,12 @@
 # 当前任务：P1 通用核心契约与 Workflow Runtime
 
-status: in_progress
+status: completed
 phase: P1
 approved_at: 2026-08-04
 started_at: 2026-08-04
 base_commit: afdca1ef16f419843ef21009c7c4ff47274ee43b
+implementation_commit: e750370d0a95c708cb5f9a0ee297dcb0de609db6
+completed_at: 2026-08-04
 
 ## 1. 用户目标
 
@@ -60,3 +62,13 @@ P0 完成后，如无重大问题自动进入 P1。实现版本化公共契约�
 ## 7. 停止条件
 
 若必须改变上述 ADR、核心 ID/Attempt 不可变语义、安全边界或项目外共享工具链，暂停汇报。普通实现问题在白名单内自动绕开；同一根因最多三次尝试。
+
+## 8. 验收结果
+
+- 结果：完成；未改变 ADR-0001/0002 或核心 Attempt 不可变语义。
+- 全量测试：49 passed（原 22 项全部回归通过）。
+- echo 全链、retry/lost、queued/live cancel、timeout、非法终态回滚均有自动测试。
+- DB/Event schema v1；未知版本和非空未版本化 DB 拒绝初始化。
+- legacy jobs 仅只读投影，source DB 字节未改变，缺失 provenance 标为 `unknown`。
+- `var/`、`.external-src/` 和共享工具链未修改；没有真实 EDA/LLM、push 或部署。
+- P1 实现提交：`e750370d0a95c708cb5f9a0ee297dcb0de609db6`。

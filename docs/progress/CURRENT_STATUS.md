@@ -18,12 +18,30 @@ updated_at: 2026-08-04
 - 三个外部源码缓存均位于批准 commit、detached 且工作树干净。
 - secret、JSON、diff 和范围审计通过。
 
-待切换：将 `tasks/current_task.md` 替换为已批准的 P1 任务。
+P0 封存提交：`afdca1ef16f419843ef21009c7c4ff47274ee43b`。
+
+## P1
+
+状态：完成
+
+已完成：
+
+- v1 TaskSpec、PluginManifest、PluginResult、ActionProposal、Event 与严格版本门禁。
+- Plugin Registry 的固定 identity、capability、architecture 与 manifest directory 校验。
+- 独立 versioned SQLite RuntimeStore、事务状态机、Run/StageRun/Attempt、lease、heartbeat、retry、lost 和 cancel。
+- 受控子进程 adapter、进程组 timeout/cancel、结构化 Failure、artifact 越界/种类/哈希校验。
+- Artifact、Metric、Event 登记和 Run 嵌套查询。
+- legacy `jobs` 的 SQLite 只读投影；未知 provenance 显式标记，不修改 source DB。
+- 可执行 echo manifest/adapter 与 JSON Schema 示例。
+- `python3 -m pytest -q`：49 passed，其中原 22 项回归全部保留。
+- JSON、compile、diff、凭据和受保护范围检查通过。
+
+实现提交：`e750370d0a95c708cb5f9a0ee297dcb0de609db6`。
 
 ## 阶段总览
 
 | 阶段 | 状态 |
 | --- | --- |
 | P0 | 完成 |
-| P1 | 进行中 |
+| P1 | 完成 |
 | P2-P10 | 路线已批准，尚未开始 |

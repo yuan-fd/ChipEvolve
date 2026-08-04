@@ -1,9 +1,9 @@
 # OpenROAD Platform — 工作记忆
 
 project_id: openroad-platform
-phase: P1：通用核心契约与 Workflow Runtime
-current_subgoal: 实现 v1 contracts、Registry、Attempt 状态机与子进程闭环
-progress: 5%
+phase: P1：已完成，等待验收
+current_subgoal: 由用户验收 P0/P1；验收后制定 P2 ORFS 标准插件任务
+progress: 100%
 last_updated: 2026-08-04
 
 ## 已确认事实
@@ -15,6 +15,7 @@ last_updated: 2026-08-04
 - 测试基线：22 tests passed。
 - 历史数据库：6 jobs；45 个登记产物大小与 SHA-256 全部匹配。
 - 三个官方插件源码已按 `integrations/plugins.lock.json` 固定到 detached commit。
+- P1 实现提交：`e750370d0a95c708cb5f9a0ee297dcb0de609db6`；全量 49 tests passed。
 
 ## 架构定版
 
@@ -23,6 +24,9 @@ last_updated: 2026-08-04
 - 首版插件使用独立环境与版本化子进程 JSON 协议。
 - DB 保存状态/关系/摘要；Artifact Store 保存原始大文件。
 - retry 创建新 Attempt，不覆盖失败证据。
+- Runtime DB schema 与 Event 均固定为 v1；未知版本和未版本化已有 DB 会拒绝打开。
+- legacy `jobs` 只能只读投影；不得把 unknown provenance 猜测补齐。
+- P1 adapter 面向固定且审查过的代码，不是恶意代码 OS 沙箱。
 
 ## 风险与后置门槛
 
@@ -40,4 +44,4 @@ last_updated: 2026-08-04
 
 ## handoff_anchor
 
-P0 commit 为 `afdca1ef...`；P1 current_task 已切换，先以测试驱动实现 v1 contracts。
+P0 commit 为 `afdca1ef...`；P1 实现 commit 为 `e750370...`。读取 `memory_snapshots/P1-runtime-core-2026-08-04.md` 恢复事实；下一步等待 P2 明确授权与任务边界。
