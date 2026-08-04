@@ -8,6 +8,7 @@ build/
 *.egg-info/
 .env
 .external-src/
+.tools/
 
 # EDA runs are immutable runtime artifacts, not source files.
 var/

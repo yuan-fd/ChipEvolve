@@ -1,29 +1,22 @@
-# 当前任务：P3 三平台兼容性准入
+# 当前任务：P4 RTLScout 黑箱插件
 
 status: completed
-phase: P3
+phase: P4
 approved_at: 2026-08-04
 started_at: 2026-08-04
 completed_at: 2026-08-04
-base_commit: 6d9d93c
+base_commit: 9269040
 
-## 1. 用户目标
+## 结果
 
-连续完成 P3-P10；本阶段先完成三个固定版本外部平台的兼容性准入。
+- `rtlscout@1.0.0` manifest、Task builder、黑箱 Adapter 和受控凭据边界已实现。
+- 项目内隔离 Python 3.12.4、Verilator 5.040；系统与共享工具链未修改。
+- 官方 offline fake Agent 真实通过 Verilator/Yosys，并生成带哈希 RTL。
+- Runtime 管理的 RTLScout→ORFS 组合链真实到 Nangate45 GDS。
+- 真实 LLM 未执行并明确标记 external blocker，不以 fake 冒充。
 
-## 2. 执行规范
+## 恢复锚点
 
-完整范围、步骤、验收标准和停止条件见 `tasks/phase-3.md`。
-
-## 3. 结论
-
-- RTLScout：条件准入；要求独立 Python >=3.10、固定 submodule 与 ARM EDA 依赖。
-- AgenticPD：条件准入；271 项上游检查通过，但无 LICENSE，只能黑箱调用。
-- TaiWei：条件准入；入口通过，真实运行要求隔离的固定 3D 工具链。
-- 本阶段没有声称真实 LLM、AgenticPD 优化或 3D EDA 已成功。
-
-## 4. 恢复锚点
-
-- P2 封存提交：`6d9d93c`。
-- P3 证据：`docs/evidence/P3_PLUGIN_ADMISSION.md` 和 `.json`。
-- 下一阶段：P4 RTLScout 标准黑箱插件与 RTL→ORFS 组合工作流。
+- P3 提交：`9269040`。
+- P4 证据：`docs/evidence/P4_RTLSCOUT_ACCEPTANCE.md` 和 `.json`。
+- 下一阶段：P5 AgenticPD 优化插件；保持无 LICENSE 黑箱边界和 Runtime 唯一权威。

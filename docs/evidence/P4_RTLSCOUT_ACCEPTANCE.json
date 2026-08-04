@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "phase": "P4",
+  "captured_at": "2026-08-04",
+  "accepted": true,
+  "seconds": 521.94,
+  "upstream": {
+    "rtlscout_commit": "87a00edf6b9208f657dd9ffdda170004024c08ae",
+    "spire_hdl_commit": "448f3935bd78ac96edb1d941d1c18b82cc319963",
+    "source_unchanged": true
+  },
+  "environment": {
+    "architecture": "aarch64",
+    "python": "3.12.4",
+    "verilator": "5.040",
+    "yosys": "0.63"
+  },
+  "rtlscout": {
+    "run_id": "e3301eb963ef4cb281dcf9fc3f43e2a8",
+    "model_mode": "official offline fake:simple_adder_pass",
+    "correctness": "PASS (3/3 simulation checks)",
+    "best_cost": 310,
+    "cost_metric": "transistors",
+    "rtl": {
+      "size_bytes": 82,
+      "sha256": "4b4fe1e2f61672c0fb5b440e4361881a07cbc0c51172d1a0fee1acc5c2010e7d"
+    },
+    "result_json": {
+      "size_bytes": 4762,
+      "sha256": "531824419d1a58995f527077d716e1446f96881864b72b551ba1748325365a6c"
+    },
+    "events": 13
+  },
+  "orfs": {
+    "run_id": "c1fff2b2180a4e799139e4740978ce56",
+    "platform": "nangate45",
+    "top": "adder",
+    "stages": "6/6",
+    "events": 29,
+    "gds": {
+      "size_bytes": 164296,
+      "sha256": "64ea359ed4307aa79e51d2f5259270f6501be74bfc3dbf1b78263d9011f584b3"
+    },
+    "def": {
+      "size_bytes": 104255,
+      "sha256": "e2d86871fce4dbc463e34db39ab85d8cb135e8781d02b74f34971290a76c2973"
+    },
+    "netlist": {
+      "size_bytes": 4714,
+      "sha256": "0f42443731938ab42f24511c13a97f9213906fb5de4c26073dba3942785616a3"
+    }
+  },
+  "runtime": {
+    "live_db": "/tmp/openroad-platform-p4-runtime/p4-acceptance-20260804-03.db",
+    "snapshot_sha256": "50c8eab252f5e825456bd3324ccba97a7143af6a9478e6c1b9917cc5233a9039"
+  },
+  "real_llm": {
+    "executed": false,
+    "status": "external_blocker",
+    "reason": "No user-provided provider credential or paid-call budget was available; fake results are not presented as real LLM evidence."
+  }
+}

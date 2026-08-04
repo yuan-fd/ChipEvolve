@@ -11,10 +11,19 @@ from .orfs_plugin import (
 from .process_guardian import ProcessGuardian, ProcessOutcome
 from .registry import PluginRegistry
 from .toolchain import ToolchainCatalog, ToolchainConfig, load_toolchain
+from .rtlscout_plugin import (
+    RTLSCOUT_PLUGIN_ID,
+    RTLSCOUT_PLUGIN_VERSION,
+    RTLSCOUT_UPSTREAM_COMMIT,
+    build_rtlscout_task,
+    rtlscout_plugin_manifest,
+)
 
 __all__ = [
     "AdapterExecution", "ProcessAdapter", "ORFSRunner", "ProcessGuardian",
     "ProcessOutcome", "PluginRegistry", "ORFS_PLUGIN_ID", "ORFS_PLUGIN_VERSION",
     "build_orfs_task", "orfs_plugin_manifest", "ToolchainCatalog",
     "ToolchainConfig", "load_toolchain",
+    "RTLSCOUT_PLUGIN_ID", "RTLSCOUT_PLUGIN_VERSION", "RTLSCOUT_UPSTREAM_COMMIT",
+    "build_rtlscout_task", "rtlscout_plugin_manifest",
 ]

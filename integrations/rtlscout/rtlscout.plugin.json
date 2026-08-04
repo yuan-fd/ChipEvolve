@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "plugin_id": "rtlscout",
+  "plugin_version": "1.0.0",
+  "adapter_entry": ["python3", "./rtlscout_adapter.py"],
+  "capabilities": ["agent.rtl.generate", "agent.rtl.optimize"],
+  "supported_arch": ["aarch64"],
+  "input_schema": {
+    "type": "object",
+    "required": ["benchmark"]
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["status", "artifacts"]
+  },
+  "required_tools": ["git", "verilator", "yosys"],
+  "default_timeout_seconds": 3600,
+  "artifact_rules": [
+    {"kind": "rtl", "required": true},
+    {"kind": "rtlscout_result", "required": true},
+    {"kind": "report", "required": true},
+    {"kind": "log", "required": false}
+  ],
+  "environment": {}
+}

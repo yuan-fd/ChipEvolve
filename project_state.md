@@ -1,9 +1,9 @@
 # OpenROAD Platform — 工作记忆
 
 project_id: openroad-platform
-phase: P3：已完成；目标线程继续 P4-P10
-current_subgoal: P4 RTLScout 标准插件与 RTL→ORFS 组合工作流
-progress: 30%
+phase: P4：已完成；目标线程继续 P5-P10
+current_subgoal: P5 AgenticPD proposal/ExperimentPlan 优化插件
+progress: 40%
 last_updated: 2026-08-04
 
 ## 已确认事实
@@ -21,6 +21,9 @@ last_updated: 2026-08-04
 - P2 GDS：19,572 bytes，SHA-256 `d20ee44ef216af20a896b4a48794d2ee3fdd8de70b7fe8280fb8ae13a59ad1e6`。
 - P3 三平台均完成固定 commit 准入：AgenticPD 271 项检查通过，TaiWei CLI 入口通过，RTLScout 系统 Python smoke 明确受 Python/依赖环境阻塞。
 - RTLScout 的 Python 3.11/aarch64 主要依赖 wheels 可获得；完整 fake/真实 LLM 尚未宣称成功。
+- P4 `rtlscout@1.0.0` 已接入；固定源码 offline fake 真实通过 Verilator/Yosys，生成 RTL SHA `4b4fe1e2...`。
+- P4 RTLScout→ORFS 真实组合链成功；Nangate45 GDS 164,296 bytes，SHA `64ea359e...`。
+- RTLScout 固定 Spire 实际要求 Python >=3.12；隔离 Python 3.12.4/Verilator 5.040 在 `.tools/`，不进入 Git。
 
 ## 架构定版
 
@@ -52,4 +55,4 @@ last_updated: 2026-08-04
 
 ## handoff_anchor
 
-P0 commit `afdca1ef...`；P1 commit `e750370...`；P2 commit `aa7cf0a...`/封存 `6d9d93c`。读取 P2 快照与 `docs/evidence/P3_PLUGIN_ADMISSION.md` 恢复；当前目标已授权连续执行 P3-P10，下一步 P4。
+P0 `afdca1e`；P1 `e750370`；P2 `aa7cf0a`/`6d9d93c`；P3 `9269040`。读取 P4 快照与 `docs/evidence/P4_RTLSCOUT_ACCEPTANCE.md` 恢复；当前目标已授权连续执行至 P10，下一步 P5。

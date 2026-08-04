@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "architecture": "aarch64",
+  "python": {
+    "version": "3.12.4",
+    "source_url": "https://www.python.org/ftp/python/3.12.4/Python-3.12.4.tgz",
+    "sha256": "01b3c1c082196f3b33168d344a9c85fb07bfe0e7ecfe77fee4443420d1ce2ad9"
+  },
+  "verilator": {
+    "version": "5.040",
+    "source_url": "https://github.com/verilator/verilator/archive/refs/tags/v5.040.tar.gz",
+    "sha256": "56c7c46314adfad06dd093b77823bfd9b49ebef72342549f790718199c3e8223"
+  },
+  "help2man_build_dependency": {
+    "version": "1.49.3",
+    "source_url": "https://ftp.gnu.org/gnu/help2man/help2man-1.49.3.tar.xz",
+    "sha256": "4d7e4fdef2eca6afe07a2682151cea78781e0a4e8f9622142d9f70c083a2fd4f"
+  },
+  "upstream": {
+    "rtlscout_commit": "87a00edf6b9208f657dd9ffdda170004024c08ae",
+    "spire_hdl_commit": "448f3935bd78ac96edb1d941d1c18b82cc319963"
+  },
+  "python_packages": {
+    "aigverse": "0.0.24",
+    "anthropic": "0.120.2",
+    "matplotlib": "3.11.1",
+    "numpy": "2.5.1",
+    "openai": "2.53.0",
+    "pandas": "3.0.5",
+    "pydantic": "2.13.4",
+    "pyosys": "0.58",
+    "python-dotenv": "1.2.2",
+    "spire-hdl": "0.3.0",
+    "tech-eval": "0.1.0"
+  },
+  "policy": "Install below ignored .tools only; do not modify the system Python or shared EDA toolchain. API credentials are not part of this lock."
+}

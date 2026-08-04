@@ -1,10 +1,10 @@
 # 当前状态
 
 updated_at: 2026-08-04
-phase: P3 completed; P4 next
+phase: P4 completed; P5 next
 
-- P0-P2 已封存，P2 真实 Nangate45 RTL→GDS 证据有效。
-- P3 已完成三个固定源码版本的 license、ARM/Python、入口、工具链和 smoke 准入审计。
-- RTLScout、AgenticPD、TaiWei-Pin-3D 均为条件准入；详细条件见 `docs/evidence/P3_PLUGIN_ADMISSION.md`。
-- Workflow Runtime 仍是唯一进程和持久状态权威；外部项目未被修改。
-- 当前目标线程已授权连续执行 P3-P10；下一实施阶段为 P4。
+- P0-P4 已完成；P2 和 P4 均有真实 Nangate45 GDS 证据。
+- RTLScout 标准黑箱插件、offline fake Agent EDA gate、RTL→ORFS 组合链已通过。
+- 真实 LLM 因未提供 provider 凭据/付费预算明确为 external blocker。
+- Runtime 保持唯一进程/终态权威；第三方源码和共享工具链未修改。
+- 下一阶段：P5 AgenticPD proposal/ExperimentPlan 与受预算候选对比。
