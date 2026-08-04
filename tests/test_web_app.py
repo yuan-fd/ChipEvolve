@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 from shutil import which
 
@@ -70,6 +71,50 @@ def test_runtime_and_campaign_queries_use_authoritative_store(tmp_path):
     assert campaign["members"][0]["status"] == "queued"
     cancelled = state.cancel_campaign(campaign_id)
     assert cancelled["members"][0]["status"] == "cancelled"
+
+
+def test_taiwei_runtime_view_exposes_hashed_3d_evidence(tmp_path):
+    state = make_state(tmp_path)
+    task = TaskSpec(
+        task_id="p8r-api-task", project_id="p8r", design_id="gcd",
+        plugin_id="taiwei-pin-3d",
+    )
+    run, stage = state.runtime_store.submit_plugin_run(task, plugin_version="1.0.0")
+    workspace = tmp_path / "taiwei-attempt"
+    workspace.mkdir()
+    attempt = state.runtime_store.start_attempt(
+        stage.stage_run_id, worker_id="test", workspace=str(workspace), lease_seconds=30
+    )
+    payloads = {
+        "eval.json": ("three_d_eval", '{"finish__route__hb_via__count__phys":{"value":69}}'),
+        "toolchain.json": ("toolchain_snapshot", '{"openroad_commit":"305d3ba"}'),
+        "tier_view_metrics.json": ("three_d_report", '{"upper_instances":300,"bottom_instances":290}'),
+        "final.gds": ("gds", "GDSII"),
+        "final.def": ("def", "DEF"),
+        "final.odb": ("odb", "ODB"),
+        "final.v": ("netlist", "module gcd; endmodule"),
+    }
+    for name, (kind, content) in payloads.items():
+        path = workspace / name
+        path.write_text(content, encoding="utf-8")
+        state.runtime_store.register_artifact(
+            attempt.attempt_id, kind=kind, store_key=name,
+            size_bytes=path.stat().st_size,
+            sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+        )
+
+    detail = state.get_runtime_run(run.run_id)
+    assert detail["three_d"]["replayable"] is True
+    assert detail["three_d"]["tiers"]["upper_instances"] == 300
+    artifact = next(item for item in detail["three_d"]["artifacts"] if item["kind"] == "gds")
+    path, content_type = state.runtime_artifact(run.run_id, artifact["artifact_id"])
+    assert path.read_text() == "GDSII"
+    assert content_type == "application/octet-stream"
+
+    path.write_text("tampered", encoding="utf-8")
+    with pytest.raises(ValueError, match="integrity"):
+        state.runtime_artifact(run.run_id, artifact["artifact_id"])
+    assert state.get_runtime_run(run.run_id)["three_d"]["replayable"] is False
 
 
 def test_natural_language_api_returns_preview_without_submitting(tmp_path):

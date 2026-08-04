@@ -20,6 +20,7 @@
         <p class="nav-label">Projects</p>
         <button class="nav-item" data-nav="design"><span>02</span>电路生成与分析</button>
         <button class="nav-item" data-nav="flow"><span>03</span>RTL-to-GDS</button>
+        <button class="nav-item" data-nav="three-d"><span>04</span>TaiWei 3D</button>
       </nav>
 
       <div class="sidebar-foot">
@@ -72,6 +73,13 @@
             <p>六阶段 ORFS 实现、持久化队列、硬门禁、产物哈希与物理设计分析。</p>
             <span class="project-link">进入项目 <b>→</b></span>
           </button>
+          <button class="project-card three-d-card" data-nav="three-d">
+            <span class="project-number">PROJECT 03</span>
+            <div class="tier-glyph" aria-hidden="true"><i></i><i></i></div>
+            <h3>TaiWei 3D 实现</h3>
+            <p>固定官方版本的 gcd 双层布局、HBT / cross-tier 指标、真实 GDS 与完整可重放证据。</p>
+            <span class="project-link">查看 3D 运行 <b>→</b></span>
+          </button>
         </div>
 
         <div class="section-heading compact">
@@ -83,6 +91,27 @@
           <div><small>EVIDENCE</small><code>GET /api/runs/:id</code><p>读取阶段、指标、产物与分析证据。</p></div>
           <div><small>CAMPAIGN</small><code>GET /api/campaigns</code><p>观察有界并发实验组、成员状态与恢复结果。</p></div>
         </div>
+      </section>
+
+      <section class="view" id="view-three-d">
+        <div class="page-intro">
+          <div><span class="kicker">Project 03 / TaiWei 3D</span><h1>真实 3D 实现证据</h1></div>
+          <p>Runtime 是唯一状态权威；这里读取上下层状态、HBT / cross-tier 指标、固定工具链和带 SHA-256 的产物。</p>
+        </div>
+        <article class="surface three-d-console">
+          <div class="surface-head"><span>TAIWEI RUNTIME</span><div class="surface-actions"><select id="threeDRunSelect" aria-label="选择 TaiWei 3D 运行"><option value="">选择 3D 运行</option></select><button class="quiet-button" id="cancelThreeD" disabled>取消运行</button></div></div>
+          <div class="flow-summary" id="threeDSummary"><span class="run-status idle">IDLE</span><div><b>等待真实 3D 运行</b><small>ord / asap7_3D / gcd</small></div></div>
+          <div class="tier-kpis" id="tierKpis"></div>
+          <div class="three-d-grid">
+            <div class="three-d-view" id="threeDView"><div class="empty-state"><b>暂无 3D 视图</b><p>真实最终 DEF 完成后自动生成。</p></div></div>
+            <div class="three-d-details">
+              <h3>关键指标</h3><table class="metrics-table" id="threeDMetrics"></table>
+              <h3>固定工具链</h3><div class="toolchain-box" id="threeDToolchain">--</div>
+            </div>
+          </div>
+          <div class="artifact-list" id="threeDArtifacts"></div>
+          <div class="campaign-strip" id="threeDCampaigns"></div>
+        </article>
       </section>
 
       <section class="view" id="view-design">

@@ -8,8 +8,11 @@ const state = {
   projects: [],
   designs: [],
   runs: [],
+  runtimeRuns: [],
+  campaigns: [],
   selectedDesign: null,
   selectedRun: null,
+  selectedThreeD: null,
 };
 
 function escapeHtml(value) {
@@ -31,7 +34,7 @@ function post(path, payload) {
 function navigate(view) {
   $$(".view").forEach((item) => item.classList.toggle("active", item.id === `view-${view}`));
   $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.nav === view));
-  $("#crumb").textContent = ({home:"PROJECT HUB",design:"CIRCUIT STUDIO",flow:"RTL-TO-GDS"})[view] || view;
+  $("#crumb").textContent = ({home:"PROJECT HUB",design:"CIRCUIT STUDIO",flow:"RTL-TO-GDS","three-d":"TAIWEI 3D"})[view] || view;
   history.replaceState(null, "", `#${view}`);
   window.scrollTo({top:0, behavior:"smooth"});
 }
@@ -227,6 +230,72 @@ function renderPhysicalEvidence(run) {
     <div class="artifact-list">${(result.artifacts || []).map((artifact) => `<div class="artifact"><span>${escapeHtml(artifact.kind)}</span><span>${escapeHtml(artifact.path)}</span><span>${(artifact.size_bytes/1024).toFixed(1)} KiB</span></div>`).join("")}</div>`;
 }
 
+async function loadThreeDRuns(preferredId = null) {
+  const payload = await api("/api/runtime/runs");
+  state.runtimeRuns = payload.runs.filter((run) => run.plugin_id === "taiwei-pin-3d");
+  try { state.campaigns = (await api("/api/campaigns")).campaigns; } catch { state.campaigns = []; }
+  $("#threeDRunSelect").innerHTML = '<option value="">选择 3D 运行</option>' + state.runtimeRuns.map((run) =>
+    `<option value="${escapeHtml(run.run_id)}">gcd · ${statusLabel(run.status)} · ${escapeHtml(run.run_id.slice(0,12))}</option>`
+  ).join("");
+  const selected = preferredId || state.selectedThreeD?.run?.run_id || state.runtimeRuns[0]?.run_id;
+  if (selected && state.runtimeRuns.some((run) => run.run_id === selected)) {
+    $("#threeDRunSelect").value = selected;
+    await selectThreeDRun(selected);
+  }
+}
+
+async function selectThreeDRun(runId) {
+  if (!runId) return;
+  const detail = await api(`/api/runtime/runs/${encodeURIComponent(runId)}`);
+  state.selectedThreeD = detail;
+  const run = detail.run;
+  const data = detail.three_d || {tiers:{},metrics:{},toolchain:{},artifacts:[],replayable:false};
+  $("#threeDSummary").innerHTML = `<span class="run-status ${escapeHtml(run.status)}">${escapeHtml(run.status.toUpperCase())}</span><div><b>gcd · ${statusLabel(run.status)}</b><small>${escapeHtml(run.run_id)} · ${data.replayable ? "可完整重放" : "证据生成中"}</small></div>`;
+  $("#cancelThreeD").disabled = !["queued","running","cancel_requested"].includes(run.status);
+  const tiers = data.tiers || {};
+  const hbViaCount = metricValue(data.metrics, "finish__route__hb_via__count__phys");
+  $("#tierKpis").innerHTML = [
+    [tiers.upper_instances ?? "--", "Upper tier"],
+    [tiers.bottom_instances ?? "--", "Bottom tier"],
+    [hbViaCount !== "--" ? hbViaCount : (tiers.hbt_named_instances ?? "--"), "HB via (physical)"],
+    [metricValue(data.metrics, "finish__route__cross_tier_nets__all"), "Cross-tier nets"],
+  ].map(([value,label]) => `<div class="kpi"><b>${escapeHtml(value ?? "--")}</b><small>${escapeHtml(label)}</small></div>`).join("");
+  const view = data.artifacts.find((artifact) => artifact.kind === "three_d_view");
+  $("#threeDView").innerHTML = view
+    ? `<img src="${escapeHtml(view.url)}" alt="TaiWei gcd 上下层最终布局视图">`
+    : '<div class="empty-state"><b>3D 视图生成中</b><p>完成 final DEF 后自动出现。</p></div>';
+  const important = Object.entries(data.metrics || {}).filter(([name]) =>
+    /hb_via|cross_tier|timing__setup|power__total|instance__area|drc_errors/.test(name)
+  );
+  $("#threeDMetrics").innerHTML = important.map(([name,record]) =>
+    `<tr><td>${escapeHtml(name)}</td><td>${escapeHtml(record?.value ?? record)}</td></tr>`
+  ).join("") || '<tr><td>指标尚未登记</td><td>--</td></tr>';
+  const tool = data.toolchain || {};
+  $("#threeDToolchain").innerHTML = [
+    ["OpenROAD", tool.openroad_commit || "--"], ["Yosys", tool.yosys_version || "--"],
+    ["ORFS-Research", tool.orfs_commit || "--"], ["TaiWei", tool.taiwei_commit || "--"],
+  ].map(([label,value]) => `<div><small>${label}</small><code>${escapeHtml(value)}</code></div>`).join("");
+  $("#threeDArtifacts").innerHTML = data.artifacts.map((artifact) =>
+    `<a class="artifact" href="${escapeHtml(artifact.url)}" target="_blank" rel="noopener"><span>${escapeHtml(artifact.kind)}</span><span>${escapeHtml(artifact.store_key)}</span><span>${((artifact.size_bytes || 0)/1024).toFixed(1)} KiB · ${escapeHtml((artifact.sha256 || "").slice(0,10))}</span></a>`
+  ).join("");
+  const campaigns = state.campaigns.filter((campaign) => (campaign.members || []).some((member) => member.run_id === runId));
+  $("#threeDCampaigns").innerHTML = campaigns.length
+    ? campaigns.map((campaign) => `<div><small>CAMPAIGN</small><b>${escapeHtml(campaign.name || campaign.campaign_id)}</b><span>${campaign.members.length} members</span></div>`).join("")
+    : '<div><small>CAMPAIGN</small><b>独立验收运行</b><span>可由 Campaign 成员引用同一 Runtime run</span></div>';
+}
+
+function metricValue(metrics, name) {
+  const record = (metrics || {})[name];
+  return record && typeof record === "object" ? record.value : (record ?? "--");
+}
+
+async function cancelThreeDRun() {
+  const runId = state.selectedThreeD?.run?.run_id;
+  if (!runId) return;
+  await post(`/api/runtime/runs/${encodeURIComponent(runId)}/cancel`, {});
+  await loadThreeDRuns(runId);
+}
+
 $$('[data-nav]').forEach((button) => button.addEventListener("click", (event) => { event.preventDefault(); navigate(button.dataset.nav); }));
 $$('[data-prompt]').forEach((button) => button.addEventListener("click", () => { $("#designPrompt").value = button.dataset.prompt; }));
 $$('[data-evidence]').forEach((button) => button.addEventListener("click", () => {
@@ -243,18 +312,21 @@ $("#flowDesign").addEventListener("change", (event) => {
 $("#useInFlow").addEventListener("click", () => { if (state.selectedDesign) { $("#flowDesign").value = state.selectedDesign.id; $("#flowTop").value = state.selectedDesign.module; navigate("flow"); } });
 $("#startFlow").addEventListener("click", startFlow);
 $("#runSelect").addEventListener("change", (event) => selectRun(event.target.value));
+$("#threeDRunSelect").addEventListener("change", (event) => selectThreeDRun(event.target.value));
+$("#cancelThreeD").addEventListener("click", () => cancelThreeDRun().catch(() => {}));
 $("#refreshAll").addEventListener("click", () => refreshAll());
 
 async function refreshAll() {
   await Promise.all([loadHealth(), loadProjects(), loadDesigns()]);
-  await loadRuns();
+  await Promise.all([loadRuns(), loadThreeDRuns()]);
 }
 
 function updateClock() { $("#clock").textContent = new Date().toLocaleString("zh-CN", {hour12:false}); }
 updateClock();
 setInterval(updateClock, 1000);
 
-const initialView = ["home","design","flow"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "home";
+const initialView = ["home","design","flow","three-d"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "home";
 navigate(initialView);
 refreshAll().catch((error) => { $("#systemLabel").textContent = "加载失败"; $("#systemDetail").textContent = error.message; });
 setInterval(() => loadRuns().catch(() => {}), 5000);
+setInterval(() => loadThreeDRuns().catch(() => {}), 5000);

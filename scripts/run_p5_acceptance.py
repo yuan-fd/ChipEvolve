@@ -19,24 +19,30 @@ for source in (ROOT / "packages/contracts/src", ROOT / "packages/execution/src",
 from openroad_platform_contracts import ExperimentPlan, RuntimeStatus
 from openroad_platform_execution import (PluginRegistry, ToolchainConfig,
     agenticpd_plugin_manifest, build_agenticpd_task, build_orfs_task, orfs_plugin_manifest)
-from openroad_platform_scheduler import RuntimeStore, WorkflowRuntime
+from openroad_platform_scheduler import (
+    CampaignManager, CampaignStore, RuntimeStore, WorkflowRuntime,
+)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--rtl", type=Path, required=True)
+    parser.add_argument("--runtime-db", type=Path)
+    parser.add_argument("--campaign-db", type=Path)
     parser.add_argument("--orfs-root", type=Path, default=Path.home() / "OpenROAD-flow-scripts")
     parser.add_argument("--openroad-bin", type=Path, default=Path.home() / "bin/openroad")
     parser.add_argument("--yosys-bin", type=Path, default=Path.home() / "bin/yosys")
     parser.add_argument("--klayout-bin", type=Path, default=Path.home() / "bin/klayout")
     parser.add_argument("--timeout", type=int, default=7200)
+    parser.add_argument("--max-parallel", type=int, default=1)
     args = parser.parse_args()
     out = args.output_root.resolve()
     if out.exists() and any(out.iterdir()):
         raise FileExistsError(out)
     out.mkdir(parents=True, exist_ok=True)
-    db = Path("/tmp/openroad-platform-p5-runtime") / f"{out.name}.db"
+    db = (args.runtime_db.expanduser().resolve() if args.runtime_db else
+          Path("/tmp/openroad-platform-p5-runtime") / f"{out.name}.db")
     db.parent.mkdir(parents=True, exist_ok=True)
     if db.exists():
         raise FileExistsError(db)
@@ -60,17 +66,31 @@ def main() -> int:
     plan = ExperimentPlan.from_dict(json.loads(plan_artifact.read_text(encoding="utf-8")))
     values = [plan.baseline_parameters["core_utilization_pct"],
               plan.candidates[0].parameters["core_utilization_pct"]]
-    runs = []
     rtl_sha = _sha(args.rtl.resolve())
+    tasks = []
     for role, utilization in zip(("baseline", "candidate"), values):
-        task = build_orfs_task(args.rtl, project_id="openroad-platform", design_id="p5-adder",
+        tasks.append(build_orfs_task(
+            args.rtl, project_id="openroad-platform", design_id="p5-adder",
             top="adder", platform_name="nangate45", target_stage="finish",
             clock_period_ns=10.0, core_utilization_pct=utilization, place_density=0.45,
             timeout_seconds=args.timeout, stage_timeout_seconds=min(args.timeout, 3600),
             task_id=f"p5-{role}", labels={"phase": "P5", "experiment_role": role,
-                "plan_id": plan.plan_id})
-        run = runtime.submit(task)
-        run = runtime.execute_once(run.run_id)
+                "plan_id": plan.plan_id}))
+    campaign_db = (args.campaign_db.expanduser().resolve() if args.campaign_db else
+                   db.with_suffix(".campaign.db"))
+    campaign_store = CampaignStore(campaign_db)
+    campaign_id = campaign_store.create(
+        f"AgenticPD {plan.plan_id} baseline/candidate", tasks,
+        max_parallel=args.max_parallel,
+    )
+    campaign = CampaignManager(campaign_store, runtime)
+    campaign_view = campaign.run_until_terminal(
+        campaign_id, timeout_seconds=args.timeout * len(tasks),
+    )
+    runs = []
+    for role, utilization, member in zip(("baseline", "candidate"), values,
+                                         campaign_view["members"]):
+        run = runtime.store.get_run(member["run_id"])
         view = runtime.describe(run.run_id)
         report = json.loads(_artifact(view, "report").read_text(encoding="utf-8"))
         config = _artifact(view, "config").read_text(encoding="utf-8")
@@ -86,8 +106,9 @@ def main() -> int:
         "comparison": {"comparable": comparable, "same_rtl_sha256": rtl_sha,
                        "platform": "nangate45", "clock_period_ns": 10.0,
                        "place_density": 0.45, "runs": runs},
+        "campaign": campaign_view,
         "real_llm": {"executed": False, "blocker": "no injected credential/paid budget"},
-        "runtime_db": str(db)}
+        "runtime_db": str(db), "campaign_db": str(campaign_store.path)}
     (out / "acceptance_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     with sqlite3.connect(db) as connection:
         connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")

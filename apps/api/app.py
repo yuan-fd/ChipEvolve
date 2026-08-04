@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import mimetypes
 import os
 import re
 import shutil
@@ -111,6 +113,13 @@ class ApiState:
                     "route": "flow",
                     "status": "available",
                 },
+                {
+                    "id": "taiwei-3d",
+                    "name": "TaiWei 3D",
+                    "description": "固定官方工具链的双层 gcd、HBT 指标、真实产物与可重放证据",
+                    "route": "three-d",
+                    "status": "available",
+                },
             ],
             "extension_contract": {
                 "manifest": "project id, name, description, route, status",
@@ -178,11 +187,96 @@ class ApiState:
     def list_runtime_runs(self, limit: int = 50) -> dict[str, Any]:
         return {"runs": [{"run_id": run.run_id, "task_id": run.task_id,
                            "status": run.status.value, "created_at": run.created_at,
-                           "started_at": run.started_at, "ended_at": run.ended_at}
+                           "started_at": run.started_at, "ended_at": run.ended_at,
+                           "plugin_id": run.task_spec.plugin_id,
+                           "project_id": run.task_spec.project_id,
+                           "design_id": run.task_spec.design_id}
                           for run in self.runtime_store.list_runs(limit=limit)]}
 
     def get_runtime_run(self, run_id: str) -> dict[str, Any]:
-        return self.runtime_store.describe_run(run_id)
+        payload = self.runtime_store.describe_run(run_id)
+        for stage in payload.get("stages", []):
+            for attempt in stage.get("attempts", []):
+                for artifact in attempt.get("artifacts", []):
+                    artifact["url"] = (
+                        f"/api/runtime/runs/{run_id}/artifacts/{artifact['artifact_id']}"
+                    )
+        task = payload.get("run", {}).get("task_spec", {})
+        if task.get("plugin_id") == "taiwei-pin-3d":
+            payload["three_d"] = self._three_d_view(payload)
+        return payload
+
+    def runtime_artifact(self, run_id: str, artifact_id: str) -> tuple[Path, str]:
+        payload = self.runtime_store.describe_run(run_id)
+        for stage in payload.get("stages", []):
+            for attempt in stage.get("attempts", []):
+                workspace = Path(attempt["workspace"]).expanduser().resolve()
+                for artifact in attempt.get("artifacts", []):
+                    if artifact["artifact_id"] != artifact_id:
+                        continue
+                    path = (workspace / artifact["store_key"]).resolve()
+                    try:
+                        path.relative_to(workspace)
+                    except ValueError as exc:
+                        raise ValueError("artifact path escapes its Runtime workspace") from exc
+                    if not path.is_file():
+                        raise KeyError(f"Artifact file is missing: {artifact_id}")
+                    if (path.stat().st_size != artifact["size_bytes"]
+                            or _sha256(path) != artifact["sha256"]):
+                        raise ValueError(f"Artifact integrity check failed: {artifact_id}")
+                    content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+                    return path, content_type
+        raise KeyError(f"Unknown artifact for run: {artifact_id}")
+
+    def _three_d_view(self, payload: dict[str, Any]) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "tiers": {}, "metrics": {}, "toolchain": {}, "artifacts": [],
+            "replayable": False,
+        }
+        for stage in payload.get("stages", []):
+            for attempt in stage.get("attempts", []):
+                workspace = Path(attempt["workspace"]).expanduser().resolve()
+                for artifact in attempt.get("artifacts", []):
+                    item = {key: artifact.get(key) for key in (
+                        "artifact_id", "kind", "store_key", "size_bytes", "sha256", "url"
+                    )}
+                    path = (workspace / artifact["store_key"]).resolve()
+                    try:
+                        path.relative_to(workspace)
+                    except ValueError:
+                        item["integrity_verified"] = False
+                        result["artifacts"].append(item)
+                        continue
+                    item["integrity_verified"] = (
+                        path.is_file()
+                        and path.stat().st_size == artifact["size_bytes"]
+                        and _sha256(path) == artifact["sha256"]
+                    )
+                    result["artifacts"].append(item)
+                    if not item["integrity_verified"]:
+                        continue
+                    if artifact["kind"] not in {
+                        "three_d_eval", "toolchain_snapshot", "three_d_report"
+                    }:
+                        continue
+                    if not path.is_file() or path.suffix != ".json":
+                        continue
+                    try:
+                        value = json.loads(path.read_text(encoding="utf-8"))
+                    except (OSError, json.JSONDecodeError):
+                        continue
+                    if artifact["kind"] == "three_d_eval":
+                        result["metrics"] = value
+                    elif artifact["kind"] == "toolchain_snapshot":
+                        result["toolchain"] = value
+                    elif path.name == "tier_view_metrics.json":
+                        result["tiers"] = value
+        required = {"gds", "def", "odb", "netlist", "three_d_eval", "toolchain_snapshot"}
+        result["replayable"] = required.issubset(
+            {item["kind"] for item in result["artifacts"]
+             if item["integrity_verified"]}
+        )
+        return result
 
     def cancel_runtime_run(self, run_id: str) -> dict[str, Any]:
         self.runtime_store.request_cancel(run_id)
@@ -261,6 +355,14 @@ def _find_tool(name: str, fallback: Path) -> str | None:
     return str(fallback) if fallback.is_file() else None
 
 
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _optional_string(value: Any) -> str | None:
     text = str(value or "").strip()
     return text or None
@@ -332,6 +434,11 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                     self._json({"runs": state.list_runs()})
                 elif path == "/api/runtime/runs":
                     self._json(state.list_runtime_runs())
+                elif re.fullmatch(r"/api/runtime/runs/[^/]+/artifacts/[^/]+", path):
+                    parts = path.split("/")
+                    artifact_path, content_type = state.runtime_artifact(
+                        unquote(parts[4]), unquote(parts[6]))
+                    self._file(artifact_path, content_type)
                 elif path.startswith("/api/runtime/runs/"):
                     self._json(state.get_runtime_run(
                         unquote(path.removeprefix("/api/runtime/runs/"))))
@@ -485,6 +592,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--design-root", type=Path, default=ROOT / "var" / "designs")
     parser.add_argument("--legacy-root", type=Path,
                         default=Path(os.environ.get("ICCAD_ROOT", ROOT.parent / "iccad")))
+    local_state = Path(os.environ.get(
+        "OPENROAD_PLATFORM_LOCAL_STATE", f"/tmp/openroad-platform-{os.getuid()}"
+    ))
+    parser.add_argument(
+        "--runtime-db", type=Path,
+        default=Path(os.environ.get("OPENROAD_PLATFORM_RUNTIME_DB",
+                                    local_state / "runtime.db")),
+    )
+    parser.add_argument(
+        "--campaign-db", type=Path,
+        default=Path(os.environ.get("OPENROAD_PLATFORM_CAMPAIGN_DB",
+                                    local_state / "campaign.db")),
+    )
     parser.add_argument(
         "--orfs-root",
         type=Path,
@@ -497,6 +617,8 @@ def main(argv: list[str] | None = None) -> int:
         args.orfs_root,
         design_root=args.design_root,
         legacy_root=args.legacy_root,
+        runtime_db_path=args.runtime_db,
+        campaign_db_path=args.campaign_db,
     )
     server = build_server(args.host, args.port, state)
     print(f"OpenROAD Platform: http://{args.host}:{server.server_port}")
