@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "phase": "P8-Real",
+  "captured_at": "2026-08-05",
+  "accepted": true,
+  "toolchain": {
+    "profile": "taiwei-official-3d",
+    "orfs_research_commit": "568eb04da9173695d6bfc1b10ba868e0b6b8a9fa",
+    "openroad_commit": "305d3ba2ddfd00591924cc586ad408179f566afe",
+    "yosys_commit": "77005b69a2f693425294dab62c49164edb15bf10",
+    "taiwei_commit": "db20136711ed8c0cdfed67a6123d059875764abd",
+    "lock_verified": true,
+    "isolated_from_2d": true
+  },
+  "runtime": {
+    "run_id": "dacffccb314e439aba6f1c9cd6c1d1fc",
+    "status": "succeeded",
+    "events": 40,
+    "artifacts": 15,
+    "metrics": 20,
+    "live_db_under_tmp": true,
+    "restart_created_duplicate_attempt": false
+  },
+  "gds": {
+    "size_bytes": 550222,
+    "sha256": "fce450ea0ace14c40c91ccdf1648146b11a0fb6cf9acb7566ea6253d4dabb3a4",
+    "gdsii_header_verified": true,
+    "via_m1m_m2add": 669,
+    "via_m2add_m3add": 709,
+    "def_layout_gds_counts_and_areas_match": true
+  },
+  "qor": {
+    "core_area": 36.8874,
+    "stdcell_area": 54.36882,
+    "power": 0.000821,
+    "wirelength": 983.34,
+    "setup_wns": -21.0,
+    "setup_tns": -77.85,
+    "drc": 524,
+    "fep": 8,
+    "hb_via_count": 72,
+    "cross_tier_nets": 98,
+    "upper_instances": 230,
+    "bottom_instances": 252
+  },
+  "resilience": {
+    "timeout": "timed_out",
+    "failure": "failed",
+    "cancel": "cancelled",
+    "official_detached_dispatch_cancelled": true,
+    "orphan_processes": 0,
+    "failed_evidence_preserved": true
+  },
+  "api_web_campaign": true,
+  "three_chain_platform_demo": true,
+  "backup_restore": "ok",
+  "tracked_secret_findings": 0,
+  "tests": "87 passed",
+  "raw_evidence": ".tools/p8-real-acceptance/runtime-20260805/"
+}

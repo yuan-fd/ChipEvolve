@@ -1,7 +1,7 @@
 # OpenROAD Platform
 
 OpenROAD Platform is a small, extensible project hub for digital-design demos.
-The home page stays intentionally simple and currently exposes two complete
+The home page stays intentionally simple and currently exposes three complete
 workspaces:
 
 - **Circuit Studio**: natural-language circuit generation, RTL, synthesized
@@ -9,6 +9,9 @@ workspaces:
 - **RTL-to-GDS Flow**: durable job submission, six native ORFS stages, live
   status, GDS/DEF/netlist artifacts, timing/DRC/power metrics, and physical
   diagnosis.
+- **TaiWei 3D**: pinned official ORD/asap7_3D/gcd runs, upper/bottom tier
+  state, physical HB-via and cross-tier metrics, hashed GDS/DEF/ODB evidence,
+  and replay/toolchain provenance.
 
 The natural-language generator is isolated behind `DesignService`. It can use
 the proven generator in `../iccad` through the `ICCAD_ROOT` adapter, while all
@@ -56,6 +59,19 @@ openroad-jobs --db ./var/platform.db worker \
   --orfs-root ../OpenROAD-flow-scripts \
   --openroad-bin ../bin/openroad --yosys-bin ../bin/yosys
 ```
+
+To open a sealed Workflow Runtime database, pass the node-local SQLite files
+explicitly:
+
+```bash
+python3 apps/api/app.py --host 127.0.0.1 --port 8000 \
+  --runtime-db /tmp/openroad-platform-runtime/runtime.db \
+  --campaign-db /tmp/openroad-platform-runtime/campaign.db
+```
+
+See `docs/OPERATIONS.md` for the three-chain replay, backup/restore and upgrade
+procedure. Live SQLite WAL files must stay on node-local `/tmp`, not this
+distributed project filesystem.
 
 Defaults are tuned for the small generated demo circuits: 10% core
 utilization and 0.45 placement density. They remain configurable in the Flow

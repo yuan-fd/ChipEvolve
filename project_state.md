@@ -1,10 +1,10 @@
 # OpenROAD Platform — 工作记忆
 
 project_id: openroad-platform
-phase: P10：已完成；P3-P10 主线收口
-current_subgoal: 等待官方固定 3D 工具链以解除 P8 真实 gcd 外部阻塞
-progress: 100%（平台施工）；P8 real_3d gate pending external dependency
-last_updated: 2026-08-04
+phase: P8-Real：已完成；平台系统验收收口
+current_subgoal: 准备进入 P11 EDACraft / IC Craft 等新平台扩展
+progress: 100%（P0-P10 + P8-Real）；下一扩展尚未开始
+last_updated: 2026-08-05
 
 ## 已确认事实
 
@@ -28,7 +28,7 @@ last_updated: 2026-08-04
 - 同一 RTL、Nangate45、固定工具链真实比较 38%/35%：两次 GDS 成功、DRC=0；候选并非全面更优。
 - P6 Campaign member 与 Runtime run 一一映射；按 task_id 幂等恢复、并发上限和 lost→新 Attempt 已通过真实子进程测试。
 - P7 NL 只生成验证后的 TaskSpec preview；RepairAction 只有四种数据模板，必须引用证据并受预算停止条件约束。
-- P8 TaiWei plugin/profile/Adapter 已实现；真实 gcd 因固定工具链无法下载且现有版本不匹配而 fail closed，accepted=false。
+- P8 历史 blocker 证据保留；P8-Real 新增证据已用官方固定链真实跑通 gcd 3D，GDS/via/QoR/Runtime/API/Web 均通过。
 - P9 知识记录强制 verified/ref/SHA/版本上下文；P5 真实经验完成 data-only 回放，错版本和篡改均拒绝。
 - P10 Evolve→隔离 Coding→Promotion receipt 闭环完成；真实仓库候选回归 81 passed、基线不变、applied=false；总回归 84。
 
@@ -50,7 +50,7 @@ last_updated: 2026-08-04
 
 - RTLScout 要求 Python >=3.10，ARM 源码兼容性在 P3 验证。
 - AgenticPD 官方仓库未声明许可证；澄清前禁止复制或再分发源码。
-- TaiWei 绑定独立 ORFS-Research/OpenROAD commit，不能覆盖内部 2D 工具链。
+- TaiWei 独立 ORFS-Research/OpenROAD 工具链已冻结在私有 `.tools`，不能覆盖内部 2D 工具链。
 - ToolchainConfig 已在 P2 接入 ORFS 主链；其余高级 evidence 模块仍需按后续阶段逐项接入，禁止恢复隐式路径假设。
 
 ## 活跃约束
@@ -62,4 +62,4 @@ last_updated: 2026-08-04
 
 ## handoff_anchor
 
-P0 `afdca1e`；P1 `e750370`；P2 `aa7cf0a`/`6d9d93c`；P3 `9269040`；P4 `0892d57`；P5 `38208ae`；P6 `025dc72`；P7 `339f34f`；P8 `00cf2f8`；P9 `c923f55`。读取 P10 快照和 `docs/evidence/P10_CODING_EVOLVE_ACCEPTANCE.md` 恢复；P8 blocker 解除时追加验收。
+P0 `afdca1e`；P1 `e750370`；P2 `aa7cf0a`/`6d9d93c`；P3 `9269040`；P4 `0892d57`；P5 `38208ae`；P6 `025dc72`；P7 `339f34f`；P8 `00cf2f8`；P9 `c923f55`；P10 `6499d58`。读取 `memory_snapshots/P8-real-platform-acceptance-2026-08-05.md` 和 `docs/evidence/P8_REAL_ACCEPTANCE.md` 恢复；下一步为 P11。
