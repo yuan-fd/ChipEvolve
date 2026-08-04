@@ -2,12 +2,10 @@
 
 updated_at: 2026-08-04
 
-## 当前首项动作
+实施 P4 RTLScout 黑箱插件：版本化 manifest/schema、Adapter、安全环境注入、fake smoke、RTL 产物登记，以及 RTLScout→ORFS 组合工作流。真实 LLM 若因 Python 环境或凭据不可用，必须以可复核的 external blocker 明确记录。
 
-P2 已完成并等待用户验收。本轮不自动进入 P3；P3 是三个外部平台的环境/源码兼容性准入，将涉及 Python 环境创建、依赖安装、许可证结论和受控 smoke，需单独建立 `tasks/phase-3.md`。
+首条恢复命令：
 
-P3 首项应先完成 RTLScout Python≥3.10/ARM、AgenticPD license/入口、TaiWei 独立 ORFS-Research 工具链三张准入表，再决定哪些 smoke 可以执行；许可证不清不得通过复制源码规避。
-
-## 重大问题暂停条件
-
-P3 若需要覆盖共享 2D 工具链、复制无明确许可证的源码、安装系统级依赖或运行未固定的远程代码，必须暂停请求用户决策。
+```bash
+cd ~/openroad-platform && git status --short && sed -n '1,240p' tasks/current_task.md
+```

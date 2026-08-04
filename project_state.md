@@ -1,9 +1,9 @@
 # OpenROAD Platform — 工作记忆
 
 project_id: openroad-platform
-phase: P2：已完成，等待验收
-current_subgoal: 验收 P2；之后单独制定 P3 三平台环境与源码兼容性准入任务
-progress: 100%
+phase: P3：已完成；目标线程继续 P4-P10
+current_subgoal: P4 RTLScout 标准插件与 RTL→ORFS 组合工作流
+progress: 30%
 last_updated: 2026-08-04
 
 ## 已确认事实
@@ -19,6 +19,8 @@ last_updated: 2026-08-04
 - P2 实现提交：`aa7cf0a8b3b2feaa1e16f2a1bad45e612b89beef`；全量 53 tests passed。
 - `orfs@1.0.0` 已由新 Runtime 完成真实 Nangate45 RTL→GDS；17 artifacts、7 metrics、29 events。
 - P2 GDS：19,572 bytes，SHA-256 `d20ee44ef216af20a896b4a48794d2ee3fdd8de70b7fe8280fb8ae13a59ad1e6`。
+- P3 三平台均完成固定 commit 准入：AgenticPD 271 项检查通过，TaiWei CLI 入口通过，RTLScout 系统 Python smoke 明确受 Python/依赖环境阻塞。
+- RTLScout 的 Python 3.11/aarch64 主要依赖 wheels 可获得；完整 fake/真实 LLM 尚未宣称成功。
 
 ## 架构定版
 
@@ -50,4 +52,4 @@ last_updated: 2026-08-04
 
 ## handoff_anchor
 
-P0 commit `afdca1ef...`；P1 commit `e750370...`；P2 commit `aa7cf0a...`。读取 `memory_snapshots/P2-orfs-plugin-2026-08-04.md` 和 `docs/evidence/P2_ORFS_ACCEPTANCE.md` 恢复；下一步等待 P3 明确授权。
+P0 commit `afdca1ef...`；P1 commit `e750370...`；P2 commit `aa7cf0a...`/封存 `6d9d93c`。读取 P2 快照与 `docs/evidence/P3_PLUGIN_ADMISSION.md` 恢复；当前目标已授权连续执行 P3-P10，下一步 P4。

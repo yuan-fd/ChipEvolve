@@ -1,49 +1,29 @@
-# 当前任务：P2 ORFS 标准插件迁移与真实 RTL→GDS 验收
+# 当前任务：P3 三平台兼容性准入
 
 status: completed
-phase: P2
+phase: P3
 approved_at: 2026-08-04
 started_at: 2026-08-04
-base_commit: 5e65fffb300b12f4dffefc046ccffeef8b396e1b
-implementation_commit: aa7cf0a8b3b2feaa1e16f2a1bad45e612b89beef
 completed_at: 2026-08-04
+base_commit: 6d9d93c
 
 ## 1. 用户目标
 
-完成 P2：将现有 ORFSRunner 非破坏性迁移为 v1 标准插件，并在新 Runtime 下完成真实 Nangate45 RTL→GDS 硬验收。
+连续完成 P3-P10；本阶段先完成三个固定版本外部平台的兼容性准入。
 
 ## 2. 执行规范
 
-完整范围、步骤、验收标准和停止条件见 `tasks/phase-2.md`，该文件是本轮执行权威。
+完整范围、步骤、验收标准和停止条件见 `tasks/phase-3.md`。
 
-## 3. 关键不变量
+## 3. 结论
 
-- WorkflowRuntime 继续独占 v1 状态终态。
-- 旧 ORFSRunner/JobStore/API 保持兼容；真实 legacy DB 只读保护。
-- RTL、工具链、平台配置和生成配置必须有可复核哈希。
-- 共享 ORFS/OpenROAD/Yosys/PDK 只读；既有 dirty 状态前后必须一致。
-- 不 push、不部署、不运行 LLM。
+- RTLScout：条件准入；要求独立 Python >=3.10、固定 submodule 与 ARM EDA 依赖。
+- AgenticPD：条件准入；271 项上游检查通过，但无 LICENSE，只能黑箱调用。
+- TaiWei：条件准入；入口通过，真实运行要求隔离的固定 3D 工具链。
+- 本阶段没有声称真实 LLM、AgenticPD 优化或 3D EDA 已成功。
 
-## 4. 当前工具链事实
+## 4. 恢复锚点
 
-- ORFS commit：`51ad1231a231ee85234c06db807688d029b85c35`。
-- OpenROAD：`26Q1-1961-g63ed2e0fe5`；Yosys：`0.63`。
-- 主机：aarch64 / Python 3.9.9；Nangate45 platform 可见。
-- 共享 ORFS 在 P2 开始前已有 dirty/untracked 状态，必须只读保持，不做清理。
-
-## 5. 恢复锚点
-
-- 基线 commit：`5e65fffb300b12f4dffefc046ccffeef8b396e1b`。
-- P1 快照：`memory_snapshots/P1-runtime-core-2026-08-04.md`。
-- P2 任务：`tasks/phase-2.md`。
-
-## 6. 验收结果
-
-- `orfs@1.0.0` 在新 WorkflowRuntime 下真实 Nangate45 六阶段成功。
-- Run/StageRun/Attempt 均 succeeded；17 artifacts、7 metrics、29 versioned events。
-- `implementation_valid=true`、`gds_complete=true`，GDS 19,572 bytes 且哈希匹配。
-- 输入 RTL、平台配置、生成配置、工具 wrapper 和 ToolchainSnapshot 哈希完整。
-- fake full-chain、RTL 篡改拒绝、嵌套进程 live cancel、旧 ORFSRunner/API 全部回归。
-- 全量测试 53 passed；共享工具链前后指纹一致。
-- 证据：`docs/evidence/P2_ORFS_ACCEPTANCE.md` 和 `.json`。
-- 实现提交：`aa7cf0a8b3b2feaa1e16f2a1bad45e612b89beef`。
+- P2 封存提交：`6d9d93c`。
+- P3 证据：`docs/evidence/P3_PLUGIN_ADMISSION.md` 和 `.json`。
+- 下一阶段：P4 RTLScout 标准黑箱插件与 RTL→ORFS 组合工作流。

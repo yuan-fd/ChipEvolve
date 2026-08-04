@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "phase": "P3",
+  "captured_at": "2026-08-04",
+  "host": {
+    "architecture": "aarch64",
+    "os": "openEuler 22.03",
+    "system_python": "3.9.9",
+    "python_3_10_or_newer_available": false,
+    "container_backend_available": false
+  },
+  "plugins": [
+    {
+      "plugin_id": "rtlscout",
+      "commit": "87a00edf6b9208f657dd9ffdda170004024c08ae",
+      "license": "BSD-3-Clause-Clear",
+      "entrypoint": "run_benchmark.py",
+      "required_python": ">=3.10",
+      "source_tree_clean": true,
+      "arm_dependency_wheels_available": true,
+      "smoke": {
+        "command": "python3 run_benchmark.py --help",
+        "exit_code": 1,
+        "result": "blocked",
+        "first_error": "ModuleNotFoundError: No module named 'dotenv'"
+      },
+      "admission": "conditional",
+      "conditions": [
+        "run in an isolated Python >=3.10 environment",
+        "initialize the pinned deps/spire-hdl submodule",
+        "install and verify EDA dependencies on aarch64",
+        "use environment-only credentials for a real LLM run"
+      ]
+    },
+    {
+      "plugin_id": "agenticpd",
+      "commit": "4322a25c1d57bc88d576fd2ce6898a52d30d92c7",
+      "license": null,
+      "license_status": "not_declared_in_repository",
+      "entrypoints": ["main.py", "multi_agent_gwtw.py"],
+      "required_python": ">=3.10 (documented baseline)",
+      "source_tree_clean": true,
+      "smoke": {
+        "command": "make check",
+        "exit_code": 0,
+        "result": "passed",
+        "checks": ["87/87 schema", "17/17 orchestrator", "167/167 GWTW", "CLI help"]
+      },
+      "admission": "conditional",
+      "conditions": [
+        "black-box invocation only until an upstream license is declared",
+        "do not copy, modify, or redistribute upstream source",
+        "convert proposals into platform contracts; Runtime remains the sole scheduler authority",
+        "use an isolated Python environment for real model execution"
+      ]
+    },
+    {
+      "plugin_id": "taiwei-pin-3d",
+      "commit": "db20136711ed8c0cdfed67a6123d059875764abd",
+      "license": "BSD-3-Clause",
+      "entrypoint": "run_experiments.py",
+      "source_tree_clean": true,
+      "required_toolchain": {
+        "orfs_research_commit": "568eb04da9173695d6bfc1b10ba868e0b6b8a9fa",
+        "openroad_commit": "305d3ba2ddfd00591924cc586ad408179f566afe"
+      },
+      "smoke": {
+        "command": "python3 run_experiments.py --help",
+        "exit_code": 0,
+        "result": "passed"
+      },
+      "admission": "conditional",
+      "conditions": [
+        "build or obtain the exact ORFS-Research/OpenROAD pair in a separate prefix",
+        "never overlay the platform's fixed 2D ORFS/OpenROAD toolchain",
+        "retain design and PDK sub-licenses with collected artifacts",
+        "start real acceptance with the ORD gcd case"
+      ]
+    }
+  ],
+  "decision": "All three sources are admitted behind versioned subprocess adapters subject to their listed conditions; no real LLM or 3D EDA capability is claimed by this phase."
+}
