@@ -135,25 +135,81 @@ class ProcessGuardian:
         if proc.poll() is not None:
             return
         if os.name == "posix":
-            try:
-                os.killpg(proc.pid, signal.SIGTERM)
-            except ProcessLookupError:
-                return
+            targets = self._process_tree(proc.pid)
+            self._signal_processes(targets, signal.SIGTERM)
         else:
             proc.terminate()
+            targets = {proc.pid}
 
-        try:
-            proc.wait(timeout=self.terminate_grace)
-        except subprocess.TimeoutExpired:
-            self._kill_tree(proc)
+        deadline = time.monotonic() + self.terminate_grace
+        while time.monotonic() < deadline:
+            root_done = proc.poll() is not None
+            descendants_done = os.name != "posix" or not any(
+                self._process_is_running(pid) for pid in targets if pid != proc.pid
+            )
+            if root_done and descendants_done:
+                return
+            time.sleep(min(self.poll_interval, 0.05))
+        self._kill_tree(proc, targets)
 
-    @staticmethod
-    def _kill_tree(proc: subprocess.Popen[str]) -> None:
+    @classmethod
+    def _kill_tree(cls, proc: subprocess.Popen[str], targets: set[int] | None = None) -> None:
         if os.name == "posix":
-            try:
-                os.killpg(proc.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+            cls._signal_processes(targets or cls._process_tree(proc.pid), signal.SIGKILL)
         elif proc.poll() is None:
             proc.kill()
 
+    @staticmethod
+    def _process_is_running(pid: int) -> bool:
+        try:
+            stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+        except (FileNotFoundError, PermissionError, ProcessLookupError):
+            return False
+        tail = stat[stat.rfind(")") + 2:].split()
+        return bool(tail) and tail[0] != "Z"
+
+    @staticmethod
+    def _process_tree(root_pid: int) -> set[int]:
+        """Snapshot Linux descendants, including children that called setsid()."""
+        if not Path("/proc").is_dir():
+            return {root_pid}
+        children: dict[int, list[int]] = {}
+        for entry in Path("/proc").iterdir():
+            if not entry.name.isdigit():
+                continue
+            try:
+                stat = (entry / "stat").read_text(encoding="utf-8")
+                tail = stat[stat.rfind(")") + 2:].split()
+                ppid = int(tail[1])
+                pid = int(entry.name)
+            except (FileNotFoundError, PermissionError, ProcessLookupError,
+                    ValueError, IndexError):
+                continue
+            children.setdefault(ppid, []).append(pid)
+        result = {root_pid}
+        pending = [root_pid]
+        while pending:
+            parent = pending.pop()
+            for child in children.get(parent, []):
+                if child not in result:
+                    result.add(child)
+                    pending.append(child)
+        return result
+
+    @staticmethod
+    def _signal_processes(pids: set[int], signum: signal.Signals) -> None:
+        """Signal every descendant session/process group."""
+        own_group = os.getpgrp()
+        groups = set()
+        for pid in pids:
+            try:
+                group = os.getpgid(pid)
+            except ProcessLookupError:
+                continue
+            if group != own_group:
+                groups.add(group)
+        for group in groups:
+            try:
+                os.killpg(group, signum)
+            except ProcessLookupError:
+                pass

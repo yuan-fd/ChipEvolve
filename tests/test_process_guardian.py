@@ -51,3 +51,21 @@ def test_cancellation_is_checked_without_process_output(tmp_path):
     assert outcome.timed_out is False
     assert time.monotonic() - started < 2
 
+
+def test_timeout_kills_descendant_that_created_a_new_session(tmp_path):
+    pid_file = tmp_path / "detached.pid"
+    script = f"setsid sleep 30 & child=$!; printf '%s' $child > {pid_file}; wait"
+    guardian = ProcessGuardian(poll_interval=0.02, terminate_grace=0.1)
+
+    outcome = guardian.run(
+        ["bash", "-c", script], log_path=tmp_path / "detached.log",
+        timeout_seconds=0.25,
+    )
+
+    assert outcome.timed_out is True
+    child_pid = int(pid_file.read_text())
+    for _ in range(50):
+        if not _process_is_running(child_pid):
+            break
+        time.sleep(0.02)
+    assert not _process_is_running(child_pid)

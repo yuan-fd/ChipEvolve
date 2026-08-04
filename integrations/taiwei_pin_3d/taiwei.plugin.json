@@ -13,6 +13,12 @@
     {"kind": "three_d_eval", "required": true},
     {"kind": "three_d_summary", "required": true},
     {"kind": "gds", "required": true},
+    {"kind": "def", "required": true},
+    {"kind": "odb", "required": true},
+    {"kind": "netlist", "required": true},
+    {"kind": "sdc", "required": false},
+    {"kind": "spef", "required": false},
+    {"kind": "three_d_report", "required": false},
     {"kind": "toolchain_snapshot", "required": true},
     {"kind": "log", "required": true},
     {"kind": "three_d_view", "required": false}

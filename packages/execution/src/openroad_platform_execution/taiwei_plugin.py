@@ -27,6 +27,7 @@ class TaiWeiToolchainProfile:
     yosys_bin: Path
     orfs_commit: str = TAIWEI_ORFS_COMMIT
     openroad_commit: str = TAIWEI_OPENROAD_COMMIT
+    runtime_library_paths: tuple[Path, ...] = ()
 
     def validate(self) -> None:
         root = self.orfs_root.expanduser().resolve()
@@ -40,6 +41,9 @@ class TaiWeiToolchainProfile:
         for name, path in (("OpenROAD", self.openroad_bin), ("Yosys", self.yosys_bin)):
             if not path.expanduser().resolve().is_file():
                 raise FileNotFoundError(f"TaiWei {name} binary is missing: {path}")
+        for path in self.runtime_library_paths:
+            if not path.expanduser().resolve().is_dir():
+                raise FileNotFoundError(f"TaiWei runtime library directory is missing: {path}")
 
 
 def build_taiwei_task(*, project_id: str, design_id: str = "gcd",
@@ -53,7 +57,7 @@ def build_taiwei_task(*, project_id: str, design_id: str = "gcd",
         inputs={"flow": "ord", "tech": "asap7_3D", "case": "gcd"},
         resources={"toolchain_profile": "taiwei-official-3d"},
         timeout_seconds=timeout_seconds, max_attempts=1,
-        expected_artifacts=("three_d_eval", "three_d_summary", "gds",
+        expected_artifacts=("three_d_eval", "three_d_summary", "gds", "def", "odb", "netlist",
                             "toolchain_snapshot", "log"),
         labels={"real_3d_required": "true"},
     )
@@ -64,7 +68,8 @@ def build_taiwei_task(*, project_id: str, design_id: str = "gcd",
 def taiwei_plugin_manifest(source_root: str | Path, profile: TaiWeiToolchainProfile,
                             *, python_executable: str | Path = sys.executable,
                             expected_commit: str = TAIWEI_UPSTREAM_COMMIT,
-                            default_timeout_seconds: int = 21600) -> PluginManifest:
+                            default_timeout_seconds: int = 21600,
+                            num_cores: int = 8) -> PluginManifest:
     source = Path(source_root).expanduser().resolve()
     python = Path(python_executable).expanduser().absolute()
     if not (source / "run_experiments.py").is_file() or not python.is_file():
@@ -73,6 +78,8 @@ def taiwei_plugin_manifest(source_root: str | Path, profile: TaiWeiToolchainProf
         raise ValueError("TaiWei source commit mismatch")
     if _git(source, "status", "--porcelain=v1"):
         raise ValueError("TaiWei source tree must be clean")
+    if not 1 <= num_cores <= 256:
+        raise ValueError("TaiWei num_cores must be between 1 and 256")
     profile.validate()
     adapter = Path(__file__).with_name("taiwei_adapter.py").resolve()
     environment = {
@@ -82,17 +89,25 @@ def taiwei_plugin_manifest(source_root: str | Path, profile: TaiWeiToolchainProf
         "TAIWEI_OPENROAD_COMMIT": profile.openroad_commit,
         "OPENROAD_EXE": str(profile.openroad_bin.resolve()),
         "YOSYS_EXE": str(profile.yosys_bin.resolve()),
+        "TAIWEI_NUM_CORES": str(num_cores),
         "PATH": os.pathsep.join((str(profile.openroad_bin.resolve().parent),
                                  str(profile.yosys_bin.resolve().parent), "/usr/bin", "/bin")),
     }
+    if profile.runtime_library_paths:
+        environment["LD_LIBRARY_PATH"] = os.pathsep.join(
+            str(path.expanduser().resolve()) for path in profile.runtime_library_paths
+        )
     manifest = PluginManifest(
         plugin_id=TAIWEI_PLUGIN_ID, plugin_version=TAIWEI_PLUGIN_VERSION,
         adapter_entry=(str(python), str(adapter)), capabilities=("eda.3d.pin3d",),
         supported_arch=(platform.machine(),), input_schema={"type": "object"},
         output_schema={"type": "object"}, required_tools=("git", "bash", "make"),
         default_timeout_seconds=default_timeout_seconds,
-        artifact_rules=tuple({"kind": kind, "required": kind != "three_d_view"}
-                             for kind in ("three_d_eval", "three_d_summary", "gds",
+        artifact_rules=tuple({"kind": kind, "required": kind in {
+                                 "three_d_eval", "three_d_summary", "gds", "def", "odb",
+                                 "netlist", "toolchain_snapshot", "log"}}
+                             for kind in ("three_d_eval", "three_d_summary", "gds", "def",
+                                          "odb", "netlist", "sdc", "spef", "three_d_report",
                                           "toolchain_snapshot", "log", "three_d_view")),
         environment=environment,
     )

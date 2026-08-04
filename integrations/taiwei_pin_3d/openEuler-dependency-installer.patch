@@ -1,0 +1,32 @@
+--- DependencyInstaller.sh
++++ DependencyInstaller.openEuler.sh
+@@ -297 +297 @@
+-            _execute "Downloading CMake..." wget "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION_SMALL}/cmake-${CMAKE_VERSION_SMALL}-linux-${arch}.sh"
++            _execute "Downloading CMake..." wget "https://ghproxy.net/https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION_SMALL}/cmake-${CMAKE_VERSION_SMALL}-linux-${arch}.sh"
+@@ -376 +376 @@
+-            _execute "Downloading Flex..." wget https://github.com/westes/flex/releases/download/v${FLEX_VERSION}/flex-${FLEX_VERSION}.tar.gz
++            _execute "Downloading Flex..." wget https://ghproxy.net/https://github.com/westes/flex/releases/download/v${FLEX_VERSION}/flex-${FLEX_VERSION}.tar.gz
+@@ -408 +408 @@
+-            _execute "Downloading SWIG..." wget "https://github.com/swig/swig/archive/${tar_name}"
++            _execute "Downloading SWIG..." wget "https://ghproxy.net/https://github.com/swig/swig/archive/${tar_name}"
+@@ -449 +449 @@
+-        _execute "Downloading PCRE..." wget "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-${PCRE_VERSION}/${pcre_tar_name}"
++        _execute "Downloading PCRE..." wget "https://ghproxy.net/https://github.com/PCRE2Project/pcre2/releases/download/pcre2-${PCRE_VERSION}/${pcre_tar_name}"
+@@ -522 +522 @@
+-            _execute "Cloning Eigen..." git clone --depth=1 -b "${EIGEN_VERSION}" https://gitlab.com/libeigen/eigen.git
++            _execute "Cloning Eigen..." git clone --depth=1 -b "${EIGEN_VERSION}.0" https://gitlab.com/libeigen/eigen.git
+@@ -639 +639 @@
+-            _execute "Downloading gtest..." wget "https://github.com/google/googletest/archive/refs/tags/v${GTEST_VERSION}.zip"
++            _execute "Downloading gtest..." wget "https://ghproxy.net/https://github.com/google/googletest/archive/refs/tags/v${GTEST_VERSION}.zip"
+@@ -688 +688 @@
+-            _execute "Downloading Abseil..." wget "https://github.com/abseil/abseil-cpp/releases/download/${ABSL_VERSION}/abseil-cpp-${ABSL_VERSION}.tar.gz"
++            _execute "Downloading Abseil..." wget "https://ghproxy.net/https://github.com/abseil/abseil-cpp/releases/download/${ABSL_VERSION}/abseil-cpp-${ABSL_VERSION}.tar.gz"
+@@ -1172 +1172 @@
+-        "Red Hat Enterprise Linux" | "Rocky Linux" | "AlmaLinux")
++        "Red Hat Enterprise Linux" | "Rocky Linux" | "AlmaLinux" | "openEuler")
+@@ -1178,3 +1178,5 @@
+             elif [[ "${os}" == "AlmaLinux" ]]; then
+                 rhel_version=$(rpm -q --queryformat '%{VERSION}' almalinux-release | cut -d. -f1)
++            elif [[ "${os}" == "openEuler" ]]; then
++                rhel_version=9
+             fi

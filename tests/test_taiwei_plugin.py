@@ -36,9 +36,9 @@ def fixture_environment(tmp_path: Path):
     script = '''#!/usr/bin/env python3
 import argparse,json
 from pathlib import Path
-p=argparse.ArgumentParser(); p.add_argument("--flow"); p.add_argument("--tech"); p.add_argument("--case"); a=p.parse_args()
+p=argparse.ArgumentParser(); p.add_argument("--flow"); p.add_argument("--tech"); p.add_argument("--case"); p.add_argument("--run-only",action="store_true"); p.add_argument("--status-interval"); a=p.parse_args()
 assert (a.flow,a.tech,a.case)==("ord","asap7_3D","gcd")
-for name,data in (("reports/openroad_eval.json",json.dumps({"wns_ns":0.1,"hbt_count":4})),("logs/final_summary.txt","ok\\n"),("results/final.gds","GDSII"),("reports/final_3d.png","PNG")):
+for name,data in (("reports/openroad_eval.json",json.dumps({"wns_ns":0.1,"hbt_count":4})),("logs/final_summary.txt","ok\\n"),("results/final.gds","GDSII"),("results/6_final.def","DEF"),("results/6_final.odb","ODB"),("results/6_final.v","module gcd; endmodule\\n"),("reports/final_3d.png","PNG"),("platforms/nangate45/gds/library.gds","NOT-A-RUN-RESULT")):
  path=Path(name); path.parent.mkdir(parents=True,exist_ok=True); path.write_text(data)
 '''
     source_commit = commit_repo(source, {"run_experiments.py": script})
@@ -97,7 +97,7 @@ def test_black_box_adapter_stages_source_and_registers_3d_artifacts(tmp_path):
     attempt = view["stages"][0]["attempts"][0]
     assert completed.status is RuntimeStatus.SUCCEEDED
     assert {item["kind"] for item in attempt["artifacts"]} == {
-        "three_d_eval", "three_d_summary", "gds", "three_d_view",
+        "three_d_eval", "three_d_summary", "gds", "def", "odb", "netlist", "three_d_view",
         "toolchain_snapshot", "log",
     }
     assert not (source / "reports").exists()

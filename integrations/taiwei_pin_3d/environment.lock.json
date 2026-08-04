@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "profile": "taiwei-official-3d",
+  "architecture": "aarch64",
+  "captured_at": "2026-08-05",
+  "source": {
+    "taiwei_commit": "db20136711ed8c0cdfed67a6123d059875764abd",
+    "orfs_research_commit": "568eb04da9173695d6bfc1b10ba868e0b6b8a9fa",
+    "openroad_commit": "305d3ba2ddfd00591924cc586ad408179f566afe",
+    "opensta_commit": "12683d645cefcc51bdffe36ba2e870d462fada21",
+    "openroad_abc_commit": "17cadca080b33edc5a13c8e6e8e8092f8c350b25",
+    "yosys_commit": "77005b69a2f693425294dab62c49164edb15bf10",
+    "yosys_abc_commit": "799ba632239b2a4db2bacda81de4e6efdc486b0c",
+    "yosys_cxxopts_commit": "4bf61f08697b110d9e3991864650a405b3dd515d",
+    "yosys_slang_commit": "64b44616a3798f07453b14ea03e4ac8a16b77313",
+    "fmt_commit": "553ec11ec06fbe0beebfbb45f9dc3c9eabd83d28",
+    "slang_commit": "d7888c90a048e47384e530fef9863e65952c9e3c"
+  },
+  "source_urls": {
+    "orfs_research": "https://github.com/ieee-ceda-datc/ORFS-Research.git",
+    "taiwei": "https://github.com/CODA-Team/TaiWei-Pin-3D.git",
+    "read_only_fallback_proxy": "https://ghproxy.net/https://github.com/"
+  },
+  "licenses": {
+    "taiwei": {
+      "spdx": "BSD-3-Clause",
+      "file": "LICENSE",
+      "sha256": "d6c91d5c3b8572a5ee0e36d92995a476de813ea98f535b2ef743dd4128cf4360"
+    },
+    "orfs_research_build_run_scripts": {
+      "spdx": "BSD-3-Clause",
+      "file": "LICENSE_BUILD_RUN_SCRIPTS",
+      "sha256": "fae0db7a4c00c3125f037e5818e8cd0c8aa5c67fff2e8c558312068e9f2d1592"
+    },
+    "openroad": {
+      "spdx": "BSD-3-Clause",
+      "file": "LICENSE",
+      "sha256": "28cfc93cb2b552192bc316259d2c2a1aa5a980018cda1c5cd9b1143c9151aebb"
+    },
+    "yosys": {
+      "spdx": "ISC",
+      "file": "COPYING",
+      "sha256": "6998b5724d4cb3f459d1c12b6bd0cdbfa9c949ef14d0fb6d7d97d97404e5b5f3"
+    },
+    "asap7_3d_data": {
+      "standalone_license_found": false,
+      "policy": "private local validation only; never commit or redistribute PDK data"
+    }
+  },
+  "build": {
+    "compiler": "g++ (GCC) 12.3.1 20230508 (openEuler 12.3.1-18.oe2203sp3)",
+    "cmake": "3.31.9",
+    "swig": "4.3.0",
+    "python": "3.9.9",
+    "openroad_options": ["BUILD_GUI=OFF", "ENABLE_TESTS=OFF", "BUILD_TESTS=OFF"],
+    "dependency_installer_sha256": "56852302b1a50587fe1c92c36fbe93ed56fa9e29577daf8d987662fe7b778acd"
+  },
+  "dependencies": {
+    "pcre": "10.42",
+    "boost": "1.89.0",
+    "eigen": "3.4.0",
+    "cudd": "3.0.0",
+    "lemon": "1.3.1",
+    "spdlog": "1.15.0",
+    "gtest": "1.17.0",
+    "or_tools": "9.14.6206",
+    "abseil": "20260107.0",
+    "yaml_cpp": {
+      "version": "0.8.0",
+      "commit": "f7320141120f720aecc4c32be25586e7da9eb978"
+    },
+    "klayout_pya": "0.30.6"
+  },
+  "binary_sha256": {
+    "openroad": "24bc0b35d59335e7a4226d3fb588b9379b91d78670b27e7d8e93337fc5f86367",
+    "yosys": "35b740da40cf8a415825662d0ab2f363a8f186569ec25dc0a77e1dc08b65d530",
+    "yosys_slang_plugin": "4779c5f6ecca91a6b4e83f4e871264feafe13a3b64c37e7082c6c32967cd600c",
+    "cmake": "a1e6fc5fccea306249da20795e71a0c7896beb958d31efac95dad67c75ec9e7d",
+    "or_tools": "7b80ac76e487c9d91e88be4c7328d32f446d5dc6434fe538c283bd9626fc91dc",
+    "yaml_cpp": "3f9da8f9a520dde4c8391512d200d8d85116cc04817b803192c2f086133924c0"
+  },
+  "runtime_libraries": {
+    "gcc12_libstdcxx_sha256": "24515846c90a89d95f0fec3d6152adb4979bd5c119b16dfbaff97ea4cbaa586f",
+    "gcc12_libgcc_sha256": "2da101f956ecfd2fc25768ac6644f3e9850565a9b589b64d41cfc2ae4b13559a",
+    "glibc_rpm": "glibc-2.34-143.oe2203sp3.aarch64",
+    "library_path_order": [".tools/taiwei-official-3d/dependencies/lib", ".tools/taiwei-official-3d/dependencies/lib64", "/opt/openEuler/gcc-toolset-12/root/usr/lib64"]
+  },
+  "input_tree_sha256": {
+    "asap7_and_asap7_3d_platforms": "9724b896d42f87541e1a018d8486fe1c64f4186d4615a645d5ad742d376c44c2",
+    "gcd_and_openroad_scripts": "3cd23a91c3cb99bdef9d8aac8fec5fa6a0a9ca5983cd0dfafd0f86de3e51416a"
+  },
+  "isolation": {
+    "install_root": ".tools/taiwei-official-3d",
+    "shared_2d_toolchain_modified": false,
+    "credentials_in_lock": false,
+    "optional_uninitialized_submodules": ["OpenROAD/subfolder/GKlib", "OpenROAD/subfolder/METIS", "ORFS-Research/tools/kepler-formal"]
+  }
+}
