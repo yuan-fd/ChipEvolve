@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "plugin_id": "taiwei-pin-3d",
+  "plugin_version": "1.0.0",
+  "adapter_entry": ["python3", "./taiwei_adapter.py"],
+  "capabilities": ["eda.3d.pin3d"],
+  "supported_arch": ["aarch64"],
+  "input_schema": {"type": "object"},
+  "output_schema": {"type": "object"},
+  "required_tools": ["git", "bash", "make"],
+  "default_timeout_seconds": 21600,
+  "artifact_rules": [
+    {"kind": "three_d_eval", "required": true},
+    {"kind": "three_d_summary", "required": true},
+    {"kind": "gds", "required": true},
+    {"kind": "toolchain_snapshot", "required": true},
+    {"kind": "log", "required": true},
+    {"kind": "three_d_view", "required": false}
+  ],
+  "environment": {}
+}

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "phase": "P8",
+  "accepted": false,
+  "status": "integration_complete_real_3d_blocked",
+  "plugin": {
+    "id": "taiwei-pin-3d",
+    "version": "1.0.0",
+    "source_commit": "db20136711ed8c0cdfed67a6123d059875764abd",
+    "protocol_fixture_passed": true,
+    "source_workspace_isolation": true
+  },
+  "required_toolchain": {
+    "orfs_research_commit": "568eb04da9173695d6bfc1b10ba868e0b6b8a9fa",
+    "openroad_commit": "305d3ba2ddfd00591924cc586ad408179f566afe"
+  },
+  "real_3d": {"executed": false, "gds": false, "metrics": false},
+  "blockers": [
+    "GitHub access timed out during three read-only probes",
+    "owned 2D ORFS/OpenROAD profile has different commits",
+    "visible shared module is ORFS 5101376... / OpenROAD 138e573..., also different",
+    "local source snapshot has no Git provenance or built fixed binaries"
+  ],
+  "fail_closed_probe": "ValueError: TaiWei ORFS-Research commit mismatch",
+  "tests": "78 passed"
+}

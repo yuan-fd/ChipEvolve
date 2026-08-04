@@ -42,6 +42,8 @@
 
 接入结论：首版整体黑箱适配，使用独立工具链 profile 和工作区；内部阶段只作为带来源的子阶段事件，不进入平台状态主键。真实验证从 `gcd` ORD 流程开始。
 
+P8 状态：`taiwei-pin-3d@1.0.0` 协议接入完成；固定 3D 工具链因 GitHub 连接超时且本机可见版本不匹配而 fail closed。详见 `docs/evidence/P8_TAIWEI_ACCEPTANCE.md`，不得将 fixture 视为真实 gcd。
+
 ## 共通准入门
 
 每个插件在实现前必须具备：固定 commit、许可证结论、独立环境、manifest、输入输出 Schema、超时与取消语义、最小 smoke、产物 allowlist、错误传播测试和不包含凭据的环境快照。
