@@ -1,10 +1,12 @@
 # 当前任务：P2 ORFS 标准插件迁移与真实 RTL→GDS 验收
 
-status: in_progress
+status: completed
 phase: P2
 approved_at: 2026-08-04
 started_at: 2026-08-04
 base_commit: 5e65fffb300b12f4dffefc046ccffeef8b396e1b
+implementation_commit: aa7cf0a8b3b2feaa1e16f2a1bad45e612b89beef
+completed_at: 2026-08-04
 
 ## 1. 用户目标
 
@@ -34,3 +36,14 @@ base_commit: 5e65fffb300b12f4dffefc046ccffeef8b396e1b
 - 基线 commit：`5e65fffb300b12f4dffefc046ccffeef8b396e1b`。
 - P1 快照：`memory_snapshots/P1-runtime-core-2026-08-04.md`。
 - P2 任务：`tasks/phase-2.md`。
+
+## 6. 验收结果
+
+- `orfs@1.0.0` 在新 WorkflowRuntime 下真实 Nangate45 六阶段成功。
+- Run/StageRun/Attempt 均 succeeded；17 artifacts、7 metrics、29 versioned events。
+- `implementation_valid=true`、`gds_complete=true`，GDS 19,572 bytes 且哈希匹配。
+- 输入 RTL、平台配置、生成配置、工具 wrapper 和 ToolchainSnapshot 哈希完整。
+- fake full-chain、RTL 篡改拒绝、嵌套进程 live cancel、旧 ORFSRunner/API 全部回归。
+- 全量测试 53 passed；共享工具链前后指纹一致。
+- 证据：`docs/evidence/P2_ORFS_ACCEPTANCE.md` 和 `.json`。
+- 实现提交：`aa7cf0a8b3b2feaa1e16f2a1bad45e612b89beef`。

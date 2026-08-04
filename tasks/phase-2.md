@@ -1,10 +1,11 @@
 # P2 任务：ORFS 标准插件迁移与真实 RTL→GDS 验收
 
-status: in_progress
+status: completed
 approved_at: 2026-08-04
 started_at: 2026-08-04
 depends_on: P1 complete
 base_commit: 5e65fffb300b12f4dffefc046ccffeef8b396e1b
+implementation_commit: aa7cf0a8b3b2feaa1e16f2a1bad45e612b89beef
 
 ## 目标
 
@@ -50,3 +51,12 @@ base_commit: 5e65fffb300b12f4dffefc046ccffeef8b396e1b
 ## 停止条件
 
 若真实运行必须修改共享工具链、需要改变 P1 Runtime 权威/Attempt 语义、输入证据无法可信固定，或连续三次同根因仍无法绕开，则暂停并提交证据与方案。
+
+## 完成证据
+
+- 真实 Run `d154f31a0ac64e3cb068329dfcde3149`，状态 succeeded。
+- 真实六阶段均 succeeded；`implementation_valid=true`、`gds_complete=true`。
+- 17 artifacts、7 metrics、29 events；关键证据 size/SHA-256 复核通过。
+- 共享 ORFS/OpenROAD/Yosys/KLayout/Nangate45 配置前后强指纹一致。
+- 全量测试：53 passed。
+- 证据文件：`docs/evidence/P2_ORFS_ACCEPTANCE.md`、`.json`。

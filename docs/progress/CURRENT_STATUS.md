@@ -38,10 +38,29 @@ P0 封存提交：`afdca1ef16f419843ef21009c7c4ff47274ee43b`。
 
 实现提交：`e750370d0a95c708cb5f9a0ee297dcb0de609db6`。
 
+## P2
+
+状态：完成
+
+已完成：
+
+- `orfs@1.0.0` manifest、TaskSpec builder 和受控子进程 adapter。
+- RTL artifact size/SHA-256 固定、Attempt workspace staging 和启动前篡改拒绝。
+- ORFSRunner 接通 ToolchainConfig 受控环境，同时保留旧构造/API。
+- ToolchainSnapshot 记录 ORFS/OpenROAD/Yosys/KLayout、工作树状态、平台/生成配置/RTL 哈希与运行参数。
+- GDS/DEF/netlist/六阶段 ODB/config/snapshot/report/log/run_result 和指标进入 v1 Runtime。
+- 嵌套 ORFS `make` 的 live cancel 测试通过，无遗留子进程。
+- 真实 Nangate45 `mux_2to1` 六阶段成功：77.05 秒，17 artifacts、7 metrics、29 events。
+- `implementation_valid=true`、`gds_complete=true`；GDS 19,572 bytes，SHA-256 `d20ee44e...59ad1e6`。
+- 共享工具链前后强指纹一致；全量 `python3 -m pytest -q`：53 passed。
+
+实现提交：`aa7cf0a8b3b2feaa1e16f2a1bad45e612b89beef`。证据：`docs/evidence/P2_ORFS_ACCEPTANCE.md`。
+
 ## 阶段总览
 
 | 阶段 | 状态 |
 | --- | --- |
 | P0 | 完成 |
 | P1 | 完成 |
-| P2-P10 | 路线已批准，尚未开始 |
+| P2 | 完成 |
+| P3-P10 | 路线已批准，尚未开始 |

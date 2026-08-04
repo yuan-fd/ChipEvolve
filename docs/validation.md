@@ -10,7 +10,7 @@ Validated on 2026-07-24 with:
 
 ## Automated tests
 
-The current `python3 -m pytest -q` baseline passes 22 tests. Coverage includes contracts, queue
+The original P0 `python3 -m pytest -q` baseline passed 22 tests. Coverage includes contracts, queue
 reopen/claim/cancel, silent-process timeout, process-group cleanup, simulated
 six-stage ORFS execution, artifact hard gates, recoverable GDS export, metric
 parsing, density data, netlist analysis, and dependency-free circuit overview.
@@ -50,3 +50,17 @@ failed implementation rather than hiding the failed gate.
 
 These records are historical evidence, not a substitute for the new Runtime
 and ORFS-plugin acceptance run required in P2.
+
+## P2 ORFS-plugin acceptance (2026-08-04)
+
+P2 completed the previously required new-Runtime acceptance. `orfs@1.0.0`
+executed a real Nangate45 `mux_2to1` run through synth, floorplan, place, CTS,
+route, and finish in 77.05 seconds. The v1 state contains one successful Run,
+StageRun, and Attempt, plus 17 artifacts, 7 metrics, and 29 events.
+
+The final GDS is 19,572 bytes with SHA-256
+`d20ee44ef216af20a896b4a48794d2ee3fdd8de70b7fe8280fb8ae13a59ad1e6`.
+Both `implementation_valid` and `gds_complete` are true. Full tests now pass
+53 cases, including input-tamper rejection and nested-process cancellation.
+See `docs/evidence/P2_ORFS_ACCEPTANCE.md` for the evidence table and protection
+audit.

@@ -1,9 +1,9 @@
 # OpenROAD Platform — 工作记忆
 
 project_id: openroad-platform
-phase: P2：ORFS 标准插件迁移
-current_subgoal: 接通 ORFS adapter/ToolchainSnapshot 并完成新 Runtime 真实 RTL→GDS
-progress: 5%
+phase: P2：已完成，等待验收
+current_subgoal: 验收 P2；之后单独制定 P3 三平台环境与源码兼容性准入任务
+progress: 100%
 last_updated: 2026-08-04
 
 ## 已确认事实
@@ -16,6 +16,9 @@ last_updated: 2026-08-04
 - 历史数据库：6 jobs；45 个登记产物大小与 SHA-256 全部匹配。
 - 三个官方插件源码已按 `integrations/plugins.lock.json` 固定到 detached commit。
 - P1 实现提交：`e750370d0a95c708cb5f9a0ee297dcb0de609db6`；全量 49 tests passed。
+- P2 实现提交：`aa7cf0a8b3b2feaa1e16f2a1bad45e612b89beef`；全量 53 tests passed。
+- `orfs@1.0.0` 已由新 Runtime 完成真实 Nangate45 RTL→GDS；17 artifacts、7 metrics、29 events。
+- P2 GDS：19,572 bytes，SHA-256 `d20ee44ef216af20a896b4a48794d2ee3fdd8de70b7fe8280fb8ae13a59ad1e6`。
 
 ## 架构定版
 
@@ -27,13 +30,16 @@ last_updated: 2026-08-04
 - Runtime DB schema 与 Event 均固定为 v1；未知版本和未版本化已有 DB 会拒绝打开。
 - legacy `jobs` 只能只读投影；不得把 unknown provenance 猜测补齐。
 - P1 adapter 面向固定且审查过的代码，不是恶意代码 OS 沙箱。
+- ORFS Task 必须固定 RTL size/SHA-256 并先 stage 到 Attempt workspace。
+- ORFSRunner 使用 ToolchainConfig 的受控环境；ToolchainSnapshot 是 P2 重放证据。
+- SQLite WAL 不能放在当前 GlusterFS 项目盘；live Runtime DB 使用节点本地盘，checkpoint 后保存不可变快照和查询摘要。
 
 ## 风险与后置门槛
 
 - RTLScout 要求 Python >=3.10，ARM 源码兼容性在 P3 验证。
 - AgenticPD 官方仓库未声明许可证；澄清前禁止复制或再分发源码。
 - TaiWei 绑定独立 ORFS-Research/OpenROAD commit，不能覆盖内部 2D 工具链。
-- 现有高级 evidence/toolchain 代码未接入主链，P1/P2 迁移时需去除旧路径假设。
+- ToolchainConfig 已在 P2 接入 ORFS 主链；其余高级 evidence 模块仍需按后续阶段逐项接入，禁止恢复隐式路径假设。
 
 ## 活跃约束
 
@@ -44,4 +50,4 @@ last_updated: 2026-08-04
 
 ## handoff_anchor
 
-P0 commit 为 `afdca1ef...`；P1 实现 commit 为 `e750370...`。读取 `memory_snapshots/P1-runtime-core-2026-08-04.md` 恢复事实；下一步等待 P2 明确授权与任务边界。
+P0 commit `afdca1ef...`；P1 commit `e750370...`；P2 commit `aa7cf0a...`。读取 `memory_snapshots/P2-orfs-plugin-2026-08-04.md` 和 `docs/evidence/P2_ORFS_ACCEPTANCE.md` 恢复；下一步等待 P3 明确授权。
