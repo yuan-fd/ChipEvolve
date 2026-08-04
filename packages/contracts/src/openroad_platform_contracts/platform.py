@@ -287,6 +287,84 @@ class ActionProposal:
 
 
 @dataclass(frozen=True)
+class ExperimentCandidate:
+    """One immutable candidate emitted by a planner, before Runtime approval."""
+
+    candidate_id: str
+    parameters: dict[str, Any]
+    source_trial_id: str
+    evidence_refs: tuple[str, ...] = ()
+    unsupported_parameters: dict[str, Any] = field(default_factory=dict)
+    schema_version: int = SCHEMA_VERSION
+
+    def validate(self) -> None:
+        _validate_version(self.schema_version)
+        _validate_identifier("candidate_id", self.candidate_id)
+        _validate_identifier("source_trial_id", self.source_trial_id)
+        _validate_mapping("parameters", self.parameters)
+        _validate_mapping("unsupported_parameters", self.unsupported_parameters)
+        if not all(isinstance(item, str) and item for item in self.evidence_refs):
+            raise ValueError("evidence_refs must contain non-empty strings")
+
+    def to_dict(self) -> dict[str, Any]:
+        self.validate()
+        return _primitive(self)
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ExperimentCandidate":
+        value = _known_payload(cls, payload)
+        value["evidence_refs"] = tuple(value.get("evidence_refs", ()))
+        result = cls(**value)
+        result.validate()
+        return result
+
+
+@dataclass(frozen=True)
+class ExperimentPlan:
+    """Versioned, bounded planner output; it is data and never a scheduler."""
+
+    plan_id: str
+    producer: str
+    design_id: str
+    platform: str
+    baseline_parameters: dict[str, Any]
+    candidates: tuple[ExperimentCandidate, ...]
+    max_child_runs: int
+    provenance: dict[str, Any] = field(default_factory=dict)
+    schema_version: int = SCHEMA_VERSION
+
+    def validate(self) -> None:
+        _validate_version(self.schema_version)
+        for name, value in (
+            ("plan_id", self.plan_id), ("producer", self.producer),
+            ("design_id", self.design_id), ("platform", self.platform),
+        ):
+            _validate_identifier(name, value)
+        _validate_mapping("baseline_parameters", self.baseline_parameters)
+        _validate_mapping("provenance", self.provenance)
+        if not isinstance(self.max_child_runs, int) or self.max_child_runs <= 0:
+            raise ValueError("max_child_runs must be a positive integer")
+        if not self.candidates or len(self.candidates) > self.max_child_runs:
+            raise ValueError("candidates must be non-empty and within max_child_runs")
+        for candidate in self.candidates:
+            candidate.validate()
+
+    def to_dict(self) -> dict[str, Any]:
+        self.validate()
+        return _primitive(self)
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ExperimentPlan":
+        value = _known_payload(cls, payload)
+        value["candidates"] = tuple(
+            ExperimentCandidate.from_dict(item) for item in value.get("candidates", ())
+        )
+        result = cls(**value)
+        result.validate()
+        return result
+
+
+@dataclass(frozen=True)
 class Event:
     event_id: str
     run_id: str

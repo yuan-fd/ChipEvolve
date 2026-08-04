@@ -18,6 +18,10 @@ from .rtlscout_plugin import (
     build_rtlscout_task,
     rtlscout_plugin_manifest,
 )
+from .agenticpd_plugin import (
+    AGENTICPD_PLUGIN_ID, AGENTICPD_PLUGIN_VERSION, AGENTICPD_UPSTREAM_COMMIT,
+    agenticpd_plugin_manifest, build_agenticpd_task,
+)
 
 __all__ = [
     "AdapterExecution", "ProcessAdapter", "ORFSRunner", "ProcessGuardian",
@@ -26,4 +30,6 @@ __all__ = [
     "ToolchainConfig", "load_toolchain",
     "RTLSCOUT_PLUGIN_ID", "RTLSCOUT_PLUGIN_VERSION", "RTLSCOUT_UPSTREAM_COMMIT",
     "build_rtlscout_task", "rtlscout_plugin_manifest",
+    "AGENTICPD_PLUGIN_ID", "AGENTICPD_PLUGIN_VERSION", "AGENTICPD_UPSTREAM_COMMIT",
+    "agenticpd_plugin_manifest", "build_agenticpd_task",
 ]

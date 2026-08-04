@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "phase": "P5",
+  "accepted": true,
+  "upstream_commit": "4322a25c1d57bc88d576fd2ce6898a52d30d92c7",
+  "proposal_mode": "official mock-llm/mock-orfs",
+  "proposal_qor_authoritative": false,
+  "real_llm": {"executed": false, "blocker": "no injected credential/paid budget"},
+  "comparison": {
+    "same_rtl_sha256": "4b4fe1e2f61672c0fb5b440e4361881a07cbc0c51172d1a0fee1acc5c2010e7d",
+    "platform": "nangate45",
+    "clock_period_ns": 10.0,
+    "place_density": 0.45,
+    "baseline": {"core_utilization_pct": 38.0, "setup_wns_ns": 5.6557, "area_um2": 88.312, "power_W": 0.00000810975, "drc_errors": 0, "gds_sha256": "b9e9c6a70b1817124a59d8b54f8ac7cb75927bbd68d93f469093e916fcfddb82"},
+    "candidate": {"core_utilization_pct": 35.0, "setup_wns_ns": 5.6546, "area_um2": 88.312, "power_W": 0.00000809822, "drc_errors": 0, "gds_sha256": "a06be0f658ef86f62dcf998cec248346c94f836c9e02bd144866de54a72d3eeb"}
+  },
+  "tests": "61 passed",
+  "raw_success": "runs/p5-acceptance-20260804-02/",
+  "preserved_failed_attempt": "runs/p5-acceptance-20260804-01/"
+}

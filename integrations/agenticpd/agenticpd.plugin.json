@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "plugin_id": "agenticpd",
+  "plugin_version": "1.0.0",
+  "adapter_entry": ["python3", "./agenticpd_adapter.py"],
+  "capabilities": ["agent.flow.propose"],
+  "supported_arch": ["aarch64"],
+  "input_schema": {"type": "object", "required": ["platform", "design"]},
+  "output_schema": {"type": "object", "required": ["status", "artifacts"]},
+  "required_tools": ["git", "python"],
+  "default_timeout_seconds": 600,
+  "artifact_rules": [
+    {"kind": "experiment_plan", "required": true},
+    {"kind": "proposal_evidence", "required": true},
+    {"kind": "log", "required": true}
+  ],
+  "environment": {}
+}

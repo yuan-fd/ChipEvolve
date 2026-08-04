@@ -1,9 +1,9 @@
 # OpenROAD Platform — 工作记忆
 
 project_id: openroad-platform
-phase: P4：已完成；目标线程继续 P5-P10
-current_subgoal: P5 AgenticPD proposal/ExperimentPlan 优化插件
-progress: 40%
+phase: P5：已完成；目标线程继续 P6-P10
+current_subgoal: P6 Campaign、有限并发、恢复和 Runtime 查询
+progress: 50%
 last_updated: 2026-08-04
 
 ## 已确认事实
@@ -24,6 +24,8 @@ last_updated: 2026-08-04
 - P4 `rtlscout@1.0.0` 已接入；固定源码 offline fake 真实通过 Verilator/Yosys，生成 RTL SHA `4b4fe1e2...`。
 - P4 RTLScout→ORFS 真实组合链成功；Nangate45 GDS 164,296 bytes，SHA `64ea359e...`。
 - RTLScout 固定 Spire 实际要求 Python >=3.12；隔离 Python 3.12.4/Verilator 5.040 在 `.tools/`，不进入 Git。
+- P5 `agenticpd@1.0.0` 已接入为只生成 proposal 的黑箱；完整参数留证，首版只消费可核验的 CORE_UTILIZATION。
+- 同一 RTL、Nangate45、固定工具链真实比较 38%/35%：两次 GDS 成功、DRC=0；候选并非全面更优。
 
 ## 架构定版
 
@@ -55,4 +57,4 @@ last_updated: 2026-08-04
 
 ## handoff_anchor
 
-P0 `afdca1e`；P1 `e750370`；P2 `aa7cf0a`/`6d9d93c`；P3 `9269040`。读取 P4 快照与 `docs/evidence/P4_RTLSCOUT_ACCEPTANCE.md` 恢复；当前目标已授权连续执行至 P10，下一步 P5。
+P0 `afdca1e`；P1 `e750370`；P2 `aa7cf0a`/`6d9d93c`；P3 `9269040`；P4 `0892d57`。读取 P5 快照与 `docs/evidence/P5_AGENTICPD_ACCEPTANCE.md` 恢复；当前目标已授权连续执行至 P10，下一步 P6。

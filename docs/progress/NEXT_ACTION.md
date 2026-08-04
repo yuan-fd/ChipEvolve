@@ -2,10 +2,10 @@
 
 updated_at: 2026-08-04
 
-实施 P5 AgenticPD 黑箱策略 Adapter：不复制无许可证上游源码，将输出严格转换为版本化 ActionProposal/ExperimentPlan，由 Runtime 创建候选 run；用相同设计、工具链、约束和预算完成可复核基线/候选比较。
+实施 P6 Campaign 控制层：持久记录成员和运行映射，限制并发，重启后不重复提交；补齐 Runtime/Campaign 查询、取消与基础 Web 状态入口。
 
 首条恢复命令：
 
 ```bash
-cd ~/openroad-platform && git status --short && sed -n '1,240p' docs/evidence/P4_RTLSCOUT_ACCEPTANCE.md
+cd ~/openroad-platform && git status --short && sed -n '1,240p' docs/evidence/P5_AGENTICPD_ACCEPTANCE.md
 ```

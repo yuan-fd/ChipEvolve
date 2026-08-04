@@ -14,6 +14,8 @@ from .models import (
 from .platform import (
     SCHEMA_VERSION,
     ActionProposal,
+    ExperimentCandidate,
+    ExperimentPlan,
     Event,
     PluginManifest,
     PluginResult,
@@ -34,6 +36,8 @@ __all__ = [
     "StageResult",
     "SCHEMA_VERSION",
     "ActionProposal",
+    "ExperimentCandidate",
+    "ExperimentPlan",
     "Event",
     "PluginManifest",
     "PluginResult",

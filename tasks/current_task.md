@@ -1,22 +1,20 @@
-# 当前任务：P4 RTLScout 黑箱插件
+# 当前任务：P5 AgenticPD 黑箱优化提案
 
 status: completed
-phase: P4
+phase: P5
 approved_at: 2026-08-04
 started_at: 2026-08-04
+base_commit: 0892d57
 completed_at: 2026-08-04
-base_commit: 9269040
 
 ## 结果
 
-- `rtlscout@1.0.0` manifest、Task builder、黑箱 Adapter 和受控凭据边界已实现。
-- 项目内隔离 Python 3.12.4、Verilator 5.040；系统与共享工具链未修改。
-- 官方 offline fake Agent 真实通过 Verilator/Yosys，并生成带哈希 RTL。
-- Runtime 管理的 RTLScout→ORFS 组合链真实到 Nangate45 GDS。
-- 真实 LLM 未执行并明确标记 external blocker，不以 fake 冒充。
+- 固定 AgenticPD 已作为只生成提案的黑箱插件接入。
+- Runtime 完成公平的 38%/35% Nangate45 双运行真实比较，两个 GDS 均成功且 DRC=0。
+- 完整规则和证据见 `tasks/phase-5.md`、`docs/evidence/P5_AGENTICPD_ACCEPTANCE.md`。
 
 ## 恢复锚点
 
-- P3 提交：`9269040`。
-- P4 证据：`docs/evidence/P4_RTLSCOUT_ACCEPTANCE.md` 和 `.json`。
-- 下一阶段：P5 AgenticPD 优化插件；保持无 LICENSE 黑箱边界和 Runtime 唯一权威。
+- P4 提交：`0892d57`。
+- P5 运行证据保存在 `runs/p5-acceptance-*`，live DB 只放 `/tmp`。
+- 下一阶段：P6 Campaign、有限并发、恢复和 Runtime 查询。
