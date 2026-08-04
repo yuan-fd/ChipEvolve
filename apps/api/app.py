@@ -31,7 +31,9 @@ for package_root in reversed(PACKAGE_ROOTS):
         sys.path.insert(0, str(package_root))
 
 from openroad_platform_contracts import RunRequest, RunStage  # noqa: E402
-from openroad_platform_scheduler import CampaignStore, JobStore, RuntimeStore  # noqa: E402
+from openroad_platform_scheduler import (  # noqa: E402
+    CampaignStore, JobStore, NaturalLanguageTaskCompiler, RuntimeStore,
+)
 try:  # Supports both `python apps/api/app.py` and package imports in tests.
     from .services import DesignService  # type: ignore[attr-defined]
 except ImportError:
@@ -224,6 +226,19 @@ class ApiState:
         request.validate()
         return self._serialize_job(self.store.submit(request))
 
+    def compile_task_intent(self, payload: dict[str, Any]) -> dict[str, Any]:
+        design_id = str(payload.get("design_id") or "").strip()
+        intent = str(payload.get("intent") or "").strip()
+        if not design_id:
+            raise ValueError("design_id is required")
+        design = self.designs.get(design_id)
+        task = NaturalLanguageTaskCompiler().compile(
+            intent, project_id="openroad-platform", design_id=design_id,
+            rtl_path=self.designs.rtl_path(design_id), top=design["module"],
+        )
+        return {"task_spec": task.to_dict(), "execution_started": False,
+                "notice": "Validated preview only; Runtime submission is a separate action."}
+
     @staticmethod
     def _serialize_job(job: Any) -> dict[str, Any]:
         return {
@@ -350,6 +365,9 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                     return
                 if path == "/api/runs/from-design":
                     self._json(state.submit_design_run(self._read_json()), HTTPStatus.CREATED)
+                    return
+                if path == "/api/tasks/compile":
+                    self._json(state.compile_task_intent(self._read_json()))
                     return
                 if path == "/api/designs/generate":
                     payload = self._read_json()

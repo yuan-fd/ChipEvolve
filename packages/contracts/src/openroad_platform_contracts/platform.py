@@ -365,6 +365,63 @@ class ExperimentPlan:
 
 
 @dataclass(frozen=True)
+class RepairAction:
+    """A policy-bounded repair proposal; never an executable command."""
+
+    action_id: str
+    action_type: str
+    reason_code: str
+    parameters: dict[str, Any]
+    evidence_refs: tuple[str, ...]
+    requires_approval: bool = False
+    schema_version: int = SCHEMA_VERSION
+
+    def validate(self) -> None:
+        _validate_version(self.schema_version)
+        for name, value in (("action_id", self.action_id),
+                            ("reason_code", self.reason_code)):
+            _validate_identifier(name, value)
+        if self.action_type not in {
+            "retry", "increase_timeout", "lower_core_utilization", "stop",
+        }:
+            raise ValueError("RepairAction action_type is not allowlisted")
+        _validate_mapping("parameters", self.parameters)
+        if not self.evidence_refs or not all(
+            isinstance(item, str) and item for item in self.evidence_refs
+        ):
+            raise ValueError("RepairAction requires evidence_refs")
+        allowed = {
+            "retry": set(), "increase_timeout": {"timeout_seconds"},
+            "lower_core_utilization": {"core_utilization_pct"},
+            "stop": {"terminal_reason"},
+        }[self.action_type]
+        if set(self.parameters) != allowed:
+            raise ValueError("RepairAction parameters do not match its template")
+        if self.action_type == "increase_timeout" and not (
+            isinstance(self.parameters["timeout_seconds"], int)
+            and 1 <= self.parameters["timeout_seconds"] <= 86400
+        ):
+            raise ValueError("timeout_seconds is outside the repair policy")
+        if self.action_type == "lower_core_utilization" and not (
+            isinstance(self.parameters["core_utilization_pct"], (int, float))
+            and 1 <= self.parameters["core_utilization_pct"] <= 99
+        ):
+            raise ValueError("core_utilization_pct is outside the repair policy")
+
+    def to_dict(self) -> dict[str, Any]:
+        self.validate()
+        return _primitive(self)
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "RepairAction":
+        value = _known_payload(cls, payload)
+        value["evidence_refs"] = tuple(value.get("evidence_refs", ()))
+        result = cls(**value)
+        result.validate()
+        return result
+
+
+@dataclass(frozen=True)
 class Event:
     event_id: str
     run_id: str

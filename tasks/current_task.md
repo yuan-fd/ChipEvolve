@@ -1,20 +1,19 @@
-# 当前任务：P6 Campaign、并发、恢复与查询
+# 当前任务：P7 NL→TaskSpec 与有限 ReAct
 
 status: completed
-phase: P6
+phase: P7
 approved_at: 2026-08-04
 started_at: 2026-08-04
-base_commit: 38208ae
+base_commit: 025dc72
 completed_at: 2026-08-04
 
 ## 结果
 
-- 持久 Campaign/member 映射、并发上限、取消和重启幂等恢复已实现。
-- Runtime/Campaign API 与基础 Web 查询入口已实现。
-- 租约过期保留 lost Attempt 并由新 Attempt 成功恢复；全量 66 passed。
+- NL→TaskSpec 仅允许登记路径、固定平台、工作流和数值边界；API 只预览不提交。
+- failure→RepairAction 已实现证据、精确白名单模板、预算与 stop 条件。
+- 恶意 shell、未知字段、无证据和预算越界测试通过；全量 75 passed。
 
 ## 恢复锚点
 
-- P5 提交：`38208ae`。
-- P6 live SQLite 和 workspace 只使用 `/tmp`。
-- 下一阶段：P7 NL→TaskSpec 与白名单有限 ReAct。
+- P6 提交：`025dc72`。
+- 下一阶段：P8 TaiWei-Pin-3D 独立工具链黑箱插件。

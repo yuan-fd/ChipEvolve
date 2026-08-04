@@ -1,9 +1,9 @@
 # OpenROAD Platform — 工作记忆
 
 project_id: openroad-platform
-phase: P6：已完成；目标线程继续 P7-P10
-current_subgoal: P7 NL→TaskSpec 与白名单有限 ReAct
-progress: 60%
+phase: P7：已完成；目标线程继续 P8-P10
+current_subgoal: P8 TaiWei-Pin-3D 独立工具链黑箱插件
+progress: 70%
 last_updated: 2026-08-04
 
 ## 已确认事实
@@ -27,6 +27,7 @@ last_updated: 2026-08-04
 - P5 `agenticpd@1.0.0` 已接入为只生成 proposal 的黑箱；完整参数留证，首版只消费可核验的 CORE_UTILIZATION。
 - 同一 RTL、Nangate45、固定工具链真实比较 38%/35%：两次 GDS 成功、DRC=0；候选并非全面更优。
 - P6 Campaign member 与 Runtime run 一一映射；按 task_id 幂等恢复、并发上限和 lost→新 Attempt 已通过真实子进程测试。
+- P7 NL 只生成验证后的 TaskSpec preview；RepairAction 只有四种数据模板，必须引用证据并受预算停止条件约束。
 
 ## 架构定版
 
@@ -58,4 +59,4 @@ last_updated: 2026-08-04
 
 ## handoff_anchor
 
-P0 `afdca1e`；P1 `e750370`；P2 `aa7cf0a`/`6d9d93c`；P3 `9269040`；P4 `0892d57`；P5 `38208ae`。读取 P6 快照与 `docs/evidence/P6_CAMPAIGN_ACCEPTANCE.md` 恢复；当前目标已授权连续执行至 P10，下一步 P7。
+P0 `afdca1e`；P1 `e750370`；P2 `aa7cf0a`/`6d9d93c`；P3 `9269040`；P4 `0892d57`；P5 `38208ae`；P6 `025dc72`。读取 P7 快照与 `docs/evidence/P7_NL_REACT_ACCEPTANCE.md` 恢复；当前目标已授权连续执行至 P10，下一步 P8。

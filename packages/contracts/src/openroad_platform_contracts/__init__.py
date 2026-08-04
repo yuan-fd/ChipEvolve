@@ -20,6 +20,7 @@ from .platform import (
     PluginManifest,
     PluginResult,
     RuntimeStatus,
+    RepairAction,
     TaskSpec,
     TERMINAL_RUNTIME_STATUSES,
 )
@@ -42,6 +43,7 @@ __all__ = [
     "PluginManifest",
     "PluginResult",
     "RuntimeStatus",
+    "RepairAction",
     "TaskSpec",
     "TERMINAL_RUNTIME_STATUSES",
 ]

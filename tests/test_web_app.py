@@ -72,6 +72,30 @@ def test_runtime_and_campaign_queries_use_authoritative_store(tmp_path):
     assert cancelled["members"][0]["status"] == "cancelled"
 
 
+def test_natural_language_api_returns_preview_without_submitting(tmp_path):
+    yosys = which("yosys")
+    if yosys is None:
+        pytest.skip("Yosys is not installed")
+    state = ApiState(
+        tmp_path / "platform.db", tmp_path / "uploads", tmp_path / "orfs",
+        design_root=tmp_path / "designs", legacy_root=tmp_path / "legacy",
+        yosys_bin=Path(yosys), runtime_db_path=tmp_path / "runtime.db",
+        campaign_db_path=tmp_path / "campaign.db",
+    )
+    design = state.designs.import_rtl(
+        filename="nl_top.v",
+        source="module nl_top(input a, output y); assign y = ~a; endmodule\n",
+    )
+    preview = state.compile_task_intent({
+        "design_id": design["id"],
+        "intent": "用 OpenROAD Nangate45 跑到 GDS，利用率 30%",
+    })
+    assert preview["execution_started"] is False
+    assert preview["task_spec"]["plugin_id"] == "orfs"
+    assert preview["task_spec"]["parameters"]["core_utilization_pct"] == 30.0
+    assert state.runtime_store.list_runs() == []
+
+
 def test_design_import_creates_netlist_schematic_and_analysis(tmp_path):
     yosys = which("yosys")
     if yosys is None:

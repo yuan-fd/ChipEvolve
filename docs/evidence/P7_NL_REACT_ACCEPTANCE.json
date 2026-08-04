@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "phase": "P7",
+  "accepted": true,
+  "nl_compiler": {
+    "workflows": ["orfs", "rtlscout"],
+    "platforms": ["nangate45"],
+    "registered_artifact_context_only": true,
+    "execution_on_compile": false,
+    "arbitrary_shell": false
+  },
+  "repair_policy": {
+    "actions": ["retry", "increase_timeout", "lower_core_utilization", "stop"],
+    "evidence_required": true,
+    "default_max_repairs": 2,
+    "default_max_same_failure": 2,
+    "max_attempts": 3,
+    "direct_execution": false
+  },
+  "real_llm": {"executed": false, "reason": "deterministic compiler acceptance; no credential/budget"},
+  "tests": "75 passed"
+}

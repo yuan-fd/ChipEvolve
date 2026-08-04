@@ -14,6 +14,7 @@ Main endpoints:
 - `GET /api/runs` and `GET /api/runs/<id>`
 - `POST /api/runs/<id>/cancel`
 - `GET /api/runtime/runs`, `GET /api/campaigns`, and their detail/cancel routes
+- `POST /api/tasks/compile` for a validated NL→TaskSpec preview (no execution)
 
 Runtime and Campaign live SQLite state defaults to
 `/tmp/openroad-platform-<uid>/`, keeping WAL files off the shared project
