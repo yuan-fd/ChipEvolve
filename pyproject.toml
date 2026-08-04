@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=59.4"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openroad-platform"
+version = "0.1.0"
+description = "A durable control plane and isolated execution layer for OpenROAD workflows"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.optional-dependencies]
+visualization = ["gdspy>=1.6.13", "graphviz>=0.20", "matplotlib>=3.7", "numpy>=1.24"]
+test = ["pytest>=8"]
+
+[project.scripts]
+openroad-run = "openroad_platform_execution.cli:main"
+openroad-jobs = "openroad_platform_scheduler.cli:main"
+
+[tool.setuptools.packages.find]
+where = [
+  "packages/contracts/src",
+  "packages/execution/src",
+  "packages/scheduler/src",
+  "packages/analysis/src",
+  "packages/visualization/src",
+]
+include = ["openroad_platform_*"]
+
+[tool.setuptools.package-data]
+openroad_platform_analysis = ["assets/*.tcl"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [
+  "packages/contracts/src",
+  "packages/execution/src",
+  "packages/scheduler/src",
+  "packages/analysis/src",
+  "packages/visualization/src",
+]
+addopts = "-ra"

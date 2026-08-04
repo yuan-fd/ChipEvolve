@@ -1,0 +1,152 @@
+# RTLScout 项目调研报告
+
+> 姓名：刘宏博
+> 日期：2026-07-31
+> 项目地址：https://github.com/huawei-csl/rtlscout
+> 部署仓库：https://github.com/bo666-official/rtlscout-deploy
+
+
+## 一、基本信息
+
+| 项目 | 内容 |
+|------|------|
+| 项目名称 | RTLScout |
+| 仓库地址 | https://github.com/huawei-csl/rtlscout |
+| 项目定位 | LLM 驱动的 RTL 设计智能体，从规格说明迭代生成和优化 Verilog/Spire HDL/Amaranth 设计 |
+
+
+## 二、硬件环境对比
+
+| 项目 | 实际环境 | 结论 |
+|------|----------|------|
+| 架构 | 鲲鹏 ARM64 / WSL x86_64 | 鲲鹏不兼容，WSL 可用 |
+| 内存 | 32GB | ✅ |
+| 磁盘 | 充足 | ✅ |
+
+**关键发现**：官方预构建镜像仅支持 amd64 架构，在鲲鹏 ARM64 服务器上无法启动。
+
+
+## 三、软件环境
+
+| 工具/包 | 版本 | 用途 |
+|---------|------|------|
+| Docker | 29.1.3 | 容器化运行环境 |
+| Python | 3.13.13 | 运行 RTLScout |
+| tech_eval | 0.1.0 | PPA 技术评估 |
+| 依赖包 | aigverse, pyosys, spire-hdl | 成本评估 |
+
+
+## 四、架构分析
+
+### 4.1 调用链
+
+用户执行 CLI
+    ↓
+run_benchmark.py（单次运行入口）
+    ↓
+core/runner.py → run_agent_on_benchmark()
+    ├── core/agent.py（ReAct Agent 循环）
+    ├── core/llm_client.py（LLM API 调用）
+    ├── core/correctness.py（Verilator 验证）
+    ├── core/cost.py（成本评估）
+    └── core/evaluation.py（综合评估）
+    ↓
+输出：runs/<benchmark>/<model>/result.json + best_design/
+
+### 4.2 阶段分解
+
+| 阶段 | 输入 | 处理 | 输出 |
+|------|------|------|------|
+| 输入阶段 | Benchmark 规格、LLM 配置、成本指标 | 加载 benchmark 元数据 | 初始化 Agent 上下文 |
+| 初始化阶段 | Agent 上下文 | 构建 System Prompt、创建工作区 | 就绪的工作区 |
+| 迭代优化阶段 | 工作区状态 | LLM 推理 → 工具调用 → 验证 → 评估 → 更新 | 更新后的工作区 |
+| 输出阶段 | 最优设计 | 写入 result.json + best_design/ | 最终产物 |
+
+
+## 五、黑箱视图（给平台调度器）
+
+### 5.1 输入
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| --benchmark | string | ✅ | benchmark 目录名 |
+| --model | string | ✅ | LLM 模型 |
+| --cost-metric | string | ❌ | transistors / area / delay / power |
+| --language | string | ❌ | verilog / spirehdl / amaranth |
+| --max-steps | int | ❌ | 最大迭代步数，默认 20 |
+
+### 5.2 输出
+
+| 产物 | 路径 | 格式 |
+|------|------|------|
+| 结果 JSON | runs/.../result.json | JSON |
+| 最优设计 | runs/.../best_design/ | .v / .py |
+
+### 5.3 调用命令
+
+```bash
+# 冒烟测试（不需要 API Key）
+python run_benchmark.py --benchmark simple_adder --model fake:simple_adder_pass
+
+# 真实运行
+python run_benchmark.py --benchmark fpmul_f16 --model openrouter:qwen/qwen3.7-max --cost-metric area
+
+六、调参空间（给 Agent）
+参数	默认值	范围	影响
+--cost-metric	transistors	9种指标	优化目标
+--max-steps	20	10-100	迭代次数
+--target-delay	500ps	200-2000ps	时序约束
+七、接入平台建议
+推荐接入层：Level 1（黑箱调用）
+
+RTLScout 内部已有完整的 Agent 循环，推荐作为整体插件接入主平台。
+
+接口伪代码：def run_rtlscout(benchmark, model, cost_metric="transistors"):
+    cmd = f"python run_benchmark.py --benchmark {benchmark} --model {model} --cost-metric {cost_metric}"
+    # 执行命令，解析 result.json
+    return {"best_cost": float, "correctness": "PASS|FAIL"}
+
+八、SI2 规范对照
+Si2 规范项	RTLScout 支持情况
+对象与属性	✅ result.json 包含 best_cost、correctness
+设计 vs 衍生数据	✅ 设计与评估结果分离
+通用 API 层	✅ CLI 接口
+关系建模	❌ 建议增加 Croissant 元数据标注
+九、部署验证记录
+9.1 鲲鹏 ARM64 服务器尝试
+执行 pull_image.sh 拉取预构建镜像成功
+
+执行 start_container.sh 启动失败
+
+报错：exec /usr/bin/bash: no such file or directory
+
+原因：镜像架构为 amd64，与 ARM64 不兼容
+
+9.2 WSL x86_64 环境尝试
+环境：WSL2 Ubuntu + Docker 29.1.3
+
+成功拉取镜像并启动容器
+
+执行冒烟测试通过
+Best: PASS | 308 transistors (step 1) | Steps: 3 | Duration: 38.13s
+
+9.3 结论
+RTLScout 可在 x86_64 环境下正常部署运行。鲲鹏 ARM64 环境因官方镜像架构不兼容暂不可行。
+
+十、目录树
+rtlscout/
+├── run_benchmark.py          # 单次运行入口
+├── run_multirun.py           # 多智能体并行优化
+├── run_pipeline.py           # 两阶段流水线
+├── run_eval.py               # 重新评估
+├── core/                     # 核心逻辑
+│   ├── agent.py              # ReAct Agent
+│   ├── llm_client.py         # LLM 后端
+│   ├── prompts.py            # System Prompt
+│   ├── correctness.py        # Verilator 验证
+│   ├── cost.py               # 成本指标
+│   └── evaluation.py         # 综合评估
+├── benchmarks/               # Benchmark 套件
+│   └── simple_adder/         # 最小验证用例
+└── deps/tech_eval/           # 技术评估模块
+

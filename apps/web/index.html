@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenROAD Workspace</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#home" data-nav="home" aria-label="返回工作台首页">
+        <span class="brand-mark">OR</span>
+        <span><b>OpenROAD</b><small>Workspace</small></span>
+      </a>
+
+      <nav aria-label="项目导航">
+        <p class="nav-label">Workspace</p>
+        <button class="nav-item active" data-nav="home"><span>01</span>项目中心</button>
+        <p class="nav-label">Projects</p>
+        <button class="nav-item" data-nav="design"><span>02</span>电路生成与分析</button>
+        <button class="nav-item" data-nav="flow"><span>03</span>RTL-to-GDS</button>
+      </nav>
+
+      <div class="sidebar-foot">
+        <div class="system-dot" id="systemDot"></div>
+        <div><b id="systemLabel">连接中</b><small id="systemDetail">正在检查运行环境</small></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <span class="crumb">OPENROAD PLATFORM / <b id="crumb">PROJECT HUB</b></span>
+        </div>
+        <div class="top-actions">
+          <span class="clock" id="clock"></span>
+          <button class="quiet-button" id="refreshAll">刷新数据</button>
+        </div>
+      </header>
+
+      <section class="view active" id="view-home">
+        <div class="hero">
+          <div class="hero-copy">
+            <span class="kicker">Modular silicon workspace</span>
+            <h1>从一个清晰入口，<br>进入每一条芯片工作流。</h1>
+            <p>项目、运行与证据彼此隔离；统一接口负责发现能力、提交任务和读取结果。</p>
+          </div>
+          <div class="hero-status">
+            <div><small>AVAILABLE PROJECTS</small><b id="projectCount">2</b></div>
+            <div><small>DESIGNS</small><b id="designCount">0</b></div>
+            <div><small>FLOW RUNS</small><b id="runCount">0</b></div>
+          </div>
+        </div>
+
+        <div class="section-heading">
+          <div><span class="index">A</span><h2>项目入口</h2></div>
+          <p>当前保留两条可演示、可执行的主流程</p>
+        </div>
+        <div class="project-grid">
+          <button class="project-card circuit-card" data-nav="design">
+            <span class="project-number">PROJECT 01</span>
+            <div class="circuit-glyph" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+            <h3>电路生成与分析</h3>
+            <p>自然语言描述 → RTL → Yosys 门级网表 → 电路结构图 → 确定性分析。</p>
+            <span class="project-link">进入项目 <b>→</b></span>
+          </button>
+          <button class="project-card flow-card" data-nav="flow">
+            <span class="project-number">PROJECT 02</span>
+            <div class="wafer-glyph" aria-hidden="true"></div>
+            <h3>RTL-to-GDS Flow</h3>
+            <p>六阶段 ORFS 实现、持久化队列、硬门禁、产物哈希与物理设计分析。</p>
+            <span class="project-link">进入项目 <b>→</b></span>
+          </button>
+        </div>
+
+        <div class="section-heading compact">
+          <div><span class="index">B</span><h2>框架接口</h2></div>
+        </div>
+        <div class="framework-strip">
+          <div><small>DISCOVERY</small><code>GET /api/projects</code><p>发现已注册项目及入口。</p></div>
+          <div><small>REQUEST</small><code>POST /api/runs</code><p>通过统一契约提交持久化任务。</p></div>
+          <div><small>EVIDENCE</small><code>GET /api/runs/:id</code><p>读取阶段、指标、产物与分析证据。</p></div>
+          <div class="future-slot"><small>NEXT ADAPTER</small><b>+</b><p>为后续项目保留独立接入位。</p></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-design">
+        <div class="page-intro">
+          <div><span class="kicker">Project 01 / Circuit Studio</span><h1>电路生成与分析</h1></div>
+          <p>输入自然语言需求，得到可综合 RTL、门级网表、电路框图和结构化分析。</p>
+        </div>
+
+        <div class="design-layout">
+          <article class="surface generator-panel">
+            <div class="surface-head"><span>DESIGN BRIEF</span><small>Natural language → Verilog</small></div>
+            <div class="surface-body">
+              <label class="field-label" for="designPrompt">描述你需要的数字电路</label>
+              <textarea id="designPrompt" rows="7" placeholder="例如：设计一个带异步复位和使能信号的 8 位循环移位寄存器"></textarea>
+              <div class="prompt-examples">
+                <button data-prompt="设计一个带异步复位的四位二进制计数器">4 位计数器</button>
+                <button data-prompt="设计一个四位全加器，带进位输入和进位输出">4 位全加器</button>
+                <button data-prompt="设计一个带使能的八位移位寄存器">8 位移位寄存器</button>
+              </div>
+              <button class="primary-button" id="generateDesign">生成电路与网表 <span>→</span></button>
+              <div class="divider"><span>或者</span></div>
+              <label class="upload-button" for="designFile">上传已有 RTL 并自动综合分析</label>
+              <input id="designFile" type="file" accept=".v,.sv" hidden>
+              <p class="action-message" id="designMessage">生成能力由适配器提供，分析与产物统一进入新平台。</p>
+            </div>
+          </article>
+
+          <article class="surface result-panel">
+            <div class="surface-head"><span>DESIGN EVIDENCE</span><select id="designSelect" aria-label="选择已有设计"><option value="">选择设计</option></select></div>
+            <div class="empty-state" id="designEmpty"><b>还没有选中设计</b><p>生成或上传 RTL 后，这里会展示网表、电路图和分析结果。</p></div>
+            <div id="designResult" hidden>
+              <div class="result-title"><div><span id="designOrigin">GENERATED</span><h2 id="designName">--</h2><p id="designDescription"></p></div><button class="outline-button" id="useInFlow">送入 RTL-to-GDS →</button></div>
+              <div class="kpi-row" id="designKpis"></div>
+              <div class="evidence-tabs" role="tablist">
+                <button class="active" data-evidence="schematic">电路图</button>
+                <button data-evidence="analysis">分析</button>
+                <button data-evidence="rtl">RTL</button>
+                <button data-evidence="netlist">门级网表</button>
+              </div>
+              <div class="evidence-pane active" id="evidence-schematic"><img id="schematicImage" alt="电路结构图"></div>
+              <div class="evidence-pane" id="evidence-analysis"><div class="analysis-grid" id="designAnalysis"></div></div>
+              <div class="evidence-pane" id="evidence-rtl"><pre id="rtlCode"></pre></div>
+              <div class="evidence-pane" id="evidence-netlist"><pre id="netlistCode"></pre></div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="view" id="view-flow">
+        <div class="page-intro">
+          <div><span class="kicker">Project 02 / Physical Design</span><h1>RTL-to-GDS 全流程</h1></div>
+          <p>独立 worker 执行六阶段 ORFS，网页只负责提交、观察和读取分析证据。</p>
+        </div>
+
+        <div class="flow-layout">
+          <article class="surface flow-config">
+            <div class="surface-head"><span>FLOW CONFIGURATION</span><small>Nangate45</small></div>
+            <div class="surface-body">
+              <label class="field-label">选择电路设计<select id="flowDesign"><option value="">请选择已生成或上传的设计</option></select></label>
+              <div class="form-grid">
+                <label>Top module<input id="flowTop" placeholder="自动读取"></label>
+                <label>Clock port<input id="flowClock" placeholder="例如 clk"></label>
+                <label>Clock period / ns<input id="flowPeriod" type="number" min="0.01" step="0.1" value="10"></label>
+                <label>Core utilization / %<input id="flowUtil" type="number" min="1" max="99" value="10"></label>
+                <label>Place density<input id="flowDensity" type="number" min="0.01" max="1" step="0.01" value="0.45"></label>
+                <label>Target stage<select id="flowTarget"><option value="finish">Finish / GDS</option><option value="route">Route</option><option value="place">Place</option><option value="synth">Synthesis</option></select></label>
+              </div>
+              <button class="primary-button" id="startFlow">提交 RTL-to-GDS <span>→</span></button>
+              <p class="action-message" id="flowMessage">完整流程可能需要数分钟；页面可关闭，任务状态保存在 SQLite。</p>
+            </div>
+          </article>
+
+          <article class="surface flow-monitor">
+            <div class="surface-head"><span>LIVE FLOW</span><select id="runSelect" aria-label="选择运行"><option value="">选择运行记录</option></select></div>
+            <div class="flow-summary" id="flowSummary">
+              <span class="run-status idle">IDLE</span><div><b>等待选择运行</b><small>阶段证据会在 worker 完成后自动刷新</small></div>
+            </div>
+            <div class="stage-rail" id="stageRail"></div>
+            <div class="physical-evidence" id="physicalEvidence"><div class="empty-state"><b>暂无物理分析</b><p>提交一个运行后查看指标、里程碑和产物。</p></div></div>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/assets/app.js"></script>
+</body>
+</html>
