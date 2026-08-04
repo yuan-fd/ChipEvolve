@@ -7,8 +7,10 @@ from .reporter import build_llm_prompt, build_report
 from .knowledge_base import (
     EvidenceContext, EvidenceKnowledgeBase, KnowledgeRecord,
 )
+from .evolve_agent import EvidenceDrivenEvolveAgent, EvolutionProposal
 
 __all__ = [
     "analyze_run", "build_llm_prompt", "build_report", "diagnose",
     "EvidenceContext", "EvidenceKnowledgeBase", "KnowledgeRecord",
+    "EvidenceDrivenEvolveAgent", "EvolutionProposal",
 ]

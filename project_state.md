@@ -1,9 +1,9 @@
 # OpenROAD Platform — 工作记忆
 
 project_id: openroad-platform
-phase: P9：已完成；目标线程继续 P10
-current_subgoal: P10 隔离 Coding/Evolve Agent 与最终闸门
-progress: 90%
+phase: P10：已完成；P3-P10 主线收口
+current_subgoal: 等待官方固定 3D 工具链以解除 P8 真实 gcd 外部阻塞
+progress: 100%（平台施工）；P8 real_3d gate pending external dependency
 last_updated: 2026-08-04
 
 ## 已确认事实
@@ -30,6 +30,7 @@ last_updated: 2026-08-04
 - P7 NL 只生成验证后的 TaskSpec preview；RepairAction 只有四种数据模板，必须引用证据并受预算停止条件约束。
 - P8 TaiWei plugin/profile/Adapter 已实现；真实 gcd 因固定工具链无法下载且现有版本不匹配而 fail closed，accepted=false。
 - P9 知识记录强制 verified/ref/SHA/版本上下文；P5 真实经验完成 data-only 回放，错版本和篡改均拒绝。
+- P10 Evolve→隔离 Coding→Promotion receipt 闭环完成；真实仓库候选回归 81 passed、基线不变、applied=false；总回归 84。
 
 ## 架构定版
 
@@ -61,4 +62,4 @@ last_updated: 2026-08-04
 
 ## handoff_anchor
 
-P0 `afdca1e`；P1 `e750370`；P2 `aa7cf0a`/`6d9d93c`；P3 `9269040`；P4 `0892d57`；P5 `38208ae`；P6 `025dc72`；P7 `339f34f`；P8 `00cf2f8`。读取 P9 快照与 `docs/evidence/P9_KNOWLEDGE_ACCEPTANCE.md` 恢复；当前目标已授权连续执行至 P10。
+P0 `afdca1e`；P1 `e750370`；P2 `aa7cf0a`/`6d9d93c`；P3 `9269040`；P4 `0892d57`；P5 `38208ae`；P6 `025dc72`；P7 `339f34f`；P8 `00cf2f8`；P9 `c923f55`。读取 P10 快照和 `docs/evidence/P10_CODING_EVOLVE_ACCEPTANCE.md` 恢复；P8 blocker 解除时追加验收。

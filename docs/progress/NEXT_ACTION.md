@@ -2,10 +2,10 @@
 
 updated_at: 2026-08-04
 
-实施 P10 Coding/Evolve Agent：候选补丁只能进入隔离 worktree，执行确定性测试/静态检查并生成证据包；未通过或未获策略/人工批准不得应用到基线。Evolve 只从 P9 匹配上下文的证据生成候选。
+主线 P3-P10 已收口。唯一未通过的真实性硬门是 P8 官方固定 3D 工具链；GitHub 连通或提供可信固定构建后，按 P8 证据中的 profile 直接运行一次 `ord/asap7_3D/gcd`，追加真实 GDS/QoR 证据，不改写现有 blocker。
 
 首条恢复命令：
 
 ```bash
-cd ~/openroad-platform && git status --short && sed -n '1,240p' docs/evidence/P9_KNOWLEDGE_ACCEPTANCE.md
+cd ~/openroad-platform && git status --short && sed -n '1,280p' docs/evidence/P10_CODING_EVOLVE_ACCEPTANCE.md
 ```

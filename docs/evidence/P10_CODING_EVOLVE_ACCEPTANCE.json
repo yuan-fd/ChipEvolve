@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "phase": "P10",
+  "accepted": true,
+  "evolve_agent": {
+    "version_matched_evidence_required": true,
+    "execution_allowed": false,
+    "required_gate": "coding_agent_isolated_validation"
+  },
+  "real_repository_candidate": {
+    "base_commit": "c923f55",
+    "patch_sha256": "163baa6425a3255240dc2724823fd91aba3805fe8ec9bbe4e04c62c4df13223d",
+    "modified_files": ["docs/P10_CANDIDATE_ONLY.md"],
+    "candidate_tests": "81 passed",
+    "candidate_test_log_sha256": "47afedb0c0a145b533988706a1959ba7648d9a4e570ae81e562f1fe2a3453ccb",
+    "baseline_unchanged": true,
+    "baseline_candidate_file_absent": true,
+    "candidate_disposed": true,
+    "promotion_decision": "approved_for_manual_promotion",
+    "applied": false
+  },
+  "preserved_failed_acceptance_runs": [
+    "runs/p10-acceptance-20260804-01",
+    "runs/p10-acceptance-20260804-02",
+    "runs/p10-acceptance-20260804-03"
+  ],
+  "full_tests": "84 passed"
+}
