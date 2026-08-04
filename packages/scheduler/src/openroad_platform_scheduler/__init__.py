@@ -11,10 +11,12 @@ from .runtime import WorkflowRuntime
 from .legacy_projection import LegacyJobProjection, project_legacy_jobs
 from .worker import Worker
 from .composition import RTLToORFSResult, execute_rtl_to_orfs
+from .campaign import CampaignManager, CampaignMember, CampaignStore
 
 __all__ = [
     "Job", "JobStore", "Worker", "RuntimeAttempt", "RuntimeRun",
     "RuntimeStageRun", "RuntimeStore", "WorkflowRuntime",
     "LegacyJobProjection", "project_legacy_jobs",
     "RTLToORFSResult", "execute_rtl_to_orfs",
+    "CampaignManager", "CampaignMember", "CampaignStore",
 ]

@@ -1,9 +1,9 @@
 # OpenROAD Platform — 工作记忆
 
 project_id: openroad-platform
-phase: P5：已完成；目标线程继续 P6-P10
-current_subgoal: P6 Campaign、有限并发、恢复和 Runtime 查询
-progress: 50%
+phase: P6：已完成；目标线程继续 P7-P10
+current_subgoal: P7 NL→TaskSpec 与白名单有限 ReAct
+progress: 60%
 last_updated: 2026-08-04
 
 ## 已确认事实
@@ -26,6 +26,7 @@ last_updated: 2026-08-04
 - RTLScout 固定 Spire 实际要求 Python >=3.12；隔离 Python 3.12.4/Verilator 5.040 在 `.tools/`，不进入 Git。
 - P5 `agenticpd@1.0.0` 已接入为只生成 proposal 的黑箱；完整参数留证，首版只消费可核验的 CORE_UTILIZATION。
 - 同一 RTL、Nangate45、固定工具链真实比较 38%/35%：两次 GDS 成功、DRC=0；候选并非全面更优。
+- P6 Campaign member 与 Runtime run 一一映射；按 task_id 幂等恢复、并发上限和 lost→新 Attempt 已通过真实子进程测试。
 
 ## 架构定版
 
@@ -57,4 +58,4 @@ last_updated: 2026-08-04
 
 ## handoff_anchor
 
-P0 `afdca1e`；P1 `e750370`；P2 `aa7cf0a`/`6d9d93c`；P3 `9269040`；P4 `0892d57`。读取 P5 快照与 `docs/evidence/P5_AGENTICPD_ACCEPTANCE.md` 恢复；当前目标已授权连续执行至 P10，下一步 P6。
+P0 `afdca1e`；P1 `e750370`；P2 `aa7cf0a`/`6d9d93c`；P3 `9269040`；P4 `0892d57`；P5 `38208ae`。读取 P6 快照与 `docs/evidence/P6_CAMPAIGN_ACCEPTANCE.md` 恢复；当前目标已授权连续执行至 P10，下一步 P7。

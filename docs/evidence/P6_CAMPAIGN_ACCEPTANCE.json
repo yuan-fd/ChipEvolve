@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "phase": "P6",
+  "accepted": true,
+  "campaign": {
+    "durable_members": true,
+    "idempotent_rebind_by_task_id": true,
+    "max_parallel_verified": 2,
+    "workspace_isolation_verified": true,
+    "queued_cancel_verified": true
+  },
+  "recovery": {
+    "expired_attempt_status": "lost",
+    "replacement_attempt_status": "succeeded",
+    "failed_evidence_preserved": true
+  },
+  "query_surfaces": [
+    "GET /api/runtime/runs",
+    "GET /api/runtime/runs/:id",
+    "GET /api/campaigns",
+    "GET /api/campaigns/:id",
+    "POST /api/runtime/runs/:id/cancel",
+    "POST /api/campaigns/:id/cancel"
+  ],
+  "tests": "66 passed"
+}

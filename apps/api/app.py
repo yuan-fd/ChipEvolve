@@ -31,7 +31,7 @@ for package_root in reversed(PACKAGE_ROOTS):
         sys.path.insert(0, str(package_root))
 
 from openroad_platform_contracts import RunRequest, RunStage  # noqa: E402
-from openroad_platform_scheduler import JobStore  # noqa: E402
+from openroad_platform_scheduler import CampaignStore, JobStore, RuntimeStore  # noqa: E402
 try:  # Supports both `python apps/api/app.py` and package imports in tests.
     from .services import DesignService  # type: ignore[attr-defined]
 except ImportError:
@@ -55,11 +55,19 @@ class ApiState:
         design_root: Path | None = None,
         legacy_root: Path | None = None,
         yosys_bin: Path | None = None,
+        runtime_db_path: Path | None = None,
+        campaign_db_path: Path | None = None,
     ):
         self.db_path = db_path.expanduser().resolve()
         self.upload_root = upload_root.expanduser().resolve()
         self.orfs_root = orfs_root.expanduser().resolve()
         self.store = JobStore(self.db_path)
+        local_state = Path(os.environ.get(
+            "OPENROAD_PLATFORM_LOCAL_STATE",
+            f"/tmp/openroad-platform-{os.getuid()}",
+        ))
+        self.runtime_store = RuntimeStore(runtime_db_path or local_state / "runtime.db")
+        self.campaign_store = CampaignStore(campaign_db_path or local_state / "campaign.db")
         self.designs = DesignService(
             design_root or ROOT / "var" / "designs",
             legacy_root=legacy_root or Path(os.environ.get("ICCAD_ROOT", ROOT.parent / "iccad")),
@@ -164,6 +172,39 @@ class ApiState:
 
     def cancel_run(self, run_id: str) -> dict[str, Any]:
         return self._serialize_job(self.store.request_cancel(run_id))
+
+    def list_runtime_runs(self, limit: int = 50) -> dict[str, Any]:
+        return {"runs": [{"run_id": run.run_id, "task_id": run.task_id,
+                           "status": run.status.value, "created_at": run.created_at,
+                           "started_at": run.started_at, "ended_at": run.ended_at}
+                          for run in self.runtime_store.list_runs(limit=limit)]}
+
+    def get_runtime_run(self, run_id: str) -> dict[str, Any]:
+        return self.runtime_store.describe_run(run_id)
+
+    def cancel_runtime_run(self, run_id: str) -> dict[str, Any]:
+        self.runtime_store.request_cancel(run_id)
+        return self.runtime_store.describe_run(run_id)
+
+    def list_campaigns(self) -> dict[str, Any]:
+        return {"campaigns": [self.get_campaign(item["campaign_id"])
+                              for item in self.campaign_store.list()]}
+
+    def get_campaign(self, campaign_id: str) -> dict[str, Any]:
+        campaign = self.campaign_store.get(campaign_id)
+        members = []
+        for member in self.campaign_store.members(campaign_id):
+            run = self.runtime_store.get_run(member.run_id) if member.run_id else None
+            members.append({"member_id": member.member_id, "ordinal": member.ordinal,
+                            "task_id": member.task_spec.task_id, "run_id": member.run_id,
+                            "status": run.status.value if run else "unbound"})
+        return {**campaign, "members": members}
+
+    def cancel_campaign(self, campaign_id: str) -> dict[str, Any]:
+        for member in self.campaign_store.members(campaign_id):
+            if member.run_id:
+                self.runtime_store.request_cancel(member.run_id)
+        return self.get_campaign(campaign_id)
 
     def submit_design_run(self, payload: dict[str, Any]) -> dict[str, Any]:
         design_id = str(payload.get("design_id") or "").strip()
@@ -274,6 +315,16 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                     ))
                 elif path == "/api/runs":
                     self._json({"runs": state.list_runs()})
+                elif path == "/api/runtime/runs":
+                    self._json(state.list_runtime_runs())
+                elif path.startswith("/api/runtime/runs/"):
+                    self._json(state.get_runtime_run(
+                        unquote(path.removeprefix("/api/runtime/runs/"))))
+                elif path == "/api/campaigns":
+                    self._json(state.list_campaigns())
+                elif path.startswith("/api/campaigns/"):
+                    self._json(state.get_campaign(
+                        unquote(path.removeprefix("/api/campaigns/"))))
                 elif path.startswith("/api/runs/"):
                     self._json(state.get_run(unquote(path.removeprefix("/api/runs/"))))
                 elif path in {"/", "/index.html"}:
@@ -318,6 +369,14 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                 match = re.fullmatch(r"/api/runs/([^/]+)/cancel", path)
                 if match:
                     self._json(state.cancel_run(unquote(match.group(1))))
+                    return
+                match = re.fullmatch(r"/api/runtime/runs/([^/]+)/cancel", path)
+                if match:
+                    self._json(state.cancel_runtime_run(unquote(match.group(1))))
+                    return
+                match = re.fullmatch(r"/api/campaigns/([^/]+)/cancel", path)
+                if match:
+                    self._json(state.cancel_campaign(unquote(match.group(1))))
                     return
                 self._error(HTTPStatus.NOT_FOUND, "route not found")
             except (ValueError, json.JSONDecodeError) as exc:

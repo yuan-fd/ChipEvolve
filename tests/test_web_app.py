@@ -4,6 +4,7 @@ from shutil import which
 import pytest
 
 from apps.api.app import ApiState
+from openroad_platform_contracts import TaskSpec
 
 
 def make_state(tmp_path: Path) -> ApiState:
@@ -14,6 +15,8 @@ def make_state(tmp_path: Path) -> ApiState:
         design_root=tmp_path / "designs",
         legacy_root=tmp_path / "legacy",
         yosys_bin=Path("/missing/yosys"),
+        runtime_db_path=tmp_path / "runtime.db",
+        campaign_db_path=tmp_path / "campaign.db",
     )
 
 
@@ -53,6 +56,22 @@ def test_health_distinguishes_web_and_execution_readiness(tmp_path):
     assert health["execution_ready"] is False
 
 
+def test_runtime_and_campaign_queries_use_authoritative_store(tmp_path):
+    state = make_state(tmp_path)
+    task = TaskSpec(task_id="p6-api-task", project_id="p6", design_id="api",
+                    plugin_id="echo")
+    run, _ = state.runtime_store.submit_plugin_run(task, plugin_version="1.0.0")
+    campaign_id = state.campaign_store.create("api-campaign", [task])
+    member = state.campaign_store.members(campaign_id)[0]
+    state.campaign_store.bind(member.member_id, run.run_id)
+
+    assert state.list_runtime_runs()["runs"][0]["run_id"] == run.run_id
+    campaign = state.get_campaign(campaign_id)
+    assert campaign["members"][0]["status"] == "queued"
+    cancelled = state.cancel_campaign(campaign_id)
+    assert cancelled["members"][0]["status"] == "cancelled"
+
+
 def test_design_import_creates_netlist_schematic_and_analysis(tmp_path):
     yosys = which("yosys")
     if yosys is None:
@@ -64,6 +83,8 @@ def test_design_import_creates_netlist_schematic_and_analysis(tmp_path):
         design_root=tmp_path / "designs",
         legacy_root=tmp_path / "legacy",
         yosys_bin=Path(yosys),
+        runtime_db_path=tmp_path / "runtime.db",
+        campaign_db_path=tmp_path / "campaign.db",
     )
 
     design = state.designs.import_rtl(

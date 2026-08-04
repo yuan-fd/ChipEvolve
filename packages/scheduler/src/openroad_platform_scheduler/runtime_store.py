@@ -403,6 +403,17 @@ class RuntimeStore:
             raise KeyError(f"Unknown run: {run_id}")
         return self._run(row)
 
+    def find_run_by_task_id(self, task_id: str) -> RuntimeRun | None:
+        """Return the oldest matching run for crash-safe campaign rebinding."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM runtime_runs WHERE task_id = ? ORDER BY created_at",
+                (task_id,),
+            ).fetchall()
+        if len(rows) > 1:
+            raise RuntimeError(f"Ambiguous Runtime runs for task_id {task_id!r}")
+        return self._run(rows[0]) if rows else None
+
     def get_stage(self, stage_run_id: str) -> RuntimeStageRun:
         with self._connect() as connection:
             row = connection.execute(

@@ -13,6 +13,13 @@ Main endpoints:
 - `POST /api/runs/from-design` or `POST /api/runs`
 - `GET /api/runs` and `GET /api/runs/<id>`
 - `POST /api/runs/<id>/cancel`
+- `GET /api/runtime/runs`, `GET /api/campaigns`, and their detail/cancel routes
+
+Runtime and Campaign live SQLite state defaults to
+`/tmp/openroad-platform-<uid>/`, keeping WAL files off the shared project
+filesystem. `OPENROAD_PLATFORM_LOCAL_STATE` may select another node-local
+directory. The API only reads state and writes cancellation requests; workers
+remain the only owners of execution subprocesses.
 
 Run from the repository root:
 

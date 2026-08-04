@@ -2,10 +2,10 @@
 
 updated_at: 2026-08-04
 
-实施 P6 Campaign 控制层：持久记录成员和运行映射，限制并发，重启后不重复提交；补齐 Runtime/Campaign 查询、取消与基础 Web 状态入口。
+实施 P7 自然语言入口与有限 ReAct：自然语言只转换为严格 TaskSpec；错误分类映射到证据化 RepairAction 白名单，执行次数和停止条件受预算控制，禁止任意 shell。
 
 首条恢复命令：
 
 ```bash
-cd ~/openroad-platform && git status --short && sed -n '1,240p' docs/evidence/P5_AGENTICPD_ACCEPTANCE.md
+cd ~/openroad-platform && git status --short && sed -n '1,240p' docs/evidence/P6_CAMPAIGN_ACCEPTANCE.md
 ```
