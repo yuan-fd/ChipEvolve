@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "phase": "P2",
+  "accepted": true,
+  "date": "2026-08-04",
+  "run_id": "d154f31a0ac64e3cb068329dfcde3149",
+  "stage_run_id": "409f41586c5f4f63aeeba6c6e2a6f66c",
+  "attempt_id": "44dc660834f64c13b7d6bff3fbb3d491",
+  "plugin": "orfs@1.0.0",
+  "platform": "nangate45",
+  "design": "mux_2to1",
+  "runtime_seconds": 77.05,
+  "stage_seconds": {
+    "synth": 6.214,
+    "floorplan": 11.118,
+    "place": 21.865,
+    "cts": 5.011,
+    "route": 10.32,
+    "finish": 11.819
+  },
+  "milestones": {
+    "synthesizable": true,
+    "functionally_verified": false,
+    "implementation_valid": true,
+    "gds_complete": true
+  },
+  "runtime_counts": {
+    "runs": 1,
+    "stage_runs": 1,
+    "attempts": 1,
+    "artifacts": 17,
+    "metrics": 7,
+    "events": 29
+  },
+  "input_rtl": {
+    "size_bytes": 131,
+    "sha256": "ac316a63050a0047533ec6cf5f0a4daa5e4dc135c407bf868eddd6f27439d263"
+  },
+  "key_artifacts": {
+    "gds": {
+      "size_bytes": 19572,
+      "sha256": "d20ee44ef216af20a896b4a48794d2ee3fdd8de70b7fe8280fb8ae13a59ad1e6"
+    },
+    "def": {
+      "size_bytes": 8279,
+      "sha256": "f3c8db8c27a043c476731fa41da1d8d026db7ef1ae4fc67d7eb41b412f2842ce"
+    },
+    "netlist": {
+      "size_bytes": 369,
+      "sha256": "72818ad8eefc2923482385b0dd4e4fe7063994071720556efb76d1c7fc2d39e3"
+    },
+    "final_odb": {
+      "size_bytes": 436709,
+      "sha256": "b3d102bd0eb2f3c1695833eea14611d725b8d3ab6fe327758a53c1d4b5d8f5c9"
+    },
+    "generated_config": {
+      "size_bytes": 352,
+      "sha256": "70a1ce8f22d05d8fe0d4292bf08d507128ea21dd3b5e93aa06c1979d13c93ccb"
+    },
+    "toolchain_snapshot": {
+      "size_bytes": 2906,
+      "sha256": "9c791e1a30745e5fa30a60adb5952a362bc932af89c158e1475a7e82079350c8"
+    },
+    "runtime_db_snapshot": {
+      "size_bytes": 122880,
+      "sha256": "b41b9f7843b3ade7effa03c4ee7d19ad556066a24c5e78cffe8ba8ceee261d37"
+    }
+  },
+  "toolchain": {
+    "orfs_commit": "51ad1231a231ee85234c06db807688d029b85c35",
+    "openroad_version": "26Q1-1961-g63ed2e0fe5",
+    "yosys_version": "0.63",
+    "klayout_version": "0.30.6",
+    "nangate45_config_sha256": "91e13c3c014b82ba3f8a8d3e22fde8ee7eae21c2c16136adb3b7cd9d31c3ef8c",
+    "shared_state_unchanged": true
+  },
+  "workspace": "runs/p2-acceptance-20260804-02",
+  "note": "Large runtime artifacts are git-ignored; this committed record contains independently recomputed sizes and SHA-256 values."
+}

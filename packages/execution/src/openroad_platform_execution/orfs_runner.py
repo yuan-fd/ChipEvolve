@@ -23,6 +23,7 @@ from openroad_platform_contracts import (
 
 from .orfs_config import infer_clock, infer_top, write_design_files
 from .process_guardian import ProcessGuardian
+from .toolchain import ToolchainConfig
 
 
 STAGE_ARTIFACT = {
@@ -39,17 +40,28 @@ class ORFSRunner:
     def __init__(
         self,
         *,
-        orfs_root: str | Path,
+        orfs_root: str | Path | None = None,
         work_root: str | Path,
         openroad_bin: str | Path | None = None,
         yosys_bin: str | Path | None = None,
+        toolchain: ToolchainConfig | None = None,
         guardian: ProcessGuardian | None = None,
     ):
-        self.orfs_root = Path(orfs_root).expanduser().resolve()
-        self.flow_home = self.orfs_root / "flow"
+        if toolchain is not None and any(
+            value is not None for value in (orfs_root, openroad_bin, yosys_bin)
+        ):
+            raise ValueError("toolchain cannot be combined with explicit tool paths")
+        self.toolchain = toolchain or ToolchainConfig.from_environment(
+            name="legacy-orfs",
+            orfs_root=orfs_root,
+            openroad_bin=openroad_bin,
+            yosys_bin=yosys_bin,
+        )
+        self.orfs_root = self.toolchain.orfs_root
+        self.flow_home = self.toolchain.flow_home
         self.work_root = Path(work_root).expanduser().resolve()
-        self.openroad_bin = Path(openroad_bin or Path.home() / "bin/openroad").expanduser().resolve()
-        self.yosys_bin = Path(yosys_bin or Path.home() / "bin/yosys").expanduser().resolve()
+        self.openroad_bin = self.toolchain.openroad_bin
+        self.yosys_bin = self.toolchain.yosys_bin
         self.guardian = guardian or ProcessGuardian()
 
     def prepare(self, request: RunRequest) -> ExecutionPlan:
@@ -99,6 +111,9 @@ class ORFSRunner:
             "request": request.to_dict(),
             "tools": self.tool_versions(),
         })
+        self._write_json(
+            workdir / "toolchain_snapshot.json", self.toolchain_snapshot(plan)
+        )
         return plan
 
     def run(
@@ -199,10 +214,46 @@ class ORFSRunner:
         return result
 
     def tool_versions(self) -> dict[str, str | None]:
-        return {
+        versions = {
             "openroad": self._version([str(self.openroad_bin), "-version"]),
             "yosys": self._version([str(self.yosys_bin), "-V"]),
             "orfs_commit": self._version(["git", "-C", str(self.orfs_root), "rev-parse", "HEAD"]),
+        }
+        if self.toolchain.klayout_bin is not None:
+            versions["klayout"] = self._version(
+                [str(self.toolchain.klayout_bin), "-v"]
+            )
+        return versions
+
+    def toolchain_snapshot(self, plan: ExecutionPlan) -> dict[str, object]:
+        platform_config = self.flow_home / "platforms" / plan.request.platform / "config.mk"
+        generated_config = Path(plan.config_path)
+        rtl = Path(plan.request.rtl_path).expanduser().resolve()
+        return {
+            "schema_version": 1,
+            "toolchain": self.toolchain.snapshot(),
+            "versions": self.tool_versions(),
+            "orfs_worktree_status": self._command_lines([
+                "git", "-C", str(self.orfs_root), "status", "--porcelain=v1",
+            ]),
+            "files": {
+                "openroad": self._file_record(self.openroad_bin),
+                "yosys": self._file_record(self.yosys_bin),
+                "klayout": self._file_record(self.toolchain.klayout_bin),
+                "platform_config": self._file_record(platform_config),
+                "generated_config": self._file_record(generated_config),
+                "rtl": self._file_record(rtl),
+            },
+            "request": {
+                "platform": plan.request.platform,
+                "target_stage": plan.request.target_stage.value,
+                "top": plan.design,
+                "clock": plan.clock,
+                "clock_period_ns": plan.request.clock_period_ns,
+                "core_utilization_pct": plan.request.core_utilization_pct,
+                "place_density": plan.request.place_density,
+                "stage_timeout_seconds": plan.request.stage_timeout_seconds,
+            },
         }
 
     def _validate_runtime(self) -> None:
@@ -230,14 +281,7 @@ class ORFSRunner:
         ]
 
     def _environment(self) -> dict[str, str]:
-        env = os.environ.copy()
-        env["PATH"] = os.pathsep.join([
-            str(self.openroad_bin.parent),
-            str(self.yosys_bin.parent),
-            str(Path.home() / ".local/bin"),
-            env.get("PATH", ""),
-        ])
-        return env
+        return self.toolchain.build_environment()
 
     @staticmethod
     def _results_dir(plan: ExecutionPlan) -> Path:
@@ -306,9 +350,13 @@ class ORFSRunner:
         workdir = Path(plan.workdir)
         candidates = [
             workdir / "plan.json",
+            workdir / "toolchain_snapshot.json",
             workdir / "logs/flow.log",
             workdir / "analysis/report.json",
             workdir / "analysis/flow_error.log",
+            Path(plan.config_path),
+            Path(plan.config_path).with_name("constraint.sdc"),
+            Path(plan.config_path).with_name("pdn.tcl"),
         ]
         results = self._results_dir(plan)
         candidates.extend(results / name for name in (
@@ -400,3 +448,27 @@ class ORFSRunner:
         except (OSError, subprocess.TimeoutExpired):
             return None
         return next((line.strip() for line in result.stdout.splitlines() if line.strip()), None)
+
+    @staticmethod
+    def _command_lines(command: list[str]) -> list[str]:
+        try:
+            result = subprocess.run(
+                command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, timeout=15, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return ["unknown"]
+        return [line for line in result.stdout.splitlines() if line.strip()]
+
+    @classmethod
+    def _file_record(cls, path: Path | None) -> dict[str, object] | None:
+        if path is None:
+            return None
+        resolved = path.expanduser().resolve()
+        if not resolved.is_file():
+            return {"path": str(resolved), "size_bytes": None, "sha256": None}
+        return {
+            "path": str(resolved),
+            "size_bytes": resolved.stat().st_size,
+            "sha256": cls._sha256(resolved),
+        }

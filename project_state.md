@@ -1,9 +1,9 @@
 # OpenROAD Platform — 工作记忆
 
 project_id: openroad-platform
-phase: P1：已完成，等待验收
-current_subgoal: 由用户验收 P0/P1；验收后制定 P2 ORFS 标准插件任务
-progress: 100%
+phase: P2：ORFS 标准插件迁移
+current_subgoal: 接通 ORFS adapter/ToolchainSnapshot 并完成新 Runtime 真实 RTL→GDS
+progress: 5%
 last_updated: 2026-08-04
 
 ## 已确认事实

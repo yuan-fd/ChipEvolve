@@ -7,6 +7,7 @@ import socket
 import time
 import uuid
 from pathlib import Path
+from typing import Callable
 
 from openroad_platform_contracts import RuntimeStatus, TaskSpec
 from openroad_platform_execution import PluginRegistry, ProcessAdapter
@@ -56,7 +57,12 @@ class WorkflowRuntime:
         )
         return run
 
-    def execute_once(self, run_id: str) -> RuntimeRun:
+    def execute_once(
+        self,
+        run_id: str,
+        *,
+        on_line: Callable[[str], None] | None = None,
+    ) -> RuntimeRun:
         run = self.store.get_run(run_id)
         stages = self.store.list_stages(run_id)
         ready = next(
@@ -89,6 +95,7 @@ class WorkflowRuntime:
                 run.task_spec,
                 workspace=workspace,
                 cancel_requested=pulse,
+                on_line=on_line,
             )
             if execution.result.status is RuntimeStatus.SUCCEEDED:
                 self.store.register_artifacts(attempt.attempt_id, execution.artifacts)
