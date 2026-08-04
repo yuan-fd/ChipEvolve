@@ -5,10 +5,10 @@ updated_at: 2026-08-04
 ## 当前首项动作
 
 ```bash
-cd ~/openroad-platform && sed -n '1,260p' tasks/phase-1.md
+cd ~/openroad-platform && python3 -m pytest -q tests/test_platform_contracts.py
 ```
 
-P0 验收已通过。提交 P0 后，将 `tasks/current_task.md` 切换为 `tasks/phase-1.md` 的内容，先实现 v1 公共 contracts 及其失败测试。
+先添加 v1 公共 contracts 的失败测试，再实现严格 schema/version/identifier/timeout/retry 校验。
 
 ## 重大问题暂停条件
 

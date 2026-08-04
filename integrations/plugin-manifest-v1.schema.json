@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openroad-platform.local/schemas/plugin-manifest-v1.json",
+  "title": "OpenROAD Platform PluginManifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "plugin_id",
+    "plugin_version",
+    "adapter_entry",
+    "capabilities",
+    "supported_arch",
+    "input_schema",
+    "output_schema"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "plugin_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+    "plugin_version": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+    "adapter_entry": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "supported_arch": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "input_schema": {"type": "object"},
+    "output_schema": {"type": "object"},
+    "required_tools": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "default": []
+    },
+    "default_timeout_seconds": {"type": "integer", "minimum": 1, "default": 3600},
+    "artifact_rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind"],
+        "properties": {
+          "kind": {"type": "string", "minLength": 1},
+          "required": {"type": "boolean"}
+        },
+        "additionalProperties": true
+      },
+      "default": []
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": {"type": "string"},
+      "default": {}
+    }
+  }
+}

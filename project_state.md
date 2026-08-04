@@ -1,9 +1,9 @@
 # OpenROAD Platform — 工作记忆
 
 project_id: openroad-platform
-phase: P0：已完成
-current_subgoal: 切换 P1 通用核心契约与 Workflow Runtime
-progress: 100%
+phase: P1：通用核心契约与 Workflow Runtime
+current_subgoal: 实现 v1 contracts、Registry、Attempt 状态机与子进程闭环
+progress: 5%
 last_updated: 2026-08-04
 
 ## 已确认事实
@@ -40,4 +40,4 @@ last_updated: 2026-08-04
 
 ## handoff_anchor
 
-P0 验收通过；提交 P0 后按 `tasks/phase-1.md` 自动进入 P1。
+P0 commit 为 `afdca1ef...`；P1 current_task 已切换，先以测试驱动实现 v1 contracts。

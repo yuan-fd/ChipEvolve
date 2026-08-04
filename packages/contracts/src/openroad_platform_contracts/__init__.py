@@ -11,6 +11,16 @@ from .models import (
     RunStatus,
     StageResult,
 )
+from .platform import (
+    SCHEMA_VERSION,
+    ActionProposal,
+    Event,
+    PluginManifest,
+    PluginResult,
+    RuntimeStatus,
+    TaskSpec,
+    TERMINAL_RUNTIME_STATUSES,
+)
 
 __all__ = [
     "Artifact",
@@ -22,5 +32,12 @@ __all__ = [
     "RunStage",
     "RunStatus",
     "StageResult",
+    "SCHEMA_VERSION",
+    "ActionProposal",
+    "Event",
+    "PluginManifest",
+    "PluginResult",
+    "RuntimeStatus",
+    "TaskSpec",
+    "TERMINAL_RUNTIME_STATUSES",
 ]
-

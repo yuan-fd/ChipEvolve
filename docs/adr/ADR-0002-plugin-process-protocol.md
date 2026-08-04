@@ -14,12 +14,15 @@ RTLScout、AgenticPD、TaiWei 与核心平台的 Python、工具链、PDK 和系
 
 插件 manifest 固定 adapter entry、环境、能力、架构、输入输出 Schema、工具要求、超时和 artifact rules。跨节点需求出现前不引入网络微服务或消息队列。
 
+P1 的威胁模型限定为固定版本且经过审查的本地 adapter。受控 cwd 与产物路径校验限制协议输入输出位置，但普通子进程仍继承运行账号的文件系统权限；它不是针对恶意代码的 OS 沙箱。第三方真实接入前若需要运行不可信代码，必须另立 ADR 选择容器、namespace/seccomp 或等价隔离，并完成安全验证。
+
 ## 影响
 
 - 插件可以使用不同 Python 和工具链。
 - 需要协议 conformance tests 和清晰的日志通道。
 - 大文件使用 Artifact 引用，不能塞入 JSON。
 - 将来可把同一 adapter envelope 搬到队列 worker，而无需改变业务契约。
+- 当前不得把“独立环境”表述为恶意代码隔离；生产插件接入需显式复核信任级别。
 
 ## 被否决方案
 

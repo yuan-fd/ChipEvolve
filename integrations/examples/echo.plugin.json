@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "plugin_id": "echo",
+  "plugin_version": "1.0.0",
+  "adapter_entry": ["python3", "./echo_adapter.py"],
+  "capabilities": ["test.echo"],
+  "supported_arch": ["aarch64", "x86_64"],
+  "input_schema": {"type": "object"},
+  "output_schema": {"type": "object"},
+  "required_tools": ["python3"],
+  "default_timeout_seconds": 10,
+  "artifact_rules": [{"kind": "report", "required": true}],
+  "environment": {}
+}
