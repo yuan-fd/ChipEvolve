@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-04",
+  "policy": "External source is cached under .external-src and is never vendored into the platform repository.",
+  "plugins": [
+    {
+      "plugin_id": "rtlscout",
+      "repository": "https://github.com/huawei-csl/rtlscout.git",
+      "branch_at_audit": "main",
+      "commit": "87a00edf6b9208f657dd9ffdda170004024c08ae",
+      "cache_path": ".external-src/rtlscout",
+      "license": "BSD-3-Clause-Clear",
+      "entrypoint": "run_benchmark.py",
+      "required_python": ">=3.10",
+      "submodules": {
+        "deps/spire-hdl": "448f3935bd78ac96edb1d941d1c18b82cc319963"
+      }
+    },
+    {
+      "plugin_id": "agenticpd",
+      "repository": "https://github.com/Cheatnut/AgenticPD.git",
+      "branch_at_audit": "main",
+      "commit": "4322a25c1d57bc88d576fd2ce6898a52d30d92c7",
+      "cache_path": ".external-src/agenticpd",
+      "license": null,
+      "license_status": "not_declared_in_repository",
+      "entrypoints": [
+        "main.py",
+        "multi_agent_gwtw.py"
+      ],
+      "required_python": ">=3.10 (project report baseline)"
+    },
+    {
+      "plugin_id": "taiwei-pin-3d",
+      "repository": "https://github.com/CODA-Team/TaiWei-Pin-3D.git",
+      "branch_at_audit": "main",
+      "commit": "db20136711ed8c0cdfed67a6123d059875764abd",
+      "cache_path": ".external-src/taiwei-pin-3d",
+      "license": "BSD-3-Clause",
+      "entrypoint": "run_experiments.py",
+      "tested_toolchain": {
+        "orfs_research_commit": "568eb04da9173695d6bfc1b10ba868e0b6b8a9fa",
+        "openroad_commit": "305d3ba2ddfd00591924cc586ad408179f566afe"
+      }
+    }
+  ]
+}

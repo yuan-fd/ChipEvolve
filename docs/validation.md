@@ -10,7 +10,7 @@ Validated on 2026-07-24 with:
 
 ## Automated tests
 
-`python3 -m pytest -q` passes 15 tests. Coverage includes contracts, queue
+The current `python3 -m pytest -q` baseline passes 22 tests. Coverage includes contracts, queue
 reopen/claim/cancel, silent-process timeout, process-group cleanup, simulated
 six-stage ORFS execution, artifact hard gates, recoverable GDS export, metric
 parsing, density data, netlist analysis, and dependency-free circuit overview.
@@ -37,3 +37,16 @@ This proves the GDS path without hiding the failed implementation gate.
 Generated smoke-run workspaces are removed after validation; they are runtime
 artifacts and are excluded by `.gitignore`.
 
+## P0 evidence re-audit (2026-08-04)
+
+The persisted development database contains six jobs: two succeeded and four
+failed. One succeeded job completed all six stages through `finish` and records
+both `implementation_valid=true` and `gds_complete=true`.
+
+P0 recomputed the size and SHA-256 of every artifact referenced by the six
+stored results: 45 matched, zero were missing, and zero differed. The older
+finish-failure/GDS-recovery evidence remains valid and continues to report a
+failed implementation rather than hiding the failed gate.
+
+These records are historical evidence, not a substitute for the new Runtime
+and ORFS-plugin acceptance run required in P2.

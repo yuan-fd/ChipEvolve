@@ -1,6 +1,6 @@
 # 当前任务：P0 基线封存、安全治理与事实定版
 
-status: approved
+status: completed
 phase: P0
 approved_at: 2026-08-04
 
@@ -87,3 +87,14 @@ approved_at: 2026-08-04
 - 资源：P0 不运行真实 EDA；下载和静态审计保持有界。
 - 同一根因最多尝试三次，每次必须改变措施。
 - 若需要改变唯一调度权威、数据主键语义、安全边界或修改项目外共享工具链，立即暂停并提交方案。
+
+## 验收状态
+
+- 结果：完成。
+- 初始安全基线：`e788a362e27318ee6950db1793bd47040e577d49`。
+- 平台测试：`python3 -m pytest -q`，22 passed。
+- 历史产物：45 matched、0 missing、0 mismatch。
+- 外部源码：三个仓库均为批准 commit、detached HEAD、clean worktree。
+- secret scan：通过；项目记忆不再保存明文凭据。
+- 范围：仅修改 P0 白名单；未修改 `var/`、共享工具链或第三方源码。
+- 遗留风险：AgenticPD license 未声明；RTLScout ARM 可行性和 TaiWei 独立工具链真实运行属于后续阶段门槛。
