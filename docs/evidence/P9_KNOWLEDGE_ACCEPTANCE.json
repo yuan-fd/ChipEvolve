@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "phase": "P9",
+  "accepted": true,
+  "real_evidence_replay": {
+    "source": "docs/evidence/P5_AGENTICPD_ACCEPTANCE.json",
+    "source_sha256": "6aef7414c8076aac6614d9139fb0e74c66c954b4df8e7e04532b53ec4c500789",
+    "context": {
+      "design_id": "p4_simple_adder",
+      "platform": "nangate45",
+      "pdk_id": "nangate45-public",
+      "toolchain_id": "orfs-51ad123"
+    },
+    "search_score": 1.0,
+    "replay_status": "approved_for_policy_evaluation",
+    "executed": false
+  },
+  "hard_filters": ["platform", "pdk_id", "toolchain_id", "design_id_or_platform_scope"],
+  "unverified_rejected": true,
+  "stale_fingerprint_rejected": true,
+  "tests": "81 passed"
+}

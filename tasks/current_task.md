@@ -1,19 +1,19 @@
-# 当前任务：P8 TaiWei-Pin-3D 黑箱插件
+# 当前任务：P9 证据知识库与跨实验复用
 
-status: completed_with_external_blocker
-phase: P8
+status: completed
+phase: P9
 approved_at: 2026-08-04
 started_at: 2026-08-04
-base_commit: 339f34f
+base_commit: 00cf2f8
 completed_at: 2026-08-04
 
 ## 结果
 
-- 固定 TaiWei 与独立 3D profile 黑箱插件已实现，协议 fixture 通过。
-- 固定 3D 工具链不可得且现有版本不匹配，生产 manifest 实测 fail closed。
-- 真实 gcd/GDS 未执行，证据明确 `accepted=false`；全量 78 passed。
+- verified+证据 SHA+完整上下文准入、严格版本检索和安全回放已实现。
+- P5 真实证据完成一次可核验导入/搜索/replay，始终 `executed=false`。
+- 错版本、未验证、无 SHA 和篡改指纹测试通过；全量 81 passed。
 
 ## 恢复锚点
 
-- P7 提交：`339f34f`。
-- 下一阶段：P9 证据知识库、版本隔离检索和建议回放。
+- P8 提交：`00cf2f8`。
+- 下一阶段：P10 隔离 Coding/Evolve Agent 与最终闸门。
