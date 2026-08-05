@@ -1,7 +1,10 @@
 # Flow optimization workflow
 
-The migrated platform accepts explicit ORFS parameters and records their
-effective configuration. It does not currently claim Bayesian, agentic, or
-multi-objective optimization. Density sweeps and external optimizer adapters
-will submit child runs through the same durable scheduler.
+P13 accepts allowlisted ORFS parameter grids and records their effective
+configuration. `StageAwareCampaignManager` applies concurrency limits, stage
+wall-clock pruning, append-only decisions, metric Top-K and LimitedReAct child
+runs without taking state authority away from Runtime.
 
+The first doomed-run policy is an explainable stage-budget rule. It does not
+claim Bayesian, reinforcement-learning, Gaussian-process or learned doomed-run
+prediction. Those remain P14 inputs after the corresponding papers arrive.

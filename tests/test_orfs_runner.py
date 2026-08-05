@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from openroad_platform_contracts import RunRequest, RunStatus
+from openroad_platform_contracts import RunRequest, RunStage, RunStatus
 from openroad_platform_execution import ORFSRunner
 
 
@@ -109,3 +109,22 @@ def test_finish_failure_can_export_gds_without_claiming_valid_implementation(tmp
     assert result.milestones["implementation_valid"] is False
     assert result.milestones["gds_complete"] is True
     assert "GDS export succeeded" in result.error
+
+
+def test_explicit_minimum_die_area_excludes_utilization_floorplan_mode(tmp_path):
+    orfs, bin_dir = _fake_runtime(tmp_path)
+    rtl = tmp_path / "tiny.v"
+    rtl.write_text("module tiny(input a, output y); assign y=~a; endmodule\n")
+    runner = ORFSRunner(
+        orfs_root=orfs, work_root=tmp_path / "runs",
+        openroad_bin=bin_dir / "openroad", yosys_bin=bin_dir / "yosys",
+    )
+    request = RunRequest(
+        rtl_path=str(rtl), top="tiny", target_stage=RunStage.SYNTH,
+        minimum_die_size_um=20,
+    )
+    plan = runner.prepare(request)
+    config = Path(plan.config_path).read_text()
+    assert "DIE_AREA = 0 0 20 20" in config
+    assert "CORE_AREA = 2 2 18 18" in config
+    assert "CORE_UTILIZATION" not in config

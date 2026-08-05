@@ -1,11 +1,18 @@
 # Spec to GDS workflow
 
-This workflow is intentionally not marked implemented. Its acceptance chain is:
+P12 implements the bounded local control loop:
 
-structured specification -> RTL candidate -> lint/compile -> executable tests
-and reference model -> simulation/formal checks -> user acceptance -> ORFS run.
+multi-turn specification -> structured proposal -> optional RTL candidate ->
+deterministic validation -> explicit confirmation -> authoritative Runtime ->
+ORFS stages -> hashed GDS and visual evidence.
 
-The generator in `~/iccad/generate_and_analyze.py` remains a baseline candidate,
-but synthesis success is not functional verification. It will be adapted only
-after the validation request/result contracts exist.
+`CodexCliSpecProvider` supports only allowlisted Terra/Sol models and runs in an
+ephemeral read-only empty directory. The deterministic Provider remains usable
+offline. Provider output is data, never a command. Sessions enforce turn, call,
+EDA-run, repair and wall-clock budgets; Runtime submission requires confirmation
+and is idempotent by stable task id.
 
+The real P12 acceptance produced GDS after an evidence-bounded floorplan-area
+repair. Synthesis success is still not general functional verification: designs
+that require reference models, simulation or formal proof must attach those
+checks before `functionally_verified` can be true.

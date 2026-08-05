@@ -382,7 +382,8 @@ class RepairAction:
                             ("reason_code", self.reason_code)):
             _validate_identifier(name, value)
         if self.action_type not in {
-            "retry", "increase_timeout", "lower_core_utilization", "stop",
+            "retry", "increase_timeout", "lower_core_utilization",
+            "increase_floorplan_area", "stop",
         }:
             raise ValueError("RepairAction action_type is not allowlisted")
         _validate_mapping("parameters", self.parameters)
@@ -393,6 +394,7 @@ class RepairAction:
         allowed = {
             "retry": set(), "increase_timeout": {"timeout_seconds"},
             "lower_core_utilization": {"core_utilization_pct"},
+            "increase_floorplan_area": {"minimum_die_size_um"},
             "stop": {"terminal_reason"},
         }[self.action_type]
         if set(self.parameters) != allowed:
@@ -407,6 +409,11 @@ class RepairAction:
             and 1 <= self.parameters["core_utilization_pct"] <= 99
         ):
             raise ValueError("core_utilization_pct is outside the repair policy")
+        if self.action_type == "increase_floorplan_area" and not (
+            isinstance(self.parameters["minimum_die_size_um"], (int, float))
+            and 5 <= self.parameters["minimum_die_size_um"] <= 200
+        ):
+            raise ValueError("minimum_die_size_um is outside the repair policy")
 
     def to_dict(self) -> dict[str, Any]:
         self.validate()

@@ -63,6 +63,8 @@ class NaturalLanguageTaskCompiler:
             stage = "floorplan"
         elif "place" in lowered or "放置" in intent:
             stage = "place"
+        elif "cts" in lowered or "时钟树" in intent:
+            stage = "cts"
         elif ("route" in lowered or "布线" in intent) and "gds" not in lowered:
             stage = "route"
         period = self._float(intent, rf"{NUMBER}\s*ns", default=10.0,
@@ -136,6 +138,14 @@ class LimitedReActController:
                                     {"terminal_reason": "utilization_limit_reached"}, refs)
             return self._action("lower_core_utilization", category,
                                 {"core_utilization_pct": target}, refs)
+        if category == "pdn_insufficient_area" and task.plugin_id == "orfs":
+            current = float(task.parameters.get("minimum_die_size_um") or 0.0)
+            target = 20.0 if current < 20.0 else min(200.0, current * 1.5)
+            if target == current:
+                return self._action("stop", category,
+                                    {"terminal_reason": "floorplan_area_limit_reached"}, refs)
+            return self._action("increase_floorplan_area", category,
+                                {"minimum_die_size_um": target}, refs)
         return self._action("stop", category,
                             {"terminal_reason": "failure_not_repairable"}, refs)
 
@@ -157,6 +167,11 @@ class LimitedReActController:
             changes["parameters"] = {
                 **task.parameters,
                 "core_utilization_pct": action.parameters["core_utilization_pct"],
+            }
+        elif action.action_type == "increase_floorplan_area":
+            changes["parameters"] = {
+                **task.parameters,
+                "minimum_die_size_um": action.parameters["minimum_die_size_um"],
             }
         result = dataclasses.replace(task, **changes)
         result.validate()

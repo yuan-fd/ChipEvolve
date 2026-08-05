@@ -13,7 +13,9 @@ from pathlib import Path
 from typing import Any
 
 from openroad_platform_analysis.netlist import summarize_netlist
-from openroad_platform_visualization import generate_svg, parse_ports_and_gates
+from openroad_platform_visualization import (
+    generate_schematic_svg, generate_svg, parse_ports_and_gates,
+)
 
 
 SAFE_ID = re.compile(r"^design-[0-9]+-[a-f0-9]{8}$")
@@ -91,9 +93,7 @@ class DesignService:
     def schematic(self, design_id: str) -> str:
         manifest = self.get(design_id)
         netlist_path = self._directory(design_id) / manifest["netlist_file"]
-        return generate_svg(parse_ports_and_gates(netlist_path.read_text(
-            encoding="utf-8", errors="replace"
-        )))
+        return self._render_schematic(netlist_path)
 
     def import_rtl(
         self,
@@ -218,12 +218,7 @@ class DesignService:
     ) -> dict[str, Any]:
         analysis = summarize_netlist(netlist_path)
         schematic_path = directory / "schematic.svg"
-        schematic_path.write_text(
-            generate_svg(parse_ports_and_gates(netlist_path.read_text(
-                encoding="utf-8", errors="replace"
-            ))),
-            encoding="utf-8",
-        )
+        schematic_path.write_text(self._render_schematic(netlist_path), encoding="utf-8")
         manifest = {
             "id": design_id,
             "module": module,
@@ -241,6 +236,15 @@ class DesignService:
             manifest["generation_log"] = log_path.name
         self._write_json(directory / "manifest.json", manifest)
         return manifest
+
+    @staticmethod
+    def _render_schematic(netlist_path: Path) -> str:
+        text = netlist_path.read_text(encoding="utf-8", errors="replace")
+        try:
+            return generate_schematic_svg(text)
+        except Exception:
+            # Keep the deterministic overview available if Graphviz is absent.
+            return generate_svg(parse_ports_and_gates(text))
 
     def _directory(self, design_id: str) -> Path:
         if not SAFE_ID.fullmatch(design_id):

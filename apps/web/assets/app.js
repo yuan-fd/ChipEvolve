@@ -150,25 +150,23 @@ async function importDesign(file) {
 }
 
 function statusLabel(status) {
-  return ({queued:"排队中",preparing:"准备中",running:"执行中",cancel_requested:"取消中",cancelled:"已取消",succeeded:"已完成",failed:"未通过"})[status] || status;
+  return ({queued:"排队中",preparing:"准备中",running:"执行中",retry_wait:"等待重试",cancel_requested:"取消中",cancelled:"已取消",succeeded:"已完成",failed:"未通过",timed_out:"已超时",lost:"Worker 丢失"})[status] || status;
 }
 
 async function loadRuns(preferredId = null) {
-  state.runs = (await api("/api/runs")).runs;
+  state.runs = (await api("/api/runtime/runs")).runs.filter((run) => run.plugin_id === "orfs");
   $("#runCount").textContent = state.runs.length;
   $("#runSelect").innerHTML = '<option value="">选择运行记录</option>' + state.runs.map((run) => {
-    const name = run.request.labels?.design_id
-      ? state.designs.find((item) => item.id === run.request.labels.design_id)?.module
-      : run.request.top;
-    return `<option value="${escapeHtml(run.id)}">${escapeHtml(name || run.request.top || "design")} · ${statusLabel(run.status)} · ${run.request.target_stage}</option>`;
+    const name = state.designs.find((item) => item.id === run.design_id)?.module || run.design_id;
+    return `<option value="${escapeHtml(run.run_id)}">${escapeHtml(name || "design")} · ${statusLabel(run.status)}</option>`;
   }).join("");
-  const selected = preferredId || state.selectedRun?.id;
-  if (selected && state.runs.some((run) => run.id === selected)) {
+  const selected = preferredId || state.selectedRun?.run?.run_id;
+  if (selected && state.runs.some((run) => run.run_id === selected)) {
     $("#runSelect").value = selected;
     await selectRun(selected);
   } else if (state.runs.length && !state.selectedRun) {
-    $("#runSelect").value = state.runs[0].id;
-    await selectRun(state.runs[0].id);
+    $("#runSelect").value = state.runs[0].run_id;
+    await selectRun(state.runs[0].run_id);
   }
 }
 
@@ -179,7 +177,7 @@ async function startFlow() {
   button.disabled = true;
   setMessage("#flowMessage", "正在写入持久化队列...", false);
   try {
-    const run = await post("/api/runs/from-design", {
+    const detail = await post("/api/runtime/runs/from-design", {
       design_id: designId,
       top: $("#flowTop").value.trim() || null,
       clock: $("#flowClock").value.trim() || null,
@@ -188,46 +186,60 @@ async function startFlow() {
       place_density: Number($("#flowDensity").value),
       target_stage: $("#flowTarget").value,
     });
-    setMessage("#flowMessage", `任务 ${run.id.slice(0,12)} 已提交，worker 将独立执行。`, false);
-    await loadRuns(run.id);
+    const runId = detail.run.run_id;
+    setMessage("#flowMessage", `Runtime 任务 ${runId.slice(0,12)} 已提交，worker 将独立执行。`, false);
+    await loadRuns(runId);
   } catch (error) { setMessage("#flowMessage", error.message, true); }
   finally { button.disabled = false; }
 }
 
 async function selectRun(id) {
   if (!id) return;
-  const run = await api(`/api/runs/${encodeURIComponent(id)}`);
-  state.selectedRun = run;
+  const detail = await api(`/api/runtime/runs/${encodeURIComponent(id)}`);
+  const run = detail.run;
+  state.selectedRun = detail;
   $("#runSelect").value = id;
-  const design = state.designs.find((item) => item.id === run.request.labels?.design_id);
-  const result = run.result || {};
-  $("#flowSummary").innerHTML = `<span class="run-status ${escapeHtml(run.status)}">${escapeHtml(run.status.toUpperCase())}</span><div><b>${escapeHtml(design?.module || run.request.top || "Design")} · ${statusLabel(run.status)}</b><small>${escapeHtml(run.id)} · target ${escapeHtml(run.request.target_stage)}</small></div>`;
-  const stages = new Map((result.stages || []).map((item) => [item.stage,item]));
+  const task = run.task_spec || {};
+  const design = state.designs.find((item) => item.id === task.design_id);
+  $("#flowSummary").innerHTML = `<span class="run-status ${escapeHtml(run.status)}">${escapeHtml(run.status.toUpperCase())}</span><div><b>${escapeHtml(design?.module || task.inputs?.top || "Design")} · ${statusLabel(run.status)}</b><small>${escapeHtml(run.run_id)} · target ${escapeHtml(task.parameters?.target_stage || "finish")}</small></div>`;
+  const stages = new Map();
+  (detail.events || []).forEach((event) => {
+    const name = event.payload?.tool_stage;
+    if (event.event_type === "tool.stage.started" && name) stages.set(name, {status:"running"});
+    if (event.event_type === "tool.stage.finished" && name) stages.set(name, {status:event.payload.status, seconds:event.payload.seconds});
+  });
   $("#stageRail").innerHTML = stageOrder.map((name,index) => {
     const stage = stages.get(name);
     const className = stage?.status === "succeeded" ? "done" : stage?.status === "failed" ? "failed" : "";
-    return `<div class="flow-stage ${className}"><span>0${index+1}</span><b>${name}</b><small>${stage ? `${statusLabel(stage.status)} · ${Number(stage.seconds).toFixed(1)}s` : stageLabels[name]}</small></div>`;
+    const seconds = Number.isFinite(Number(stage?.seconds)) ? ` · ${Number(stage.seconds).toFixed(1)}s` : "";
+    return `<div class="flow-stage ${className}"><span>0${index+1}</span><b>${name}</b><small>${stage ? `${statusLabel(stage.status)}${seconds}` : stageLabels[name]}</small></div>`;
   }).join("");
-  renderPhysicalEvidence(run);
+  renderPhysicalEvidence(detail);
 }
 
-function renderPhysicalEvidence(run) {
-  const result = run.result;
-  if (!result) {
+function renderPhysicalEvidence(detail) {
+  const run = detail.run;
+  const attempts = (detail.stages || []).flatMap((stage) => stage.attempts || []);
+  const attempt = attempts[attempts.length - 1];
+  if (!attempt) {
     $("#physicalEvidence").innerHTML = '<div class="empty-state"><b>任务正在等待或执行</b><p>页面每 5 秒自动读取一次持久化状态。</p></div>';
     return;
   }
-  const milestones = result.milestones || {};
+  const kinds = new Set((attempt.artifacts || []).map((item) => item.kind));
+  const milestones = {
+    synthesizable: kinds.has("odb"), functionally_verified: false,
+    implementation_valid: run.status === "succeeded" && kinds.has("gds"),
+    gds_complete: kinds.has("gds"),
+  };
   const milestoneLabels = {synthesizable:"可综合",functionally_verified:"功能已验证",implementation_valid:"实现有效",gds_complete:"GDS 完成"};
-  const metrics = result.metrics || [];
-  const report = run.analysis_report || {};
-  const diagnosis = report.diagnosis || {};
+  const metrics = attempt.metrics || [];
+  const views = (attempt.artifacts || []).filter((artifact) => artifact.kind === "layout_view");
   $("#physicalEvidence").innerHTML = `
     <div class="milestone-row">${Object.entries(milestoneLabels).map(([key,label]) => `<div class="milestone"><small>${label}</small><b class="${milestones[key] ? "pass" : ""}">${milestones[key] ? "PASS" : "NOT PROVEN"}</b></div>`).join("")}</div>
-    ${result.error ? `<p class="action-message error">${escapeHtml(result.error)}</p>` : ""}
-    ${diagnosis.summary ? `<div class="analysis-item" style="margin-top:14px"><small>物理分析结论</small><b>${escapeHtml(diagnosis.summary)}</b></div>` : ""}
+    ${attempt.failure ? `<p class="action-message error">${escapeHtml(attempt.failure.message || attempt.failure.category)}</p>` : ""}
+    ${views.map((view) => `<figure class="layout-preview"><img src="${escapeHtml(view.url)}" alt="2D GDS 版图"><figcaption>KLayout 真实 GDS 预览 · ${escapeHtml(view.store_key)}</figcaption></figure>`).join("")}
     <table class="metrics-table">${metrics.slice(0,12).map((metric) => `<tr><td>${escapeHtml(metric.name)}</td><td>${escapeHtml(metric.value)} ${escapeHtml(metric.unit || "")}</td></tr>`).join("")}</table>
-    <div class="artifact-list">${(result.artifacts || []).map((artifact) => `<div class="artifact"><span>${escapeHtml(artifact.kind)}</span><span>${escapeHtml(artifact.path)}</span><span>${(artifact.size_bytes/1024).toFixed(1)} KiB</span></div>`).join("")}</div>`;
+    <div class="artifact-list">${(attempt.artifacts || []).map((artifact) => `<a class="artifact" href="${escapeHtml(artifact.url)}" target="_blank" rel="noopener"><span>${escapeHtml(artifact.kind)}</span><span>${escapeHtml(artifact.store_key)}</span><span>${(artifact.size_bytes/1024).toFixed(1)} KiB</span></a>`).join("")}</div>`;
 }
 
 async function loadThreeDRuns(preferredId = null) {
@@ -260,9 +272,9 @@ async function selectThreeDRun(runId) {
     [hbViaCount !== "--" ? hbViaCount : (tiers.hbt_named_instances ?? "--"), "HB via (physical)"],
     [metricValue(data.metrics, "finish__route__cross_tier_nets__all"), "Cross-tier nets"],
   ].map(([value,label]) => `<div class="kpi"><b>${escapeHtml(value ?? "--")}</b><small>${escapeHtml(label)}</small></div>`).join("");
-  const view = data.artifacts.find((artifact) => artifact.kind === "three_d_view");
-  $("#threeDView").innerHTML = view
-    ? `<img src="${escapeHtml(view.url)}" alt="TaiWei gcd 上下层最终布局视图">`
+  const views = data.artifacts.filter((artifact) => ["layout_view","three_d_view"].includes(artifact.kind));
+  $("#threeDView").innerHTML = views.length
+    ? views.map((view) => `<figure><img src="${escapeHtml(view.url)}" alt="TaiWei gcd ${escapeHtml(view.kind)}"><figcaption>${escapeHtml(view.store_key)}</figcaption></figure>`).join("")
     : '<div class="empty-state"><b>3D 视图生成中</b><p>完成 final DEF 后自动出现。</p></div>';
   const important = Object.entries(data.metrics || {}).filter(([name]) =>
     /hb_via|cross_tier|timing__setup|power__total|instance__area|drc_errors/.test(name)

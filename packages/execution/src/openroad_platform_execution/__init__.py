@@ -27,6 +27,10 @@ from .taiwei_plugin import (
     TAIWEI_PLUGIN_VERSION, TAIWEI_UPSTREAM_COMMIT, TaiWeiToolchainProfile,
     build_taiwei_task, taiwei_plugin_manifest,
 )
+from .implcraft_plugin import (
+    IMPLCRAFT_PLUGIN_ID, IMPLCRAFT_PLUGIN_VERSION, IMPLCRAFT_UPSTREAM_COMMIT,
+    build_implcraft_task, implcraft_plugin_manifest,
+)
 from .coding_agent import (
     CandidateEvaluation, IsolatedCodingAgent, PatchProposal, PromotionGate,
     VerificationPolicy,
@@ -44,6 +48,8 @@ __all__ = [
     "TAIWEI_OPENROAD_COMMIT", "TAIWEI_ORFS_COMMIT", "TAIWEI_PLUGIN_ID",
     "TAIWEI_PLUGIN_VERSION", "TAIWEI_UPSTREAM_COMMIT", "TaiWeiToolchainProfile",
     "build_taiwei_task", "taiwei_plugin_manifest",
+    "IMPLCRAFT_PLUGIN_ID", "IMPLCRAFT_PLUGIN_VERSION", "IMPLCRAFT_UPSTREAM_COMMIT",
+    "build_implcraft_task", "implcraft_plugin_manifest",
     "CandidateEvaluation", "IsolatedCodingAgent", "PatchProposal", "PromotionGate",
     "VerificationPolicy",
 ]

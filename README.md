@@ -13,6 +13,11 @@ workspaces:
   state, physical HB-via and cross-tier metrics, hashed GDS/DEF/ODB evidence,
   and replay/toolchain provenance.
 
+The common control plane also includes EDACraft/ImplCraft script generation,
+bounded multi-turn Spec-to-GDS sessions, and stage-aware parameter Campaigns.
+Schematics use Graphviz, 2D GDS uses KLayout, and the 3D layer view uses real
+KLayout polygons rendered as a sampled layer stack.
+
 The natural-language generator is isolated behind `DesignService`. It can use
 the proven generator in `../iccad` through the `ICCAD_ROOT` adapter, while all
 generated designs, analysis, jobs, and implementation artifacts are owned by
@@ -103,6 +108,14 @@ or TLS termination.
 ```bash
 curl -fsS http://127.0.0.1:8000/api/health
 python3 -m pytest -q
+```
+
+P11-P13 acceptance can be replayed into new empty ignored directories:
+
+```bash
+python scripts/run_p11_acceptance.py --output-root .tools/p11-acceptance/new
+python scripts/run_p12_acceptance.py --output-root .tools/p12-acceptance/new
+python scripts/run_p13_acceptance.py --output-root .tools/p13-acceptance/new
 ```
 
 `execution_ready` and `generator_ready` must both be `true` for the two full

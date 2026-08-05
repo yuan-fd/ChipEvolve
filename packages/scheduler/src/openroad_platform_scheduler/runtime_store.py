@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import uuid
 from dataclasses import dataclass
@@ -481,6 +482,31 @@ class RuntimeStore:
             for row in rows
         ]
 
+    def record_event(
+        self, run_id: str, event_type: str, payload: dict[str, Any], *,
+        stage_run_id: str, attempt_id: str, producer: str,
+    ) -> None:
+        """Append a structured adapter event after strict ownership checks."""
+        if not re.fullmatch(r"tool\.stage\.(?:started|finished|pruned)", event_type):
+            raise ValueError(f"Adapter event type is not allowlisted: {event_type}")
+        if not isinstance(payload, dict) or len(json.dumps(payload, ensure_ascii=False)) > 16_384:
+            raise ValueError("Adapter event payload is invalid or too large")
+        if not re.fullmatch(r"[A-Za-z0-9_.:@-]{1,128}", producer):
+            raise ValueError("Invalid event producer")
+        with self._transaction() as connection:
+            owner = connection.execute(
+                """SELECT s.run_id, a.stage_run_id FROM runtime_attempts a
+                   JOIN runtime_stage_runs s ON s.stage_run_id = a.stage_run_id
+                   WHERE a.attempt_id = ?""", (attempt_id,),
+            ).fetchone()
+            if owner is None:
+                raise KeyError(f"Unknown attempt: {attempt_id}")
+            if owner["run_id"] != run_id or owner["stage_run_id"] != stage_run_id:
+                raise ValueError("Event run/stage/attempt ownership mismatch")
+            self._event(connection, run_id, event_type, payload,
+                        stage_run_id=stage_run_id, attempt_id=attempt_id,
+                        producer=producer)
+
     def artifacts(self, attempt_id: str) -> list[dict[str, Any]]:
         with self._connect() as connection:
             rows = connection.execute(
@@ -791,6 +817,7 @@ class RuntimeStore:
         *,
         stage_run_id: str | None = None,
         attempt_id: str | None = None,
+        producer: str = "runtime",
     ) -> None:
         connection.execute(
             """INSERT INTO runtime_events
@@ -799,7 +826,7 @@ class RuntimeStore:
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (uuid.uuid4().hex, run_id, stage_run_id, attempt_id,
              RUNTIME_SCHEMA_VERSION, event_type,
-             "runtime", json.dumps(payload, ensure_ascii=False), _now()),
+             producer, json.dumps(payload, ensure_ascii=False), _now()),
         )
 
     @staticmethod

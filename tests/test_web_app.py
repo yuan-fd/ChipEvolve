@@ -140,6 +140,28 @@ def test_natural_language_api_returns_preview_without_submitting(tmp_path):
     assert preview["task_spec"]["parameters"]["core_utilization_pct"] == 30.0
     assert state.runtime_store.list_runs() == []
 
+    session = state.create_spec_session({
+        "design_id": design["id"], "provider": "deterministic",
+        "message": "用 OpenROAD 跑到 GDS，顶层 nl_top，利用率 25%",
+    })
+    assert session["status"] == "ready"
+    submitted = state.execute_spec_session(session["session_id"], {"confirmed": True})
+    assert submitted["status"] == "executing"
+    assert submitted["runtime"]["run"]["status"] == "queued"
+    assert submitted["runtime"]["run"]["task_spec"]["labels"]["spec_session_id"] == session["session_id"]
+    repeated = state.execute_spec_session(session["session_id"], {"confirmed": True})
+    assert repeated["run_id"] == submitted["run_id"]
+    assert len(state.runtime_store.list_runs()) == 1
+
+    campaign = state.create_stage_campaign({
+        "design_id": design["id"], "name": "api-grid",
+        "parameter_grid": {"core_utilization_pct": [20, 30]},
+        "max_parallel": 2, "stage_budgets": {"place": 120},
+        "objective_metric": "finish__timing__setup__ws",
+    })
+    assert len(campaign["members"]) == 2
+    assert campaign["stage_policy"]["stage_budgets"] == {"place": 120.0}
+
 
 def test_design_import_creates_netlist_schematic_and_analysis(tmp_path):
     yosys = which("yosys")

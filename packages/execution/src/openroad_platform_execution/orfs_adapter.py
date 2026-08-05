@@ -20,6 +20,7 @@ for source_root in (
     REPOSITORY_ROOT / "packages/contracts/src",
     REPOSITORY_ROOT / "packages/execution/src",
     REPOSITORY_ROOT / "packages/analysis/src",
+    REPOSITORY_ROOT / "packages/visualization/src",
 ):
     sys.path.insert(0, str(source_root))
 
@@ -81,6 +82,9 @@ def main() -> int:
         result = runner.run(
             plan,
             cancel_requested=cancelled.is_set,
+            on_stage_start=lambda stage: print(
+                f"[orfs-stage-start] {stage.value}", flush=True
+            ),
             on_stage=lambda stage: print(
                 f"[orfs-stage] {stage.stage.value} {stage.status.value} "
                 f"{stage.seconds:.3f}s",
@@ -140,6 +144,10 @@ def _legacy_request(task: TaskSpec, staged_rtl: Path) -> RunRequest:
         target_stage=target,
         core_utilization_pct=float(parameters.get("core_utilization_pct", 10.0)),
         place_density=float(parameters.get("place_density", 0.45)),
+        minimum_die_size_um=(
+            float(parameters["minimum_die_size_um"])
+            if parameters.get("minimum_die_size_um") is not None else None
+        ),
         stage_timeout_seconds=int(parameters.get("stage_timeout_seconds", 3600)),
         run_id="implementation",
         labels={"task_id": task.task_id, "design_id": task.design_id},
@@ -156,6 +164,21 @@ def _plugin_result(result, *, plan_workdir: Path, workspace: Path, input_referen
             "path": str(path.resolve().relative_to(workspace)),
             "legacy_kind": artifact.kind.value,
         })
+    gds = next((plan_workdir / artifact.path for artifact in result.artifacts
+                if Path(artifact.path).suffix.lower() == ".gds"), None)
+    if gds is not None and gds.is_file():
+        try:
+            from openroad_platform_visualization import render_gds
+            preview = plan_workdir / "visuals/final_layout_2d.png"
+            render_gds(gds, preview, dpi=150)
+            artifacts.append({
+                "kind": "layout_view",
+                "path": str(preview.resolve().relative_to(workspace)),
+                "renderer": "KLayout pya.LayoutView",
+            })
+        except Exception as exc:
+            # The GDS remains authoritative; preview generation is optional.
+            print(f"[visualization-warning] {type(exc).__name__}: {exc}", flush=True)
     run_result = plan_workdir / "run_result.json"
     artifacts.append({
         "kind": "run_result",

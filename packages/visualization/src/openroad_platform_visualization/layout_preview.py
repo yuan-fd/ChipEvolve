@@ -3,8 +3,8 @@
 """
 tools/gds_preview.py — GDS → PNG 图像预览。
 
-用 gdspy 读取 GDS 文件，提取各层多边形，用 matplotlib 渲染为图像。
-不依赖 KLayout。
+使用成熟的 KLayout `pya` 读取和渲染 GDS；3D 预览由 KLayout 提取真实
+多边形，再交给 Matplotlib 3D 做层序堆叠。
 
 CLI:
     python3 tools/gds_preview.py demo_output/gds/xxx/results/.../base/6_final.gds
@@ -20,18 +20,18 @@ import re
 import sys
 from pathlib import Path
 
-import numpy as np
+import tempfile
 
 try:
-    import gdspy
+    import pya
 except ImportError:
-    gdspy = None
+    pya = None
 
 try:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from matplotlib.patches import Polygon
+    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 except ImportError:
     plt = None
 
@@ -55,72 +55,104 @@ LAYER_COLORS = {
 
 def render_gds(gds_path: Path, output: Path | None = None,
                dpi: int = 150, max_layers: int = 8) -> bytes | None:
-    """渲染 GDS 文件为 PNG 图像，返回 bytes 或写入文件。"""
-    if gdspy is None:
-        raise RuntimeError("需要 gdspy 库：pip3 install gdspy")
-    if plt is None:
-        raise RuntimeError("需要 matplotlib 库：pip3 install matplotlib")
-
-    lib = gdspy.GdsLibrary(infile=str(gds_path))
-    top_cells = lib.top_level()
-    if not top_cells:
-        raise ValueError(f"GDS 文件 {gds_path} 没有顶层 cell")
-
-    cell = top_cells[0]
-    fig, ax = plt.subplots(1, 1, figsize=(8, 8))
-    ax.set_aspect("equal")
-    ax.set_title(f"GDS Preview: {cell.name}", fontsize=10, pad=8)
-    ax.set_xlabel("X (µm)")
-    ax.set_ylabel("Y (µm)")
-
-    all_polys = cell.get_polygons(by_spec=True)
-    layers_used = sorted(all_polys.keys(), key=lambda k: (k[0], k[1]))[:max_layers]
-
-    for layer, datatype in layers_used:
-        polys = all_polys.get((layer, datatype), all_polys.get(layer, []))
-        if not polys:
-            continue
-        color, alpha = LAYER_COLORS.get(layer, ("#999999", 0.3))
-        for pts in polys:
-            patch = Polygon(pts, facecolor=color, edgecolor="none",
-                            alpha=alpha, linewidth=0)
-            ax.add_patch(patch)
-
-    # 自动缩放
-    all_pts = [v for polys in all_polys.values() for poly in polys for v in poly]
-    if all_pts:
-        arr = np.array(all_pts)
-        x_min, y_min = arr.min(axis=0)
-        x_max, y_max = arr.max(axis=0)
-        margin = max((x_max - x_min) * 0.05, 1)
-        ax.set_xlim(x_min - margin, x_max + margin)
-        ax.set_ylim(y_min - margin, y_max + margin)
-
-    ax.grid(True, alpha=0.3, linestyle=":")
-
-    # 图例
-    legend_entries = []
-    for layer, datatype in layers_used:
-        color, alpha = LAYER_COLORS.get(layer, ("#999999", 0.3))
-        legend_entries.append(plt.Rectangle((0, 0), 1, 1, fc=color, alpha=alpha,
-                                            label=f"Layer {layer}/{datatype}"))
-    if legend_entries:
-        ax.legend(handles=legend_entries, fontsize=7, loc="upper right",
-                  framealpha=0.7)
-
-    plt.tight_layout()
-
-    if output:
-        fig.savefig(str(output), dpi=dpi, bbox_inches="tight")
-        plt.close(fig)
-        print(f"GDS 预览已保存: {output} ({output.stat().st_size / 1024:.0f} KB)")
+    """Render the exact hierarchical GDS view through KLayout."""
+    if pya is None:
+        raise RuntimeError("KLayout pya is required for GDS rendering")
+    if not gds_path.is_file() or gds_path.stat().st_size == 0:
+        raise FileNotFoundError(gds_path)
+    target = output
+    temporary = None
+    if target is None:
+        temporary = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        temporary.close()
+        target = Path(temporary.name)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    view = pya.LayoutView()
+    view.load_layout(str(gds_path))
+    view.max_hier()
+    for key in ("text-visible", "properties-visible"):
+        try:
+            view.set_config(key, "false")
+        except Exception:
+            pass
+    view.zoom_fit()
+    width = max(800, int(dpi * 7))
+    view.save_image(str(target), width, width)
+    if not target.is_file() or target.stat().st_size == 0:
+        raise RuntimeError("KLayout produced an empty GDS preview")
+    if output is not None:
         return None
+    data = target.read_bytes()
+    target.unlink(missing_ok=True)
+    return data
 
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight")
+
+def render_gds_3d(
+    gds_path: Path, output: Path | None = None, *, dpi: int = 150,
+    max_layers: int = 10, max_polygons_per_layer: int = 180,
+) -> bytes | None:
+    """Render a sampled real-GDS layer stack; Z is visual layer order, not process thickness."""
+    if pya is None or plt is None:
+        raise RuntimeError("KLayout pya and matplotlib are required for 3D GDS rendering")
+    layout = pya.Layout()
+    layout.read(str(gds_path))
+    top_cells = layout.top_cells()
+    if not top_cells:
+        raise ValueError(f"GDS file has no top cell: {gds_path}")
+    top = top_cells[0]
+    candidates = []
+    for index in layout.layer_indexes():
+        info = layout.get_info(index)
+        region = pya.Region(top.begin_shapes_rec(index))
+        if region.is_empty():
+            continue
+        polygons = []
+        for polygon in region.each():
+            points = [(point.x * layout.dbu, point.y * layout.dbu)
+                      for point in polygon.each_point_hull()]
+            if len(points) >= 3:
+                polygons.append((abs(polygon.area()), points))
+        if polygons:
+            polygons.sort(key=lambda item: item[0], reverse=True)
+            candidates.append((info.layer, info.datatype,
+                               polygons[:max_polygons_per_layer]))
+    if not candidates:
+        raise ValueError("GDS file contains no renderable polygons")
+    layers = sorted(candidates, key=lambda item: (item[0], item[1]))[-max_layers:]
+    fig = plt.figure(figsize=(10, 8))
+    axis = fig.add_subplot(111, projection="3d")
+    for ordinal, (layer, datatype, polygons) in enumerate(layers):
+        z = float(ordinal)
+        vertices = [[(x, y, z) for x, y in points] for _, points in polygons]
+        color, alpha = LAYER_COLORS.get(layer, ("#7f8c8d", 0.45))
+        collection = Poly3DCollection(
+            vertices, facecolors=color, edgecolors="none", alpha=max(0.25, alpha)
+        )
+        axis.add_collection3d(collection)
+    bbox = top.bbox()
+    axis.set_xlim(bbox.left * layout.dbu, bbox.right * layout.dbu)
+    axis.set_ylim(bbox.bottom * layout.dbu, bbox.top * layout.dbu)
+    axis.set_zlim(-0.5, len(layers) - 0.5)
+    axis.set_xlabel("X (µm)")
+    axis.set_ylabel("Y (µm)")
+    axis.set_zlabel("GDS layer order")
+    axis.view_init(elev=32, azim=-58)
+    axis.set_title(
+        f"GDS Layer Stack: {top.name}\n"
+        "KLayout geometry · sampled polygons · Z not to physical scale"
+    )
+    labels = [f"{layer}/{datatype}" for layer, datatype, _ in layers]
+    axis.set_zticks(range(len(labels)), labels=labels, fontsize=7)
+    fig.subplots_adjust(left=0.05, right=0.93, bottom=0.06, top=0.90)
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(output, dpi=dpi, bbox_inches="tight")
+        plt.close(fig)
+        return None
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format="png", dpi=dpi, bbox_inches="tight")
     plt.close(fig)
-    buf.seek(0)
-    return buf.getvalue()
+    return buffer.getvalue()
 
 
 def render_def(def_path: Path, output: Path | None = None, dpi: int = 150) -> bytes | None:

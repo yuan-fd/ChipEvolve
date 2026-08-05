@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "phase": "P11",
+  "accepted": true,
+  "run_id": "6b93bfaffe404735ad8d5b4922277579",
+  "status": "succeeded",
+  "source_commit": "739eee0f3ced8fc3cbb6f01b6cc89414758fd898",
+  "component": "ImplCraft 0.2.0",
+  "capabilities": ["eda.implcraft.scriptgen", "eda.backend.plan"],
+  "execution_class": "script-generation-only",
+  "commercial_live_flow": false,
+  "artifact_count": 8,
+  "generated_script_count": 3,
+  "upstream_tests": {"passed": 215, "expected_failures": 5}
+}

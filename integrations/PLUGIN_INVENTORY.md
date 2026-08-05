@@ -47,3 +47,11 @@ P8 状态：`taiwei-pin-3d@1.0.0` 协议接入完成；固定 3D 工具链因 Gi
 ## 共通准入门
 
 每个插件在实现前必须具备：固定 commit、许可证结论、独立环境、manifest、输入输出 Schema、超时与取消语义、最小 smoke、产物 allowlist、错误传播测试和不包含凭据的环境快照。
+
+## EDACraft / ImplCraft
+
+- 官方仓库：`ephonic/EDACraft`；固定 commit `739eee0f3ced8fc3cbb6f01b6cc89414758fd898`。
+- 平台对应组件是 `ImplCraft 0.2.0`，用于生成/编排 Synopsys、Cadence 等商业后端脚本。
+- 根许可证是 MIT-like 加 Non-Commercial 限制；仅允许本机私有非商业验收。
+- P11 上游回归 220 项：215 passed、5 个固定已知失败。
+- 本机无商业 EDA binary/license；`edacraft-implcraft@1.0.0` 只声明 `eda.implcraft.scriptgen` 和 `eda.backend.plan`，禁止宣称商业 GDS/signoff。

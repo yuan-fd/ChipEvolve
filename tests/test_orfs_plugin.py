@@ -95,6 +95,12 @@ def test_orfs_plugin_runs_full_runtime_chain_and_records_provenance(tmp_path):
     assert snapshot["files"]["rtl"]["sha256"] == task.inputs["rtl"]["sha256"]
     assert snapshot["files"]["generated_config"]["sha256"]
     assert snapshot["files"]["platform_config"]["sha256"]
+    tool_events = [event for event in view["events"]
+                   if event["event_type"].startswith("tool.stage.")]
+    assert [event["payload"]["tool_stage"] for event in tool_events[::2]] == [
+        "synth", "floorplan", "place", "cts", "route", "finish"
+    ]
+    assert all(event["producer"] == "adapter:orfs@1.0.0" for event in tool_events)
     assert [event["event_type"] for event in view["events"]][-1] == "run.finished"
 
 

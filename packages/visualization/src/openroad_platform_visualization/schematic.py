@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-tools/circuit_overview.py — 电路框图生成器（带门级符号）。
+电路可视化：Graphviz 真实连线原理图 + 依赖无关的概览回退。
 
 读门级网表 Verilog，生成 SVG 框图，每个门类型画具体逻辑符号 + 数量。
-不需要额外依赖，只用 Python 标准库。
+`generate_schematic_svg` 使用成熟 Graphviz 布局；`generate_svg` 只作为
+Graphviz 不可用时的标准库回退。
 
 CLI:
     python3 tools/circuit_overview.py demo_output/gen_xxx/counter_gates.v
@@ -328,11 +329,17 @@ def generate_schematic_svg(text: str, highlight_path: list | None = None) -> str
         if "." in conn_blob and re.search(r"\.\w+\(", conn_blob):
             mapping = dict(re.findall(r"\.(\w+)\s*\(\s*([^)]*?)\s*\)", conn_blob))
             mapping = {k.lower(): v.strip() for k, v in mapping.items()}
-            output = mapping.get("q") or mapping.get("y") or mapping.get("o") or mapping.get("out", "")
+            output_names = ("q", "qn", "y", "yn", "z", "zn", "o", "out", "x")
+            output_key = next((name for name in output_names if mapping.get(name)), None)
+            output = mapping.get(output_key, "") if output_key else ""
+            # Liberty pin names vary (A1/A2, IN1/IN2, CLK, RESET_B, ...).
+            # Treat all named pins except the allowlisted output pin as inputs;
+            # this preserves real net connectivity without cell-library-specific art.
             inps = []
-            for k in ("d", "a", "b", "clk", "ck", "c", "en", "e", "rn", "r", "s", "rst_n"):
-                if k in mapping and mapping[k] and mapping[k] not in inps:
-                    inps.append(mapping[k])
+            for key, signal in mapping.items():
+                if key == output_key or not signal or signal in inps:
+                    continue
+                inps.append(signal)
         else:
             conns = [t.strip() for t in re.split(r",\s*(?![^()]*\))", conn_blob)]
             output = conns[0] if conns else ""

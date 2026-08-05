@@ -108,7 +108,8 @@ def taiwei_plugin_manifest(source_root: str | Path, profile: TaiWeiToolchainProf
                                  "netlist", "toolchain_snapshot", "log"}}
                              for kind in ("three_d_eval", "three_d_summary", "gds", "def",
                                           "odb", "netlist", "sdc", "spef", "three_d_report",
-                                          "toolchain_snapshot", "log", "three_d_view")),
+                                          "toolchain_snapshot", "log", "layout_view",
+                                          "three_d_view")),
         environment=environment,
     )
     manifest.validate()

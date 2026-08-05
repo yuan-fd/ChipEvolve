@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "phase": "P12",
+  "accepted": true,
+  "provider": "codex-cli",
+  "model": "gpt-5.6-terra",
+  "session_id": "spec-6a4c8117f59a43aaa7b29b6546ed8267",
+  "initial_run_id": "1f65b71244704ab2a5e8fb2e2f9185aa",
+  "successful_run_id": "2f6d473152204a799c80501678076d51",
+  "status": "succeeded",
+  "explicit_confirmation": true,
+  "runtime_authoritative": true,
+  "tool_stage_event_count": 12,
+  "artifact_count": 18,
+  "rtl_sha256": "15a3ecc11e19aa58f87b24ec232778e43f70824f336aed315cb983dca24b5fd9",
+  "repair": {
+    "action_type": "increase_floorplan_area",
+    "reason_code": "pdn_insufficient_area",
+    "minimum_die_size_um": 20.0,
+    "failed_evidence_preserved": true
+  }
+}

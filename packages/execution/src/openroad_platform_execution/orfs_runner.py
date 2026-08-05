@@ -86,6 +86,7 @@ class ORFSRunner:
             clock_period_ns=request.clock_period_ns,
             core_utilization_pct=request.core_utilization_pct,
             place_density=request.place_density,
+            minimum_die_size_um=request.minimum_die_size_um,
         )
         stages = tuple(stage for stage in RunStage
                        if list(RunStage).index(stage) <= list(RunStage).index(request.target_stage))
@@ -122,6 +123,7 @@ class ORFSRunner:
         *,
         cancel_requested: Callable[[], bool] | None = None,
         on_line: Callable[[str], None] | None = None,
+        on_stage_start: Callable[[RunStage], None] | None = None,
         on_stage: Callable[[StageResult], None] | None = None,
     ) -> RunResult:
         workdir = Path(plan.workdir)
@@ -132,6 +134,8 @@ class ORFSRunner:
         error = None
 
         for stage in plan.stages:
+            if on_stage_start is not None:
+                on_stage_start(stage)
             command = self._command(plan, stage)
             outcome = self.guardian.run(
                 command,
@@ -252,6 +256,7 @@ class ORFSRunner:
                 "clock_period_ns": plan.request.clock_period_ns,
                 "core_utilization_pct": plan.request.core_utilization_pct,
                 "place_density": plan.request.place_density,
+                "minimum_die_size_um": plan.request.minimum_die_size_um,
                 "stage_timeout_seconds": plan.request.stage_timeout_seconds,
             },
         }

@@ -15,11 +15,12 @@ from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
 for source_root in (REPOSITORY_ROOT / "packages/contracts/src",
-                    REPOSITORY_ROOT / "packages/execution/src"):
+                    REPOSITORY_ROOT / "packages/execution/src",
+                    REPOSITORY_ROOT / "packages/visualization/src"):
     sys.path.insert(0, str(source_root))
 
 from openroad_platform_execution.taiwei_postprocess import (  # noqa: E402
-    render_tier_view,
+    render_gds_views, render_tier_view,
     stream_out_gds,
     write_json,
 )
@@ -129,7 +130,9 @@ def _discover(workspace: Path, staged: Path) -> list[dict]:
              ("three_d_report", "logs/asap7_3D/gcd/*/cross_tier_nets*.rpt"),
              ("three_d_report", "logs/asap7_3D/gcd/*/cross_tier_nets*.list"),
              ("three_d_report", "results/asap7_3D/gcd/*/streamout_provenance.json"),
+             ("three_d_report", "results/asap7_3D/gcd/*/gds_view_provenance.json"),
              ("three_d_report", "results/asap7_3D/gcd/*/tier_view_metrics.json"),
+             ("layout_view", "results/asap7_3D/gcd/*/*2d*.png"),
              ("three_d_view", "results/asap7_3D/gcd/*/*3d*.png"),
              ("three_d_view", "results/asap7_3D/gcd/*/*3d*.svg"),
              ("three_d_view", "reports/*3d*.png"))
@@ -154,6 +157,8 @@ def _postprocess(staged: Path) -> None:
     gds = result_dir / "6_final.gds"
     provenance = stream_out_gds(staged, final_def, gds)
     write_json(result_dir / "streamout_provenance.json", provenance)
+    view_provenance = render_gds_views(gds, result_dir)
+    write_json(result_dir / "gds_view_provenance.json", view_provenance)
     view = result_dir / "gcd_final_3d_tiers.svg"
     view_metrics = render_tier_view(final_def, view)
     write_json(result_dir / "tier_view_metrics.json", view_metrics)

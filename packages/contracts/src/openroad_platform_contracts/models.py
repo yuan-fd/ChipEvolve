@@ -54,6 +54,7 @@ class RunRequest:
     target_stage: RunStage = RunStage.FINISH
     core_utilization_pct: float = 10.0
     place_density: float = 0.45
+    minimum_die_size_um: float | None = None
     stage_timeout_seconds: int = 3600
     run_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     labels: dict[str, str] = field(default_factory=dict)
@@ -72,6 +73,10 @@ class RunRequest:
             raise ValueError("core_utilization_pct must be between 0 and 100")
         if not 0 < self.place_density <= 1:
             raise ValueError("place_density must be between 0 and 1")
+        if self.minimum_die_size_um is not None and not (
+            5 <= self.minimum_die_size_um <= 10_000
+        ):
+            raise ValueError("minimum_die_size_um must be between 5 and 10000")
         if self.stage_timeout_seconds <= 0:
             raise ValueError("stage_timeout_seconds must be positive")
 

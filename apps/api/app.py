@@ -33,8 +33,14 @@ for package_root in reversed(PACKAGE_ROOTS):
         sys.path.insert(0, str(package_root))
 
 from openroad_platform_contracts import RunRequest, RunStage  # noqa: E402
+from openroad_platform_execution import (  # noqa: E402
+    PluginRegistry, ToolchainConfig, build_orfs_task, orfs_plugin_manifest,
+)
 from openroad_platform_scheduler import (  # noqa: E402
-    CampaignStore, JobStore, NaturalLanguageTaskCompiler, RuntimeStore,
+    ALLOWED_MODELS, CampaignStore, CodexCliSpecProvider, JobStore,
+    NaturalLanguageTaskCompiler, RuleBasedSpecProvider, RuntimeStore,
+    SpecConversationManager, SpecConversationStore, StageAwareCampaignManager,
+    WorkflowRuntime,
 )
 try:  # Supports both `python apps/api/app.py` and package imports in tests.
     from .services import DesignService  # type: ignore[attr-defined]
@@ -61,6 +67,7 @@ class ApiState:
         yosys_bin: Path | None = None,
         runtime_db_path: Path | None = None,
         campaign_db_path: Path | None = None,
+        spec_db_path: Path | None = None,
     ):
         self.db_path = db_path.expanduser().resolve()
         self.upload_root = upload_root.expanduser().resolve()
@@ -70,13 +77,30 @@ class ApiState:
             "OPENROAD_PLATFORM_LOCAL_STATE",
             f"/tmp/openroad-platform-{os.getuid()}",
         ))
+        state_root = ((runtime_db_path.expanduser().resolve().parent
+                       if runtime_db_path is not None else local_state))
         self.runtime_store = RuntimeStore(runtime_db_path or local_state / "runtime.db")
         self.campaign_store = CampaignStore(campaign_db_path or local_state / "campaign.db")
+        self.spec_store = SpecConversationStore(spec_db_path or state_root / "spec.db")
         self.designs = DesignService(
             design_root or ROOT / "var" / "designs",
             legacy_root=legacy_root or Path(os.environ.get("ICCAD_ROOT", ROOT.parent / "iccad")),
             yosys_bin=yosys_bin or ROOT.parent / "bin" / "yosys",
         )
+        toolchain = ToolchainConfig.from_environment(
+            name="web-default", orfs_root=self.orfs_root,
+            openroad_bin=_find_tool("openroad", ROOT.parent / "bin" / "openroad")
+            or ROOT.parent / "bin" / "openroad",
+            yosys_bin=_find_tool("yosys", ROOT.parent / "bin" / "yosys")
+            or ROOT.parent / "bin" / "yosys",
+            klayout_bin=_find_tool("klayout", ROOT.parent / "bin" / "klayout")
+            or ROOT.parent / "bin" / "klayout",
+        )
+        self.runtime = WorkflowRuntime(
+            self.runtime_store, PluginRegistry([orfs_plugin_manifest(toolchain)]),
+            workspace_root=state_root / "runtime-workspaces",
+        )
+        self.stage_campaigns = StageAwareCampaignManager(self.campaign_store, self.runtime)
 
     def health(self) -> dict[str, Any]:
         openroad = _find_tool("openroad", ROOT.parent / "bin" / "openroad")
@@ -287,6 +311,10 @@ class ApiState:
                               for item in self.campaign_store.list()]}
 
     def get_campaign(self, campaign_id: str) -> dict[str, Any]:
+        try:
+            return self.stage_campaigns.describe(campaign_id)
+        except KeyError:
+            pass
         campaign = self.campaign_store.get(campaign_id)
         members = []
         for member in self.campaign_store.members(campaign_id):
@@ -295,6 +323,102 @@ class ApiState:
                             "task_id": member.task_spec.task_id, "run_id": member.run_id,
                             "status": run.status.value if run else "unbound"})
         return {**campaign, "members": members}
+
+    def create_stage_campaign(self, payload: dict[str, Any]) -> dict[str, Any]:
+        design_id = str(payload.get("design_id") or "").strip()
+        design = self.designs.get(design_id)
+        base = build_orfs_task(
+            self.designs.rtl_path(design_id), project_id="openroad-platform",
+            design_id=design_id, top=design["module"],
+            target_stage=str(payload.get("target_stage") or "finish"),
+            clock_period_ns=_number(payload, "clock_period_ns", 10.0),
+            core_utilization_pct=_number(payload, "core_utilization_pct", 10.0),
+            place_density=_number(payload, "place_density", 0.45),
+            stage_timeout_seconds=int(_number(payload, "stage_timeout_seconds", 3600)),
+        )
+        grid = payload.get("parameter_grid") or {}
+        if not isinstance(grid, dict):
+            raise ValueError("parameter_grid must be an object")
+        stage_budgets = payload.get("stage_budgets") or {}
+        if not isinstance(stage_budgets, dict):
+            raise ValueError("stage_budgets must be an object")
+        campaign_id = self.stage_campaigns.create_grid(
+            str(payload.get("name") or f"stage-search-{design_id}"), base, grid,
+            max_parallel=int(payload.get("max_parallel", 1)),
+            stage_budgets=stage_budgets,
+            objective_metric=_optional_string(payload.get("objective_metric")),
+            direction=str(payload.get("direction") or "min"),
+            top_k=int(payload.get("top_k", 3)),
+            max_repairs=int(payload.get("max_repairs", 2)),
+            max_total_runs=int(payload.get("max_total_runs", 64)),
+        )
+        return self.stage_campaigns.describe(campaign_id)
+
+    def create_spec_session(self, payload: dict[str, Any]) -> dict[str, Any]:
+        design_id = _optional_string(payload.get("design_id"))
+        design = self.designs.get(design_id) if design_id else None
+        provider = self._spec_provider(
+            str(payload.get("provider") or "deterministic"),
+            _optional_string(payload.get("model")),
+        )
+        budgets = payload.get("budgets")
+        if budgets is not None and not isinstance(budgets, dict):
+            raise ValueError("budgets must be an object")
+        return SpecConversationManager(self.spec_store, provider).create(
+            message=str(payload.get("message") or ""), design_id=design_id,
+            design_context=design, budgets=budgets,
+        )
+
+    def get_spec_session(self, session_id: str) -> dict[str, Any]:
+        session = self.spec_store.get(session_id)
+        if session.get("run_id"):
+            session["runtime"] = self.runtime_store.describe_run(session["run_id"])
+        return session
+
+    def add_spec_turn(self, session_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        session = self.spec_store.get(session_id)
+        design_id = session.get("design_id")
+        design = self.designs.get(design_id) if design_id else None
+        provider = self._spec_provider(session["provider"], session["model"])
+        return SpecConversationManager(self.spec_store, provider).turn(
+            session_id, str(payload.get("message") or ""), design_context=design,
+        )
+
+    def execute_spec_session(self, session_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        session = self.spec_store.get(session_id)
+        design_id = session.get("design_id")
+        if design_id:
+            design = self.designs.get(design_id)
+        else:
+            rtl = session["state"].get("rtl_source")
+            if not isinstance(rtl, str) or not rtl.strip():
+                raise ValueError("Session has neither a registered design nor proposed RTL")
+            design = self.designs.import_rtl(
+                filename=f"{session['state'].get('top') or 'design'}.v", source=rtl,
+                description=session["state"].get("functionality"),
+            )
+            design_id = design["id"]
+        provider = self._spec_provider(session["provider"], session["model"])
+        task = SpecConversationManager(self.spec_store, provider).compile(
+            session_id, rtl_path=self.designs.rtl_path(design_id), design_id=design_id,
+            confirmed=payload.get("confirmed") is True,
+        )
+        run = self.runtime_store.find_run_by_task_id(task.task_id)
+        if run is None:
+            run = self.runtime.submit(task, capability="eda.rtl_to_gds")
+        self.spec_store.bind_run(session_id, run.run_id, design_id=design_id)
+        return self.get_spec_session(session_id)
+
+    @staticmethod
+    def _spec_provider(name: str, model: str | None):
+        if name == "deterministic":
+            return RuleBasedSpecProvider()
+        if name in {"codex", "codex-cli"}:
+            selected = model or "gpt-5.6-terra"
+            if selected not in ALLOWED_MODELS:
+                raise ValueError(f"model must be one of: {', '.join(sorted(ALLOWED_MODELS))}")
+            return CodexCliSpecProvider(model=selected)
+        raise ValueError("provider must be deterministic or codex-cli")
 
     def cancel_campaign(self, campaign_id: str) -> dict[str, Any]:
         for member in self.campaign_store.members(campaign_id):
@@ -319,6 +443,24 @@ class ApiState:
         )
         request.validate()
         return self._serialize_job(self.store.submit(request))
+
+    def submit_runtime_design_run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        design_id = str(payload.get("design_id") or "").strip()
+        design = self.designs.get(design_id)
+        task = build_orfs_task(
+            self.designs.rtl_path(design_id), project_id="openroad-platform",
+            design_id=design_id,
+            top=_optional_string(payload.get("top")) or design["module"],
+            clock=_optional_string(payload.get("clock")),
+            clock_period_ns=_number(payload, "clock_period_ns", 10.0),
+            core_utilization_pct=_number(payload, "core_utilization_pct", 10.0),
+            place_density=_number(payload, "place_density", 0.45),
+            target_stage=str(payload.get("target_stage") or "finish"),
+            stage_timeout_seconds=int(_number(payload, "stage_timeout_seconds", 3600)),
+            labels={"source": "web-runtime", "design_id": design_id},
+        )
+        run = self.runtime.submit(task, capability="eda.rtl_to_gds")
+        return self.get_runtime_run(run.run_id)
 
     def compile_task_intent(self, payload: dict[str, Any]) -> dict[str, Any]:
         design_id = str(payload.get("design_id") or "").strip()
@@ -444,6 +586,8 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                         unquote(path.removeprefix("/api/runtime/runs/"))))
                 elif path == "/api/campaigns":
                     self._json(state.list_campaigns())
+                elif re.fullmatch(r"/api/spec/sessions/[^/]+", path):
+                    self._json(state.get_spec_session(unquote(path.split("/")[-1])))
                 elif path.startswith("/api/campaigns/"):
                     self._json(state.get_campaign(
                         unquote(path.removeprefix("/api/campaigns/"))))
@@ -473,8 +617,27 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                 if path == "/api/runs/from-design":
                     self._json(state.submit_design_run(self._read_json()), HTTPStatus.CREATED)
                     return
+                if path == "/api/runtime/runs/from-design":
+                    self._json(state.submit_runtime_design_run(self._read_json()),
+                               HTTPStatus.CREATED)
+                    return
                 if path == "/api/tasks/compile":
                     self._json(state.compile_task_intent(self._read_json()))
+                    return
+                if path == "/api/spec/sessions":
+                    self._json(state.create_spec_session(self._read_json()), HTTPStatus.CREATED)
+                    return
+                match = re.fullmatch(r"/api/spec/sessions/([^/]+)/turn", path)
+                if match:
+                    self._json(state.add_spec_turn(unquote(match.group(1)), self._read_json()))
+                    return
+                match = re.fullmatch(r"/api/spec/sessions/([^/]+)/execute", path)
+                if match:
+                    self._json(state.execute_spec_session(
+                        unquote(match.group(1)), self._read_json()), HTTPStatus.CREATED)
+                    return
+                if path == "/api/campaigns/stage-aware":
+                    self._json(state.create_stage_campaign(self._read_json()), HTTPStatus.CREATED)
                     return
                 if path == "/api/designs/generate":
                     payload = self._read_json()

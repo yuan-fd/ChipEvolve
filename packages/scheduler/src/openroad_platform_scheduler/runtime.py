@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import platform
+import re
 import socket
 import time
 import uuid
@@ -89,13 +90,19 @@ class WorkflowRuntime:
             self.store, run_id, attempt.attempt_id,
             worker_id=self.worker_id, lease_seconds=self.lease_seconds,
         )
+        line_observer = _RuntimeLineObserver(
+            self.store, run_id=run_id, stage_run_id=ready.stage_run_id,
+            attempt_id=attempt.attempt_id,
+            producer=f"adapter:{ready.plugin_id}@{ready.plugin_version}",
+            downstream=on_line,
+        )
         try:
             execution = self.adapter.execute(
                 manifest,
                 run.task_spec,
                 workspace=workspace,
                 cancel_requested=pulse,
-                on_line=on_line,
+                on_line=line_observer,
             )
             if execution.result.status is RuntimeStatus.SUCCEEDED:
                 self.store.register_artifacts(attempt.attempt_id, execution.artifacts)
@@ -150,3 +157,49 @@ class _LeasePulse:
             )
             self.last = now
         return False
+
+
+class _RuntimeLineObserver:
+    """Convert the allowlisted ORFS stdout protocol into durable Runtime events."""
+
+    START = re.compile(r"^\[orfs-stage-start\] (synth|floorplan|place|cts|route|finish)$")
+    FINISH = re.compile(
+        r"^\[orfs-stage\] (synth|floorplan|place|cts|route|finish) "
+        r"(succeeded|failed|cancelled) (\d+(?:\.\d+)?)s$"
+    )
+
+    def __init__(self, store: RuntimeStore, *, run_id: str, stage_run_id: str,
+                 attempt_id: str, producer: str,
+                 downstream: Callable[[str], None] | None):
+        self.store = store
+        self.run_id = run_id
+        self.stage_run_id = stage_run_id
+        self.attempt_id = attempt_id
+        self.producer = producer
+        self.downstream = downstream
+        self.started: set[str] = set()
+        self.finished: set[str] = set()
+
+    def __call__(self, line: str) -> None:
+        if self.downstream is not None:
+            self.downstream(line)
+        start = self.START.fullmatch(line.strip())
+        if start and start.group(1) not in self.started:
+            stage = start.group(1)
+            self.started.add(stage)
+            self.store.record_event(
+                self.run_id, "tool.stage.started", {"tool_stage": stage},
+                stage_run_id=self.stage_run_id, attempt_id=self.attempt_id,
+                producer=self.producer,
+            )
+            return
+        finish = self.FINISH.fullmatch(line.strip())
+        if finish and finish.group(1) not in self.finished:
+            stage, status, seconds = finish.groups()
+            self.finished.add(stage)
+            self.store.record_event(
+                self.run_id, "tool.stage.finished",
+                {"tool_stage": stage, "status": status, "seconds": float(seconds)},
+                stage_run_id=self.stage_run_id, attempt_id=self.attempt_id,
+                producer=self.producer,
+            )

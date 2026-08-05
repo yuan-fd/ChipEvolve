@@ -195,3 +195,20 @@ def render_tier_view(final_def: Path, output: Path) -> dict:
 
 def write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def render_gds_views(gds: Path, result_dir: Path) -> dict:
+    """Render exact 2D and sampled layer-stack 3D views with mature libraries."""
+    from openroad_platform_visualization import render_gds, render_gds_3d
+
+    two_d = result_dir / "gcd_final_layout_2d.png"
+    three_d = result_dir / "gcd_final_gds_3d_stack.png"
+    render_gds(gds, two_d, dpi=150)
+    render_gds_3d(gds, three_d, dpi=150, max_layers=10)
+    return {
+        "two_d": two_d.name,
+        "three_d": three_d.name,
+        "two_d_renderer": "KLayout pya.LayoutView",
+        "three_d_renderer": "KLayout pya + Matplotlib Poly3DCollection",
+        "three_d_z_scale": "visual layer order; not physical process thickness",
+    }

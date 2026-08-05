@@ -30,6 +30,7 @@ def build_orfs_task(
     clock_period_ns: float = 10.0,
     core_utilization_pct: float = 10.0,
     place_density: float = 0.45,
+    minimum_die_size_um: float | None = None,
     stage_timeout_seconds: int = 3600,
     timeout_seconds: int = 7200,
     max_attempts: int = 1,
@@ -47,6 +48,7 @@ def build_orfs_task(
         target_stage=RunStage(target_stage),
         core_utilization_pct=core_utilization_pct,
         place_density=place_density,
+        minimum_die_size_um=minimum_die_size_um,
         stage_timeout_seconds=stage_timeout_seconds,
     )
     legacy.validate()
@@ -73,6 +75,7 @@ def build_orfs_task(
             "clock_period_ns": legacy.clock_period_ns,
             "core_utilization_pct": legacy.core_utilization_pct,
             "place_density": legacy.place_density,
+            "minimum_die_size_um": legacy.minimum_die_size_um,
             "stage_timeout_seconds": legacy.stage_timeout_seconds,
         },
         resources={"toolchain_profile": "default"},
@@ -134,6 +137,7 @@ def orfs_plugin_manifest(
             for kind in (
                 "odb", "def", "netlist", "gds", "log", "report", "config",
                 "toolchain_snapshot", "run_result", "other",
+                "layout_view",
             )
         ),
         environment=environment,

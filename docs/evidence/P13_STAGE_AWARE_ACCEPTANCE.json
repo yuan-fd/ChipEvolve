@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "phase": "P13",
+  "accepted": true,
+  "campaign_id": "campaign-51977997ac5d466e977649e0b473493d",
+  "status": "finished",
+  "candidate_count": 2,
+  "max_parallel": 2,
+  "parameter_grid": {"core_utilization_pct": [10, 20]},
+  "target_stage": "synth",
+  "stage_budgets": {"synth": 90},
+  "runtime_authoritative": true,
+  "pruning_policy": "stage_wall_clock_v1",
+  "repair_policy": "limited-react-v1"
+}

@@ -16,8 +16,11 @@ updated_at: 2026-08-04
 | P8 | TaiWei-Pin-3D 黑箱插件 | 固定 3D toolchain 下 gcd 真实 GDS/指标/视图 |
 | P9 | 证据知识库与跨实验复用 | 版本隔离、证据引用和回放测试 |
 | P10 | Coding/Evolve Agent | 隔离 worktree、回归、人工/策略闸门 |
+| P11 | EDACraft / ImplCraft 接入 | 固定源码、脚本生成 Runtime；商业 live 边界明确 |
+| P12 | 多轮自然语言 Spec→GDS | Terra/Sol proposal、确认/预算/幂等、真实 GDS 与修复链 |
+| P13 | stage-aware Flow-Agent | 阶段事件、网格并发、剪枝、Top-K、修复子 run |
 
-EDACraft/IC Craft 在取得源码与独立审计后作为 P11，不进入前三个平台主线。
+P14 在取得用户四篇论文后进入自演化算法；P13 的规则剪枝不得提前包装成 RL/贝叶斯/GP。
 
 ## 阶段执行规则
 

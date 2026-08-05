@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "plugin_id": "edacraft-implcraft",
+  "plugin_version": "1.0.0",
+  "adapter_entry": ["python3", "./../../packages/execution/src/openroad_platform_execution/implcraft_adapter.py"],
+  "capabilities": ["eda.implcraft.scriptgen", "eda.backend.plan"],
+  "supported_arch": ["aarch64"],
+  "input_schema": {"type": "object", "required": ["rtl", "top", "clock"]},
+  "output_schema": {"type": "object", "required": ["status", "artifacts"]},
+  "required_tools": ["git", "python3"],
+  "default_timeout_seconds": 600,
+  "artifact_rules": [
+    {"kind": "implcraft_config", "required": true},
+    {"kind": "implcraft_state", "required": true},
+    {"kind": "eda_script", "required": true},
+    {"kind": "report", "required": true},
+    {"kind": "toolchain_snapshot", "required": true},
+    {"kind": "log", "required": true}
+  ],
+  "environment": {
+    "EDACRAFT_EXPECTED_COMMIT": "739eee0f3ced8fc3cbb6f01b6cc89414758fd898",
+    "IMPLCRAFT_EXECUTION_CLASS": "script-generation-only",
+    "IMPLCRAFT_COMMERCIAL_EDA_EXECUTED": "false"
+  }
+}

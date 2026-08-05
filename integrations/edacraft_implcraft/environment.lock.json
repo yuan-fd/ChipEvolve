@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "profile": "edacraft-implcraft-scriptgen",
+  "architecture": "aarch64",
+  "source": {
+    "repository": "https://github.com/ephonic/EDACraft.git",
+    "commit": "739eee0f3ced8fc3cbb6f01b6cc89414758fd898",
+    "component": "ImplCraft",
+    "component_version": "0.2.0"
+  },
+  "runtime": {
+    "python": "3.12.4",
+    "python_sha256": "666a466d408b821d3c206112e0549098c04dee906a5c9929ab0fa90455899109",
+    "pyyaml": "6.0.3",
+    "pytest": "8.4.2"
+  },
+  "license": {
+    "spdx": "LicenseRef-EDACraft-NonCommercial",
+    "file": "LICENSE",
+    "sha256": "d64a37872f53075d777b2e894e063fbeaa4a3230f3ea86f61666b7f26f748404",
+    "commercial_use_allowed": false,
+    "redistribution_policy": "do not redistribute without legal review"
+  },
+  "capability_gate": {
+    "script_generation": true,
+    "commercial_live_flow": false,
+    "required_live_tools": [
+      "dc_shell", "icc2_shell", "pt_shell", "calibre",
+      "innovus", "tempus", "pegasus"
+    ]
+  }
+}

@@ -70,6 +70,7 @@ def write_design_files(
     clock_period_ns: float,
     core_utilization_pct: float,
     place_density: float,
+    minimum_die_size_um: float | None = None,
 ) -> Path:
     config_dir = workdir / "designs" / platform / design
     source_dir = workdir / "designs" / "src" / design
@@ -82,16 +83,24 @@ def write_design_files(
         f"export PLATFORM = {platform}",
         "export VERILOG_FILES = $(DESIGN_HOME)/src/$(DESIGN_NAME)/$(DESIGN_NAME).v",
         f"export SDC_FILE = $(DESIGN_HOME)/{platform}/$(DESIGN_NAME)/constraint.sdc",
-        f"export CORE_UTILIZATION = {core_utilization_pct:g}",
         f"export CLOCK_PERIOD = {clock_period_ns:g}",
         f"export PLACE_DENSITY = {place_density:g}",
     ]
     if platform == "nangate45":
         (config_dir / "pdn.tcl").write_text(PDN_SIMPLE, encoding="utf-8")
         lines.append(f"export PDN_TCL = $(DESIGN_HOME)/{platform}/$(DESIGN_NAME)/pdn.tcl")
+        if minimum_die_size_um is not None:
+            size = float(minimum_die_size_um)
+            margin = max(1.0, min(10.0, size * 0.1))
+            lines.extend((
+                f"export DIE_AREA = 0 0 {size:g} {size:g}",
+                f"export CORE_AREA = {margin:g} {margin:g} {size-margin:g} {size-margin:g}",
+            ))
+        else:
+            lines.append(f"export CORE_UTILIZATION = {core_utilization_pct:g}")
     else:
         minimum_die = {"sky130hd": 60, "asap7": 30, "gf180": 80}.get(platform, 50)
-        lines.append(f'export DIE_AREA = "0 0 {minimum_die} {minimum_die}"')
+        lines.append(f"export DIE_AREA = 0 0 {minimum_die} {minimum_die}")
 
     config_path = config_dir / "config.mk"
     config_path.write_text("\n".join(lines) + "\n", encoding="utf-8")

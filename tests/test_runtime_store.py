@@ -135,6 +135,28 @@ def test_runtime_store_rejects_unknown_database_schema_version(tmp_path):
         RuntimeStore(path)
 
 
+def test_adapter_event_requires_matching_run_stage_and_attempt(tmp_path):
+    store = RuntimeStore(tmp_path / "runtime.db")
+    run, stage = store.submit_plugin_run(task(max_attempts=1), plugin_version="1.0.0")
+    attempt = store.start_attempt(
+        stage.stage_run_id, worker_id="worker", workspace=str(tmp_path / "a"),
+        lease_seconds=30,
+    )
+    store.record_event(
+        run.run_id, "tool.stage.started", {"tool_stage": "synth"},
+        stage_run_id=stage.stage_run_id, attempt_id=attempt.attempt_id,
+        producer="adapter:echo@1.0.0",
+    )
+    assert store.events(run.run_id)[-1]["payload"] == {"tool_stage": "synth"}
+    with pytest.raises(ValueError, match="ownership"):
+        store.record_event(
+            "not-the-owner", "tool.stage.finished",
+            {"tool_stage": "synth", "status": "failed"},
+            stage_run_id=stage.stage_run_id, attempt_id=attempt.attempt_id,
+            producer="adapter:echo@1.0.0",
+        )
+
+
 def test_runtime_store_rejects_unversioned_runtime_tables(tmp_path):
     path = tmp_path / "runtime.db"
     with sqlite3.connect(path) as connection:

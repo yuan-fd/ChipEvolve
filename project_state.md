@@ -1,9 +1,9 @@
 # OpenROAD Platform — 工作记忆
 
 project_id: openroad-platform
-phase: P8-Real：已完成；平台系统验收收口
-current_subgoal: 准备进入 P11 EDACraft / IC Craft 等新平台扩展
-progress: 100%（P0-P10 + P8-Real）；下一扩展尚未开始
+phase: P11-P13 已完成；准备论文驱动自演化扩展
+current_subgoal: P14 知识库/RL/贝叶斯/GP 与外部代码优化 Agent 迁移
+progress: P0-P13 + P8-Real 已验收
 last_updated: 2026-08-05
 
 ## 已确认事实
@@ -31,6 +31,11 @@ last_updated: 2026-08-05
 - P8 历史 blocker 证据保留；P8-Real 新增证据已用官方固定链真实跑通 gcd 3D，GDS/via/QoR/Runtime/API/Web 均通过。
 - P9 知识记录强制 verified/ref/SHA/版本上下文；P5 真实经验完成 data-only 回放，错版本和篡改均拒绝。
 - P10 Evolve→隔离 Coding→Promotion receipt 闭环完成；真实仓库候选回归 81 passed、基线不变、applied=false；总回归 84。
+- P11 EDACraft/ImplCraft 固定官方 commit 接入完成；仅 script generation/backend plan，未执行商业 EDA。
+- 电路图/2D GDS/3D GDS 分别使用 Graphviz、KLayout、KLayout+Matplotlib；不手绘版图几何。
+- P12 Codex Terra 真实 Spec→RTL→ORFS→GDS 成功；首 run 的 `PDN-0185` 证据保留，最小面积修复子 run 成功。
+- P13 ORFS stage 事件进入 Runtime；参数网格、并发、阶段预算剪枝、Top-K 与 LimitedReAct 修复子 run 已实现。
+- 当前全量回归：103 passed。
 
 ## 架构定版
 
@@ -45,6 +50,8 @@ last_updated: 2026-08-05
 - ORFS Task 必须固定 RTL size/SHA-256 并先 stage 到 Attempt workspace。
 - ORFSRunner 使用 ToolchainConfig 的受控环境；ToolchainSnapshot 是 P2 重放证据。
 - SQLite WAL 不能放在当前 GlusterFS 项目盘；live Runtime DB 使用节点本地盘，checkpoint 后保存不可变快照和查询摘要。
+- LLM 只产生结构化 proposal；显式确认、确定性校验和 Runtime 提交是执行门。Codex CLI 登录不是平台 API key。
+- P13 doomed-run v1 是可解释阶段预算规则，不是学习预测器。
 
 ## 风险与后置门槛
 
@@ -62,4 +69,4 @@ last_updated: 2026-08-05
 
 ## handoff_anchor
 
-P0 `afdca1e`；P1 `e750370`；P2 `aa7cf0a`/`6d9d93c`；P3 `9269040`；P4 `0892d57`；P5 `38208ae`；P6 `025dc72`；P7 `339f34f`；P8 `00cf2f8`；P9 `c923f55`；P10 `6499d58`。读取 `memory_snapshots/P8-real-platform-acceptance-2026-08-05.md` 和 `docs/evidence/P8_REAL_ACCEPTANCE.md` 恢复；下一步为 P11。
+P0 `afdca1e`；P1 `e750370`；P2 `aa7cf0a`/`6d9d93c`；P3 `9269040`；P4 `0892d57`；P5 `38208ae`；P6 `025dc72`；P7 `339f34f`；P8 `00cf2f8`；P9 `c923f55`；P10 `6499d58`。读取 `memory_snapshots/P11-P13-platform-expansion-2026-08-05.md` 与 P11/P12/P13 evidence 恢复；下一步为 P14 自演化论文路线。

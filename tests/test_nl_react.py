@@ -82,3 +82,20 @@ def test_repair_budget_forces_stop_and_unknown_fields_are_rejected(tmp_path):
     payload["shell"] = "rm -rf /"
     with pytest.raises(ValueError, match="Unknown"):
         RepairAction.from_dict(payload)
+
+
+def test_pdn_area_failure_creates_data_only_floorplan_repair(tmp_path):
+    rtl = tmp_path / "tiny.v"
+    rtl.write_text("module tiny(input a, output y); assign y=~a; endmodule\n")
+    task = NaturalLanguageTaskCompiler().compile(
+        "ORFS GDS", project_id="p12", design_id="tiny", rtl_path=rtl, top="tiny",
+    )
+    controller = LimitedReActController()
+    action = controller.decide(task, {
+        "category": "pdn_insufficient_area",
+        "evidence_refs": ["runtime:failed:floorplan-log"],
+    })
+    repaired = controller.apply(task, action)
+    assert action.action_type == "increase_floorplan_area"
+    assert repaired.parameters["minimum_die_size_um"] == 20.0
+    assert repaired.inputs == task.inputs

@@ -40,6 +40,22 @@ curl -fsS http://127.0.0.1:8000/api/runtime/runs
 curl -fsS http://127.0.0.1:8000/api/campaigns
 ```
 
+P12/P13 APIs are data/control endpoints; API does not directly run EDA:
+
+```bash
+curl -fsS -X POST http://127.0.0.1:8000/api/spec/sessions \
+  -H 'Content-Type: application/json' \
+  -d '{"provider":"codex-cli","model":"gpt-5.6-terra","message":"..."}'
+
+curl -fsS -X POST http://127.0.0.1:8000/api/campaigns/stage-aware \
+  -H 'Content-Type: application/json' \
+  -d '{"design_id":"...","parameter_grid":{"core_utilization_pct":[20,30]},"max_parallel":2}'
+```
+
+Spec session 的 `/turn` 只追加提案；`/execute` 必须提交
+`{"confirmed":true}`。Codex Provider 使用本机登录态做验收，但不得读取、记录或复制
+认证文件。生产服务应配置独立 API Provider 和密钥轮换策略。
+
 仅绑定 `127.0.0.1`；远程浏览使用 SSH tunnel。此内置服务器没有登录和 TLS，不能直接暴露到公网。
 
 ## 停止与取消

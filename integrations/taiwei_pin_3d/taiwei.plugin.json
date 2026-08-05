@@ -19,6 +19,7 @@
     {"kind": "sdc", "required": false},
     {"kind": "spef", "required": false},
     {"kind": "three_d_report", "required": false},
+    {"kind": "layout_view", "required": false},
     {"kind": "toolchain_snapshot", "required": true},
     {"kind": "log", "required": true},
     {"kind": "three_d_view", "required": false}
