@@ -21,6 +21,7 @@
         <button class="nav-item" data-nav="design"><span>02</span>电路生成与分析</button>
         <button class="nav-item" data-nav="flow"><span>03</span>RTL-to-GDS</button>
         <button class="nav-item" data-nav="three-d"><span>04</span>TaiWei 3D</button>
+        <button class="nav-item" data-nav="evolve"><span>05</span>自演化实验</button>
       </nav>
 
       <div class="sidebar-foot">
@@ -80,6 +81,13 @@
             <p>固定官方版本的 gcd 双层布局、HBT / cross-tier 指标、真实 GDS 与完整可重放证据。</p>
             <span class="project-link">查看 3D 运行 <b>→</b></span>
           </button>
+          <button class="project-card flow-card" data-nav="evolve">
+            <span class="project-number">PROJECT 04</span>
+            <div class="wafer-glyph" aria-hidden="true"></div>
+            <h3>证据驱动自演化</h3>
+            <p>Evidence RAG → BO/GP 提案 → Runtime 实测 → Pareto 与 RL shadow。</p>
+            <span class="project-link">查看学习证据 <b>→</b></span>
+          </button>
         </div>
 
         <div class="section-heading compact">
@@ -90,7 +98,31 @@
           <div><small>REQUEST</small><code>POST /api/runs</code><p>通过统一契约提交持久化任务。</p></div>
           <div><small>EVIDENCE</small><code>GET /api/runs/:id</code><p>读取阶段、指标、产物与分析证据。</p></div>
           <div><small>CAMPAIGN</small><code>GET /api/campaigns</code><p>观察有界并发实验组、成员状态与恢复结果。</p></div>
+          <div><small>EVOLVE</small><code>GET /api/optimization/studies</code><p>读取预测、实测、预算与 Pareto 证据。</p></div>
         </div>
+      </section>
+
+      <section class="view" id="view-evolve">
+        <div class="page-intro">
+          <div><span class="kicker">Project 04 / Evidence-driven Evolution</span><h1>自演化实验与证据</h1></div>
+          <p>预测只用于选择候选；真实 QoR 只来自 Runtime 执行后的 observed 指标。</p>
+        </div>
+        <article class="surface three-d-console">
+          <div class="surface-head"><span>OPTIMIZATION STUDY</span><select id="optimizationStudySelect" aria-label="选择优化研究"><option value="">选择 Study</option></select></div>
+          <div class="flow-summary" id="optimizationSummary"><span class="run-status idle">IDLE</span><div><b>等待优化研究</b><small>BO/GP 与 RL shadow 不拥有执行权</small></div></div>
+          <div class="tier-kpis" id="optimizationKpis"></div>
+          <div class="three-d-grid">
+            <div class="three-d-details">
+              <h3>Pareto 实测点</h3>
+              <table class="metrics-table" id="paretoTable"></table>
+            </div>
+            <div class="three-d-details">
+              <h3>最新预测与不确定性</h3>
+              <table class="metrics-table" id="predictionTable"></table>
+            </div>
+          </div>
+          <div class="campaign-strip" id="optimizationEvidence"></div>
+        </article>
       </section>
 
       <section class="view" id="view-three-d">

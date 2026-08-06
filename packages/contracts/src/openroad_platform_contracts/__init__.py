@@ -24,6 +24,19 @@ from .platform import (
     TaskSpec,
     TERMINAL_RUNTIME_STATUSES,
 )
+from .learning import (
+    EvidencePointer,
+    LearningContext,
+    LearningObservation,
+    MechanismEvidence,
+    ObjectiveSpec,
+    OptimizationStudy,
+    OptimizerProposal,
+    ParameterSpec,
+    Prediction,
+    ShadowPolicyProposal,
+    TrajectoryStep,
+)
 
 __all__ = [
     "Artifact",
@@ -46,4 +59,15 @@ __all__ = [
     "RepairAction",
     "TaskSpec",
     "TERMINAL_RUNTIME_STATUSES",
+    "EvidencePointer",
+    "LearningContext",
+    "LearningObservation",
+    "MechanismEvidence",
+    "ObjectiveSpec",
+    "OptimizationStudy",
+    "OptimizerProposal",
+    "ParameterSpec",
+    "Prediction",
+    "ShadowPolicyProposal",
+    "TrajectoryStep",
 ]

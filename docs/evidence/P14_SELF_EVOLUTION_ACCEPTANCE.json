@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "phase": "P14",
+  "status": "accepted",
+  "acceptance_class": "real-evidence-learning-closed-loop-v1",
+  "date": "2026-08-06",
+  "runtime_authoritative": true,
+  "optimizer_execution_allowed": false,
+  "shadow_policy_execution_allowed": false,
+  "budget": {
+    "approved_new_runs": 24,
+    "actual_new_runs": 7,
+    "successful_gds_runs": 5,
+    "preserved_failed_runs": 2,
+    "max_parallel": 2
+  },
+  "toolchain": {
+    "platform": "nangate45",
+    "orfs_commit": "51ad1231a231ee85234c06db807688d029b85c35",
+    "openroad_version": "26Q1-1961-g63ed2e0fe5",
+    "yosys_version": "0.63-d3e297fcd",
+    "shared_toolchain_unchanged": true
+  },
+  "warm_start_runs": [
+    "c1a2d0ef865f46879e148cae28d5d715",
+    "c9eccfeb21e24843b461805713c2a647",
+    "d154f31a0ac64e3cb068329dfcde3149"
+  ],
+  "primary_method_results": [
+    {
+      "method": "bo_gp",
+      "run_id": "30728ad6531d483b8d8939633f8a9d82",
+      "wirelength_um": 265.0,
+      "setup_wns_ns": 5.6559,
+      "power_W": 0.00000808437,
+      "drc_errors": 0,
+      "gds_sha256": "176a2bf0c749c1583b7b35c07baa48d95fa99cb7ffe3003f488f8f749bf44056"
+    },
+    {
+      "method": "random",
+      "run_id": "de8fb520cf65442ea4525419724bc62b",
+      "wirelength_um": 278.0,
+      "setup_wns_ns": 5.6553,
+      "power_W": 0.00000811644,
+      "drc_errors": 0,
+      "gds_sha256": "49c61e8c4b08be2b183c58ffb3f95fab710ebdc7221cc00dd4704e88215fb0a6"
+    },
+    {
+      "method": "grid_rule",
+      "run_id": "f335e4215c904a3b89fa8e390e1f4e14",
+      "wirelength_um": 254.0,
+      "setup_wns_ns": 5.6565,
+      "power_W": 0.00000807794,
+      "drc_errors": 0,
+      "gds_sha256": "20b7f0f253318964c422362166f163bb72d3cdb4166a09bfa7529e5bd5dac344"
+    }
+  ],
+  "bo": {
+    "proposal_id": "optimizer-3263fe7e566650ab548c",
+    "fixed_seed_replay_equal": true,
+    "predictions_are_canonical_metrics": false,
+    "prediction_error": [
+      {"metric": "wirelength_um", "predicted_mean": 260.7316669559992, "predicted_stddev": 1.6536657799459005, "observed": 265.0, "absolute_error": 4.268333044000826},
+      {"metric": "setup_wns_ns", "predicted_mean": 5.659042166621201, "predicted_stddev": 0.0002598617654200939, "observed": 5.6559, "absolute_error": 0.003142166621200815},
+      {"metric": "power_W", "predicted_mean": 0.000008144781982856762, "predicted_stddev": 2.7238237775395112e-09, "observed": 0.00000808437, "absolute_error": 6.041198285676275e-08}
+    ]
+  },
+  "automatic_recovery": {
+    "failed_run_ids": [
+      "5f8135db575b47d6a8aa28336ae73965",
+      "8d4498bd55a442548e4faf44b5b1cf2c"
+    ],
+    "failure": "PDN-0185 insufficient floorplan area",
+    "action": "increase_floorplan_area",
+    "successful_child_run_ids": [
+      "091f1bdff8614c248e1910f507a1e750",
+      "8f00676fbd814340b70f047d63a76c54"
+    ],
+    "child_gds_sha256": "30eecb7e074926d1da0bbdd912c2ceabec4b56e6215da1fea0bbac8bf722e06e"
+  },
+  "learning": {
+    "observations": 10,
+    "primary_design_observations": 5,
+    "held_out_design_observations": 5,
+    "rag_wrong_toolchain_results": 0,
+    "behavior_cloning_shadow_id": "shadow-f740a5c7d0612c1116ed",
+    "linear_q_shadow_id": "shadow-c0b1f0ae5910f41e73e8",
+    "design_split_leakage": false
+  },
+  "evidence": {
+    "acceptance_summary": "artifacts/p14-real-20260806/acceptance_summary.json",
+    "acceptance_summary_sha256": "4f5e61affba32923b6f4c437af699b5153b3a04ded405085e5bdf02e8076ee71",
+    "runtime_db_sha256": "976a08d8db08069b55568e303975aadf52d6617f59d413d3b227b120ba545949",
+    "campaign_db_sha256": "6f4368a71cff9972d65a1ed70e45e660fed255e77a09447fa74bba6d865c5d42",
+    "study_db_sha256": "ac33b335fb043f8cbb9a9e52f78b9408f2cb113f0cbda686f152de8581a60252",
+    "learning_db_sha256": "9a86be1746a4127e7007815dcbda25627a7abc142b84ad4467c080278dace3f6",
+    "rag_db_sha256": "573d390fa49ffed20fb4d62975c8be17f1a73e675ae597f3321fee610ed304e1"
+  },
+  "claims_not_made": [
+    "BO outperformed every baseline",
+    "offline RL controls online scheduling",
+    "small-sample policy generalizes across designs",
+    "predicted QoR is observed QoR"
+  ]
+}

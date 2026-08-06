@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "phase": "P15",
+  "status": "accepted_migration_v1",
+  "date": "2026-08-06",
+  "source": {
+    "repository": "CODA-Team/DPLEvolve",
+    "visibility_at_acquisition": "private",
+    "commit": "96d8c613d62bf3431083bb5e52c7df8853d5a622",
+    "license": "BSD-3-Clause",
+    "file_count": 365,
+    "content_manifest_sha256": "4680820b5018d2c16c31d79a88fde2e8fa34fc16ff479f7d6e371d2846b73120"
+  },
+  "runtime_audit": {
+    "accepted": true,
+    "run_id": "9c848e7d92484c52b0096db6d50ce0d7",
+    "status": "succeeded",
+    "execution_class": "read-only-source-audit",
+    "eda_executed": false,
+    "source_mutated": false,
+    "promotion_applied": false,
+    "summary_sha256": "728cff81e57328e320e4da660bd42859dd08b2153dd01cf6ae0456aa0cc08245"
+  },
+  "anchors": {
+    "orfs_commit": "dcded6834fa6aa5b20f45d66eb3fb0dd7c0c6483",
+    "openroad_commit": "d14d526a6f8ce5388e2a8dc30da88a0189df2f46",
+    "openroad_archive_sha256": "4441e13fe45bd63d520e63f74484f3f0db6569e5be181ea0274ff3ad0e877dbe",
+    "opensta_commit": "8e42af1759e09a3e528e0b5b4332a4250f8a8de9",
+    "opensta_archive_sha256": "728e7cc7a9154258f4e897d41117c8a852f0ca4c26b6563484b1030ad913ff17",
+    "abc_commit": "17cadca080b33edc5a13c8e6e8e8092f8c350b25",
+    "abc_archive_sha256": "104b55591df5c722b2f6ffaafa93585873e36f5952d375a1f2e6aab5951b56a8"
+  },
+  "patch_checks": {
+    "base_from_clean": true,
+    "framework_after_base": true,
+    "diamond_from_clean": true,
+    "negotiation_from_clean": true,
+    "diamond_framework_delta": false,
+    "negotiation_framework_delta": false,
+    "known_delta_mismatches_preserved": true,
+    "evidence_sha256": "dae3c4a3f091dc58b62d5ff63ddad997e999b4ba731d108c58e92369581c0e62"
+  },
+  "build": {
+    "target": "dpl_evolve",
+    "status": "succeeded",
+    "dpl_evolve_a_sha256": "337348f98f5934eeca8e69995fa83dd85ba8d7a47bb83386e9b271b2e4da3b69",
+    "framework_lib_sha256": "86a0967af43b4fb97cfcfa2fd272a9cd6742b23a5017f82acb19d68f7d537a51",
+    "dpl_evolve_lib_sha256": "595548ebc3edc58681a5ced417934487d5af406aef19fd81b5daa99361c1196c"
+  },
+  "protection": {
+    "candidate_mutation_root": "tools/OpenROAD/src/dpl_evolve/",
+    "protected": ["baseline", "scripts", "flow", "classic_dpl", "rsz", "gpl", "evaluator"],
+    "required": ["metrics", "positive_liveness_counter", "legality", "full_flow"],
+    "automatic_source_merge": false,
+    "human_approval_required": true
+  },
+  "not_yet_claimed": {
+    "evolved_candidate_full_flow_executed": false,
+    "evolved_candidate_liveness_validated": false,
+    "candidate_improves_qor": false,
+    "source_candidate_promoted": false
+  }
+}

@@ -5,7 +5,12 @@ from shutil import which
 import pytest
 
 from apps.api.app import ApiState
-from openroad_platform_contracts import TaskSpec
+from openroad_platform_contracts import (
+    ObjectiveSpec,
+    OptimizationStudy,
+    ParameterSpec,
+    TaskSpec,
+)
 
 
 def make_state(tmp_path: Path) -> ApiState:
@@ -71,6 +76,22 @@ def test_runtime_and_campaign_queries_use_authoritative_store(tmp_path):
     assert campaign["members"][0]["status"] == "queued"
     cancelled = state.cancel_campaign(campaign_id)
     assert cancelled["members"][0]["status"] == "cancelled"
+
+
+def test_optimization_api_keeps_prediction_and_observation_sources_explicit(tmp_path):
+    state = make_state(tmp_path)
+    study = OptimizationStudy(
+        study_id="web-study", design_id="gcd", context_fingerprint="a" * 64,
+        parameter_space=(ParameterSpec("core_utilization_pct", 20, 60),),
+        objectives=(ObjectiveSpec("area_um2", "min"),), max_runs=8, seed=5,
+    )
+    state.optimization_store.create(study)
+    listed = state.list_optimization_studies()
+    assert listed["studies"][0]["study_id"] == "web-study"
+    detail = state.get_optimization_study("web-study")
+    assert detail["prediction_source"] == "predicted"
+    assert detail["observation_source"] == "observed"
+    assert detail["study"]["max_runs"] == 8
 
 
 def test_taiwei_runtime_view_exposes_hashed_3d_evidence(tmp_path):

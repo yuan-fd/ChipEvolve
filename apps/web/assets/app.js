@@ -13,6 +13,8 @@ const state = {
   selectedDesign: null,
   selectedRun: null,
   selectedThreeD: null,
+  optimizationStudies: [],
+  selectedOptimizationStudy: null,
 };
 
 function escapeHtml(value) {
@@ -34,7 +36,7 @@ function post(path, payload) {
 function navigate(view) {
   $$(".view").forEach((item) => item.classList.toggle("active", item.id === `view-${view}`));
   $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.nav === view));
-  $("#crumb").textContent = ({home:"PROJECT HUB",design:"CIRCUIT STUDIO",flow:"RTL-TO-GDS","three-d":"TAIWEI 3D"})[view] || view;
+  $("#crumb").textContent = ({home:"PROJECT HUB",design:"CIRCUIT STUDIO",flow:"RTL-TO-GDS","three-d":"TAIWEI 3D",evolve:"SELF EVOLUTION"})[view] || view;
   history.replaceState(null, "", `#${view}`);
   window.scrollTo({top:0, behavior:"smooth"});
 }
@@ -308,6 +310,39 @@ async function cancelThreeDRun() {
   await loadThreeDRuns(runId);
 }
 
+async function loadOptimizationStudies(preferredId = null) {
+  const payload = await api("/api/optimization/studies");
+  state.optimizationStudies = payload.studies || [];
+  $("#optimizationStudySelect").innerHTML = '<option value="">选择 Study</option>' + state.optimizationStudies.map((study) =>
+    `<option value="${escapeHtml(study.study_id)}">${escapeHtml(study.design_id)} · ${escapeHtml(study.status)} · ${study.observation_count}/${study.max_runs}</option>`
+  ).join("");
+  const selected = preferredId || state.selectedOptimizationStudy?.study?.study_id || state.optimizationStudies[0]?.study_id;
+  if (selected && state.optimizationStudies.some((study) => study.study_id === selected)) {
+    $("#optimizationStudySelect").value = selected;
+    await selectOptimizationStudy(selected);
+  }
+}
+
+async function selectOptimizationStudy(studyId) {
+  if (!studyId) return;
+  const detail = await api(`/api/optimization/studies/${encodeURIComponent(studyId)}`);
+  state.selectedOptimizationStudy = detail;
+  const study = detail.study;
+  const observations = detail.observations || [];
+  const proposals = detail.proposals || [];
+  const pareto = new Set(detail.pareto_observation_ids || []);
+  $("#optimizationSummary").innerHTML = `<span class="run-status ${escapeHtml(study.status)}">${escapeHtml(study.status.toUpperCase())}</span><div><b>${escapeHtml(study.design_id)} · ${escapeHtml(study.study_id)}</b><small>context ${escapeHtml(study.context_fingerprint.slice(0,12))} · seed ${escapeHtml(study.seed)}</small></div>`;
+  $("#optimizationKpis").innerHTML = [
+    [observations.length, "Observed runs"], [proposals.length, "BO/GP proposals"],
+    [pareto.size, "Pareto points"], [`${observations.length}/${study.max_runs}`, "Budget"],
+  ].map(([value,label]) => `<div class="kpi"><b>${escapeHtml(value)}</b><small>${label}</small></div>`).join("");
+  const paretoRows = observations.filter((item) => pareto.has(item.observation_id));
+  $("#paretoTable").innerHTML = paretoRows.map((item) => `<tr><td>${escapeHtml(item.observation_id)}</td><td>${escapeHtml(Object.entries(item.metrics).map(([key,value]) => `${key}=${value}`).join(" · "))}</td><td>observed</td></tr>`).join("") || '<tr><td>尚无完整实测 Pareto 点</td><td>--</td><td>observed</td></tr>';
+  const latest = proposals[proposals.length - 1];
+  $("#predictionTable").innerHTML = (latest?.predictions || []).map((item) => `<tr><td>${escapeHtml(item.metric_name)}</td><td>${Number(item.mean).toPrecision(6)} ± ${Number(item.stddev).toPrecision(4)}</td><td>predicted</td></tr>`).join("") || '<tr><td>初始采样尚无 GP 预测</td><td>--</td><td>predicted</td></tr>';
+  $("#optimizationEvidence").innerHTML = `<div><small>TRUST BOUNDARY</small><b>${escapeHtml(detail.observation_source)} ≠ ${escapeHtml(detail.prediction_source)}</b><span>Optimizer proposals cannot launch EDA; Runtime remains authoritative.</span></div>`;
+}
+
 $$('[data-nav]').forEach((button) => button.addEventListener("click", (event) => { event.preventDefault(); navigate(button.dataset.nav); }));
 $$('[data-prompt]').forEach((button) => button.addEventListener("click", () => { $("#designPrompt").value = button.dataset.prompt; }));
 $$('[data-evidence]').forEach((button) => button.addEventListener("click", () => {
@@ -326,19 +361,21 @@ $("#startFlow").addEventListener("click", startFlow);
 $("#runSelect").addEventListener("change", (event) => selectRun(event.target.value));
 $("#threeDRunSelect").addEventListener("change", (event) => selectThreeDRun(event.target.value));
 $("#cancelThreeD").addEventListener("click", () => cancelThreeDRun().catch(() => {}));
+$("#optimizationStudySelect").addEventListener("change", (event) => selectOptimizationStudy(event.target.value));
 $("#refreshAll").addEventListener("click", () => refreshAll());
 
 async function refreshAll() {
   await Promise.all([loadHealth(), loadProjects(), loadDesigns()]);
-  await Promise.all([loadRuns(), loadThreeDRuns()]);
+  await Promise.all([loadRuns(), loadThreeDRuns(), loadOptimizationStudies()]);
 }
 
 function updateClock() { $("#clock").textContent = new Date().toLocaleString("zh-CN", {hour12:false}); }
 updateClock();
 setInterval(updateClock, 1000);
 
-const initialView = ["home","design","flow","three-d"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "home";
+const initialView = ["home","design","flow","three-d","evolve"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "home";
 navigate(initialView);
 refreshAll().catch((error) => { $("#systemLabel").textContent = "加载失败"; $("#systemDetail").textContent = error.message; });
 setInterval(() => loadRuns().catch(() => {}), 5000);
 setInterval(() => loadThreeDRuns().catch(() => {}), 5000);
+setInterval(() => loadOptimizationStudies().catch(() => {}), 10000);

@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "repository": "https://github.com/CODA-Team/DPLEvolve",
+  "visibility_at_acquisition": "private",
+  "acquisition_method": "GitHub API fixed-commit archive",
+  "commit": "96d8c613d62bf3431083bb5e52c7df8853d5a622",
+  "cache_path": ".external-src/dplevolve",
+  "license": "BSD-3-Clause",
+  "license_sha256": "d6c91d5c3b8572a5ee0e36d92995a476de813ea98f535b2ef743dd4128cf4360",
+  "content_manifest_algorithm": "sha256(relative-path NUL size NUL file-sha256 LF), excluding .git, __pycache__, and *.pyc",
+  "content_manifest_sha256": "4680820b5018d2c16c31d79a88fde2e8fa34fc16ff479f7d6e371d2846b73120",
+  "file_count": 365,
+  "acquisition_inventory_sha256": "588f3464bd933a6e55e89061adf50ce578b4cb736bfac54098da82af01a4df54",
+  "release_gate": "scripts/repo/check_release_readiness.sh --skip-teacher-dry-run",
+  "mutation_root": "tools/OpenROAD/src/dpl_evolve/",
+  "source_anchors": {
+    "orfs": "dcded6834fa6aa5b20f45d66eb3fb0dd7c0c6483",
+    "openroad": "d14d526a6f8ce5388e2a8dc30da88a0189df2f46"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "plugin_id": "dplevolve",
+  "plugin_version": "1.0.0",
+  "adapter_entry": ["python3", "./../../packages/execution/src/openroad_platform_execution/dplevolve_adapter.py"],
+  "capabilities": ["eda.tool-evolve.audit", "eda.whitebox.proposal"],
+  "supported_arch": ["aarch64"],
+  "input_schema": {"type": "object", "required": ["scope"]},
+  "output_schema": {"type": "object", "required": ["status", "artifacts"]},
+  "required_tools": ["bash", "git", "python3"],
+  "default_timeout_seconds": 600,
+  "artifact_rules": [
+    {"kind": "release_gate_log", "required": true},
+    {"kind": "source_lock", "required": true},
+    {"kind": "audit_report", "required": true}
+  ],
+  "environment": {
+    "DPLEVOLVE_EXPECTED_COMMIT": "96d8c613d62bf3431083bb5e52c7df8853d5a622",
+    "DPLEVOLVE_EXPECTED_TREE_SHA256": "4680820b5018d2c16c31d79a88fde2e8fa34fc16ff479f7d6e371d2846b73120",
+    "DPLEVOLVE_EXPECTED_FILE_COUNT": "365",
+    "DPLEVOLVE_LICENSE": "BSD-3-Clause",
+    "DPLEVOLVE_EXECUTION_CLASS": "read-only-source-audit"
+  }
+}

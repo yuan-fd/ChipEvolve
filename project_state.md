@@ -1,10 +1,10 @@
 # OpenROAD Platform — 工作记忆
 
 project_id: openroad-platform
-phase: P11-P13 已完成；准备论文驱动自演化扩展
-current_subgoal: P14 知识库/RL/贝叶斯/GP 与外部代码优化 Agent 迁移
-progress: P0-P13 + P8-Real 已验收
-last_updated: 2026-08-05
+phase: P14/P15 已完成；等待用户审核
+current_subgoal: P14 证据自演化闭环 v1 与 P15 DPLEvolve 受保护迁移已封存
+progress: P0-P15 + P8-Real 已验收
+last_updated: 2026-08-06
 
 ## 已确认事实
 
@@ -35,7 +35,13 @@ last_updated: 2026-08-05
 - 电路图/2D GDS/3D GDS 分别使用 Graphviz、KLayout、KLayout+Matplotlib；不手绘版图几何。
 - P12 Codex Terra 真实 Spec→RTL→ORFS→GDS 成功；首 run 的 `PDN-0185` 证据保留，最小面积修复子 run 成功。
 - P13 ORFS stage 事件进入 Runtime；参数网格、并发、阶段预算剪枝、Top-K 与 LimitedReAct 修复子 run 已实现。
-- 当前全量回归：103 passed。
+- P14 Evidence RAG v2、observed-only 数据库、NumPy GP/BO、Campaign bridge、真实回灌、Pareto 和离线 shadow policy 已实现。
+- P14 真实验收复用 3 个历史 run，新增 7 个 run（5 成功 GDS、2 个失败前像）；两个 `PDN-0185` 均由新修复子 run 成功，失败证据保留。
+- P14 同口径结果为 grid/rule 优于本轮 BO；预测与 observed 严格分离，不宣称 BO 必然提升。
+- P15 DPLEvolve 固定 commit `96d8c613...`、BSD-3-Clause、365 文件清单；Runtime 只读审计成功，源码未变、未晋级。
+- P15 固定 OpenROAD 构建 `dpl_evolve` 成功；完整 from-clean 候选可应用，两份 framework delta 前像失配如实保留。
+- P15 尚未执行 evolved candidate 真实 full-flow/liveness/QoR；完成的是受保护迁移 v1。
+- 当前全量回归：149 passed；定向 P14/P15/API/Web 55 passed。
 
 ## 架构定版
 
@@ -52,6 +58,8 @@ last_updated: 2026-08-05
 - SQLite WAL 不能放在当前 GlusterFS 项目盘；live Runtime DB 使用节点本地盘，checkpoint 后保存不可变快照和查询摘要。
 - LLM 只产生结构化 proposal；显式确认、确定性校验和 Runtime 提交是执行门。Codex CLI 登录不是平台 API key。
 - P13 doomed-run v1 是可解释阶段预算规则，不是学习预测器。
+- P14 学习对象均带 PDK、工具链、RTL 指纹、stage、parser version；只有 SHA 校验通过的 Runtime 登记报告可进入 observed KPI。
+- P14/P15 所有模型和代码候选只产生提案；Runtime 与人工 promotion gate 分别控制执行和源码晋级。
 
 ## 风险与后置门槛
 
@@ -69,4 +77,4 @@ last_updated: 2026-08-05
 
 ## handoff_anchor
 
-P0 `afdca1e`；P1 `e750370`；P2 `aa7cf0a`/`6d9d93c`；P3 `9269040`；P4 `0892d57`；P5 `38208ae`；P6 `025dc72`；P7 `339f34f`；P8 `00cf2f8`；P9 `c923f55`；P10 `6499d58`。读取 `memory_snapshots/P11-P13-platform-expansion-2026-08-05.md` 与 P11/P12/P13 evidence 恢复；下一步为 P14 自演化论文路线。
+P0 `afdca1e`；P1 `e750370`；P2 `aa7cf0a`/`6d9d93c`；P3 `9269040`；P4 `0892d57`；P5 `38208ae`；P6 `025dc72`；P7 `339f34f`；P8 `00cf2f8`；P9 `c923f55`；P10 `6499d58`；P11-P13 `36c2155`。读取 `memory_snapshots/P14-P15-self-evolution-whitebox-2026-08-06.md` 与 P14/P15 evidence 恢复；下一阶段等待用户审核授权。

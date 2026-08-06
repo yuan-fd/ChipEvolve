@@ -33,6 +33,7 @@ for package_root in reversed(PACKAGE_ROOTS):
         sys.path.insert(0, str(package_root))
 
 from openroad_platform_contracts import RunRequest, RunStage  # noqa: E402
+from openroad_platform_analysis import OptimizationStudyStore  # noqa: E402
 from openroad_platform_execution import (  # noqa: E402
     PluginRegistry, ToolchainConfig, build_orfs_task, orfs_plugin_manifest,
 )
@@ -68,6 +69,7 @@ class ApiState:
         runtime_db_path: Path | None = None,
         campaign_db_path: Path | None = None,
         spec_db_path: Path | None = None,
+        optimization_db_path: Path | None = None,
     ):
         self.db_path = db_path.expanduser().resolve()
         self.upload_root = upload_root.expanduser().resolve()
@@ -82,6 +84,9 @@ class ApiState:
         self.runtime_store = RuntimeStore(runtime_db_path or local_state / "runtime.db")
         self.campaign_store = CampaignStore(campaign_db_path or local_state / "campaign.db")
         self.spec_store = SpecConversationStore(spec_db_path or state_root / "spec.db")
+        self.optimization_store = OptimizationStudyStore(
+            optimization_db_path or state_root / "optimization.db"
+        )
         self.designs = DesignService(
             design_root or ROOT / "var" / "designs",
             legacy_root=legacy_root or Path(os.environ.get("ICCAD_ROOT", ROOT.parent / "iccad")),
@@ -142,6 +147,13 @@ class ApiState:
                     "name": "TaiWei 3D",
                     "description": "固定官方工具链的双层 gcd、HBT 指标、真实产物与可重放证据",
                     "route": "three-d",
+                    "status": "available",
+                },
+                {
+                    "id": "self-evolution",
+                    "name": "Evidence-driven Evolution",
+                    "description": "Evidence RAG、BO/GP、Pareto 前沿与 RL shadow 证据",
+                    "route": "evolve",
                     "status": "available",
                 },
             ],
@@ -323,6 +335,12 @@ class ApiState:
                             "task_id": member.task_spec.task_id, "run_id": member.run_id,
                             "status": run.status.value if run else "unbound"})
         return {**campaign, "members": members}
+
+    def list_optimization_studies(self) -> dict[str, Any]:
+        return {"studies": self.optimization_store.list()}
+
+    def get_optimization_study(self, study_id: str) -> dict[str, Any]:
+        return self.optimization_store.describe(study_id)
 
     def create_stage_campaign(self, payload: dict[str, Any]) -> dict[str, Any]:
         design_id = str(payload.get("design_id") or "").strip()
@@ -586,6 +604,11 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                         unquote(path.removeprefix("/api/runtime/runs/"))))
                 elif path == "/api/campaigns":
                     self._json(state.list_campaigns())
+                elif path == "/api/optimization/studies":
+                    self._json(state.list_optimization_studies())
+                elif path.startswith("/api/optimization/studies/"):
+                    self._json(state.get_optimization_study(
+                        unquote(path.removeprefix("/api/optimization/studies/"))))
                 elif re.fullmatch(r"/api/spec/sessions/[^/]+", path):
                     self._json(state.get_spec_session(unquote(path.split("/")[-1])))
                 elif path.startswith("/api/campaigns/"):
@@ -769,6 +792,11 @@ def main(argv: list[str] | None = None) -> int:
                                     local_state / "campaign.db")),
     )
     parser.add_argument(
+        "--optimization-db", type=Path,
+        default=Path(os.environ.get("OPENROAD_PLATFORM_OPTIMIZATION_DB",
+                                    local_state / "optimization.db")),
+    )
+    parser.add_argument(
         "--orfs-root",
         type=Path,
         default=Path(os.environ.get("ORFS_ROOT", ROOT.parent / "OpenROAD-flow-scripts")),
@@ -782,6 +810,7 @@ def main(argv: list[str] | None = None) -> int:
         legacy_root=args.legacy_root,
         runtime_db_path=args.runtime_db,
         campaign_db_path=args.campaign_db,
+        optimization_db_path=args.optimization_db,
     )
     server = build_server(args.host, args.port, state)
     print(f"OpenROAD Platform: http://{args.host}:{server.server_port}")

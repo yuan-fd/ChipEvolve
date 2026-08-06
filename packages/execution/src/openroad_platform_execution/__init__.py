@@ -31,9 +31,20 @@ from .implcraft_plugin import (
     IMPLCRAFT_PLUGIN_ID, IMPLCRAFT_PLUGIN_VERSION, IMPLCRAFT_UPSTREAM_COMMIT,
     build_implcraft_task, implcraft_plugin_manifest,
 )
+from .dplevolve_plugin import (
+    DPLEVOLVE_LICENSE, DPLEVOLVE_PLUGIN_ID, DPLEVOLVE_PLUGIN_VERSION,
+    DPLEVOLVE_UPSTREAM_COMMIT, build_dplevolve_audit_task,
+    dplevolve_plugin_manifest, source_tree_digest,
+)
 from .coding_agent import (
     CandidateEvaluation, IsolatedCodingAgent, PatchProposal, PromotionGate,
     VerificationPolicy,
+)
+from .protected_whitebox import (
+    ProtectedWhiteBoxEvaluation,
+    ProtectedWhiteBoxEvaluator,
+    ProtectedWhiteBoxPromotionGate,
+    WhiteBoxPolicy,
 )
 
 __all__ = [
@@ -50,6 +61,11 @@ __all__ = [
     "build_taiwei_task", "taiwei_plugin_manifest",
     "IMPLCRAFT_PLUGIN_ID", "IMPLCRAFT_PLUGIN_VERSION", "IMPLCRAFT_UPSTREAM_COMMIT",
     "build_implcraft_task", "implcraft_plugin_manifest",
+    "DPLEVOLVE_LICENSE", "DPLEVOLVE_PLUGIN_ID", "DPLEVOLVE_PLUGIN_VERSION",
+    "DPLEVOLVE_UPSTREAM_COMMIT", "build_dplevolve_audit_task",
+    "dplevolve_plugin_manifest", "source_tree_digest",
     "CandidateEvaluation", "IsolatedCodingAgent", "PatchProposal", "PromotionGate",
     "VerificationPolicy",
+    "ProtectedWhiteBoxEvaluation", "ProtectedWhiteBoxEvaluator",
+    "ProtectedWhiteBoxPromotionGate", "WhiteBoxPolicy",
 ]

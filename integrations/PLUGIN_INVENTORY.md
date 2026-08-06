@@ -1,6 +1,6 @@
 # 外部插件事实清单
 
-审计日期：2026-08-04
+审计日期：2026-08-06
 
 本文件记录官方源码与项目补充材料的交叉核验结果。固定版本的机器可读真相源是 `plugins.lock.json`；第三方源码位于被 Git 忽略的 `.external-src/`，平台仓库不得复制第三方私有依赖。
 
@@ -47,6 +47,16 @@ P8 状态：`taiwei-pin-3d@1.0.0` 协议接入完成；固定 3D 工具链因 Gi
 ## 共通准入门
 
 每个插件在实现前必须具备：固定 commit、许可证结论、独立环境、manifest、输入输出 Schema、超时与取消语义、最小 smoke、产物 allowlist、错误传播测试和不包含凭据的环境快照。
+
+## DPLEvolve
+
+- 私有仓库：`CODA-Team/DPLEvolve`；固定 commit `96d8c613d62bf3431083bb5e52c7df8853d5a622`。
+- 许可证：BSD-3-Clause；365 个文件的稳定内容清单 SHA-256 为 `4680820b...`。
+- 历史锚点：ORFS `dcded683...`、OpenROAD `d14d526...`；OpenSTA/ABC 子模块另行固定。
+- `dplevolve@1.0.0` 当前只执行 read-only release-readiness/source-lock audit，不运行 EDA、不修改源码。
+- Tool-Evolve 候选只能修改 `tools/OpenROAD/src/dpl_evolve/`，且必须通过 metrics、liveness、legality、full-flow 与人工晋级门。
+- P15 已完成固定构建和 patch 前像检查；两份完整 from-clean 候选可应用，两份 framework delta 失配。
+- 尚未执行 evolved candidate 的真实 full-flow/QoR 对照，不得宣称代码优化效果已验证。
 
 ## EDACraft / ImplCraft
 

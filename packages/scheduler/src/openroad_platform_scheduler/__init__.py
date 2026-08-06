@@ -19,6 +19,7 @@ from .spec_conversation import (
     ALLOWED_MODELS, CodexCliSpecProvider, RuleBasedSpecProvider,
     SpecConversationManager, SpecConversationStore, SpecProposal,
 )
+from .optimization_bridge import OptimizationCampaignBridge
 
 __all__ = [
     "Job", "JobStore", "Worker", "RuntimeAttempt", "RuntimeRun",
@@ -30,4 +31,5 @@ __all__ = [
     "LimitedReActController", "NaturalLanguageTaskCompiler",
     "ALLOWED_MODELS", "CodexCliSpecProvider", "RuleBasedSpecProvider",
     "SpecConversationManager", "SpecConversationStore", "SpecProposal",
+    "OptimizationCampaignBridge",
 ]

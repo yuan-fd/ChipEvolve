@@ -42,6 +42,18 @@
         "orfs_research_commit": "568eb04da9173695d6bfc1b10ba868e0b6b8a9fa",
         "openroad_commit": "305d3ba2ddfd00591924cc586ad408179f566afe"
       }
+    },
+    {
+      "plugin_id": "dplevolve",
+      "repository": "https://github.com/CODA-Team/DPLEvolve",
+      "visibility_at_audit": "private",
+      "commit": "96d8c613d62bf3431083bb5e52c7df8853d5a622",
+      "cache_path": ".external-src/dplevolve",
+      "license": "BSD-3-Clause",
+      "entrypoint": "scripts/repo/check_release_readiness.sh",
+      "content_manifest_sha256": "4680820b5018d2c16c31d79a88fde2e8fa34fc16ff479f7d6e371d2846b73120",
+      "file_count": 365,
+      "execution_class": "read-only-source-audit"
     }
   ]
 }
