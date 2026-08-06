@@ -1,21 +1,20 @@
-# 当前任务：P14/P15 验收收口
+# 当前任务：P16 开放知识、BYOK 与人控自演化 v1
 
-status: completed_pending_user_review
-authorization: user_approved_goal
-completed_at: 2026-08-06
-base_commit: 36c2155c57748fc42719833459ddbbb1893c22c1
+status: planned_waiting_for_execution_approval
+authorization: planning_only
+planned_at: 2026-08-06
+base_commit: 55c0bde67ecbd9332a7f44d0d5c11ac2a119e1c8
 
-## 已完成
+## 目标
 
-- P14：Evidence RAG、observed-only 数据层、NumPy GP/BO、受控 Campaign 桥、真实 ORFS 回灌、Pareto、离线 BC/linear-Q shadow、API/Web 查询。
-- P14 真实验收：3 个历史 warm-start；7 个新增 run，5 个成功 GDS，2 个失败前像经独立修复子 run 成功；预算 7/24、并发 2。
-- P15：DPLEvolve 固定源码、许可证与锚点、只读 Runtime 插件、受保护白盒 evaluator、人工晋级门、固定构建与 patch 前像检查。
-- P15 边界：迁移 v1 完成；尚未宣称 evolved candidate 已通过真实 full-flow/liveness/QoR，也没有自动晋级源码。
+把公开知识/benchmark、持续数据积累、用户自带模型、RL 建议与有限自动资格、Craft→OpenROAD 后端纳入同一个可审计阶段。
 
-## 审核入口
+## 已冻结边界
 
-- `docs/evidence/P14_SELF_EVOLUTION_ACCEPTANCE.md`
-- `docs/evidence/P15_DPLEVOLVE_ACCEPTANCE.md`
-- `memory_snapshots/P14-P15-self-evolution-whitebox-2026-08-06.md`
+- 本轮规划不实施 P16 代码，不下载大数据集，不调用付费模型，不运行新的真实 EDA。
+- P16 执行预算建议为最多 8 个新增 ORFS run、并发 2；DPLEvolve full-flow 为 0。
+- API key 推荐只在会话内存保存，默认 TTL 8 小时；用户数据默认私有。
+- T1 用户建议为默认；T2 有限自动默认关闭，数据不足时必须返回 not eligible。
+- IC Craft 使用 backend-neutral FlowPlan 和现有 ORFS Runtime，不伪造商业 Tcl/signoff。
 
-下一阶段尚未授权。建议在用户审核后，将“DPLEvolve 真实候选 full-flow/liveness 对照”和“扩大跨设计学习数据”拆为有预算的 P16，而不是把迁移成功当作算法效果成功。
+完整施工范围、验收和审批项见 `tasks/phase-16.md`。用户明确批准后才能进入实现。

@@ -2,18 +2,24 @@
 
 updated_at: 2026-08-06
 
-P14/P15 已实现并完成真实验收，当前等待用户审核，不自动启动新阶段。
+P16“开放知识、BYOK 与人控自演化 v1”规划已完成，等待用户审核批准，不自动开始实现。
 
-建议下一阶段命名为 P16“自演化研究扩展与白盒候选实证”，分两条受预算路线：
+执行顺序：
 
-1. 扩大多个结构不同设计的真实 observation，做严格 train/validation/test、random/grid/BO 重复实验和统计置信区间，再评估更正式的离线 RL 或策略学习。
-2. 在受保护 evaluator 中选择一份完整 DPLEvolve from-clean candidate，执行 baseline/candidate 的 liveness、legality、完整 RTL→GDS 和 QoR 对照；任何源码晋级继续要求人工批准。
+1. 建立公开知识与 benchmark Registry，先审计许可和版本，再下载允许缓存的内容；
+2. 建立 Runtime 终态到 observed-only 数据库的持续、幂等、tenant 隔离管道；
+3. 接入用户自带 OpenAI-compatible API key/模型，会话内存保存密钥；
+4. 将 RL/BO/GP 变成可接受、修改、拒绝的 T1 建议，并实现默认关闭的 T2 硬门；
+5. 新增 backend-neutral Craft FlowPlan 和 OpenROAD/ORFS backend；
+6. 用 fake provider、固定语料和最多一条小型 Craft→OpenROAD GDS 做集成验收。
 
-P16 启动前应单独确定真实 EDA run 预算、候选 patch、评价指标和失败停止条件。恢复时先读：
+推荐整体批准 `tasks/phase-16.md` 第 12 节：密钥 TTL 8 小时、用户数据默认私有、T2 默认关闭、Craft 新增 OpenROAD adapter、最多 8 个 ORFS run/并发 2、5 GiB 下载、最多 5 次用户自带真实 API 调用。DPLEvolve P16 full-flow 预算为 0。
+
+恢复入口：
 
 ```bash
 cd ~/openroad-platform
 git status --short
-sed -n '1,260p' docs/evidence/P14_SELF_EVOLUTION_ACCEPTANCE.md
-sed -n '1,260p' docs/evidence/P15_DPLEVOLVE_ACCEPTANCE.md
+sed -n '1,360p' tasks/phase-16.md
+sed -n '1,220p' docs/evidence/P15_DPLEVOLVE_SMOKE.md
 ```

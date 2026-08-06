@@ -1,9 +1,9 @@
 # OpenROAD Platform — 工作记忆
 
 project_id: openroad-platform
-phase: P14/P15 已完成；等待用户审核
-current_subgoal: P14 证据自演化闭环 v1 与 P15 DPLEvolve 受保护迁移已封存
-progress: P0-P15 + P8-Real 已验收
+phase: P14/P15 已完成；P16 规划等待批准
+current_subgoal: P16 公开知识、BYOK、人控策略建议与 Craft→OpenROAD 后端
+progress: P0-P15 + P8-Real 已验收；P16 仅完成规划
 last_updated: 2026-08-06
 
 ## 已确认事实
@@ -41,6 +41,8 @@ last_updated: 2026-08-06
 - P15 DPLEvolve 固定 commit `96d8c613...`、BSD-3-Clause、365 文件清单；Runtime 只读审计成功，源码未变、未晋级。
 - P15 固定 OpenROAD 构建 `dpl_evolve` 成功；完整 from-clean 候选可应用，两份 framework delta 前像失配如实保留。
 - P15 尚未执行 evolved candidate 真实 full-flow/liveness/QoR；完成的是受保护迁移 v1。
+- P15 轻量可运行性 smoke 已验证 33 条知识索引、三类 prompt、0 warning、四个 Tcl 命令和两个核心编译符号；共享 ORFS 未改变。
+- P16 计划冻结在 `tasks/phase-16.md`：用户数据默认私有、BYOK key 会话内存保存、T1 建议默认/T2 自动默认关闭、Craft 使用新 OpenROAD backend。
 - 当前全量回归：149 passed；定向 P14/P15/API/Web 55 passed。
 
 ## 架构定版
@@ -77,4 +79,4 @@ last_updated: 2026-08-06
 
 ## handoff_anchor
 
-P0 `afdca1e`；P1 `e750370`；P2 `aa7cf0a`/`6d9d93c`；P3 `9269040`；P4 `0892d57`；P5 `38208ae`；P6 `025dc72`；P7 `339f34f`；P8 `00cf2f8`；P9 `c923f55`；P10 `6499d58`；P11-P13 `36c2155`。读取 `memory_snapshots/P14-P15-self-evolution-whitebox-2026-08-06.md` 与 P14/P15 evidence 恢复；下一阶段等待用户审核授权。
+P0 `afdca1e`；P1 `e750370`；P2 `aa7cf0a`/`6d9d93c`；P3 `9269040`；P4 `0892d57`；P5 `38208ae`；P6 `025dc72`；P7 `339f34f`；P8 `00cf2f8`；P9 `c923f55`；P10 `6499d58`；P11-P13 `36c2155`；P14-P15 `55c0bde`。读取 `memory_snapshots/P16-planning-2026-08-06.md` 与 `tasks/phase-16.md` 恢复；P16 尚未授权执行。

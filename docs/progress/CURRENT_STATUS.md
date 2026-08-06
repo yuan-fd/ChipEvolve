@@ -1,7 +1,7 @@
 # 当前状态
 
 updated_at: 2026-08-06
-phase: P0-P15 completed; P14/P15 pending user review
+phase: P0-P15 completed; P16 planned and awaiting approval
 
 - Runtime 仍是唯一进程、Attempt、Artifact、Event 和终态权威；LLM、BO/GP、离线 RL、DPLEvolve 均无旁路执行权。
 - P0-P13 与 P8-Real 的插件平台、真实 2D/3D、自然语言闭环、stage-aware 批量实验和自动纠错能力保持不变。
@@ -13,5 +13,7 @@ phase: P0-P15 completed; P14/P15 pending user review
 - 固定 OpenROAD `d14d526...` 上 `dpl_evolve` 构建成功；base/framework 与两份完整 from-clean 候选 patch 通过。
 - 两份 framework delta 前像不一致被保留为失败证据。尚未做 evolved candidate 真实 full-flow/liveness/QoR，不得称为算法效果验收。
 - P15 候选只能修改 `tools/OpenROAD/src/dpl_evolve/`；生产基线、flow、经典 dpl、rsz、gpl 和评价器受保护；晋级必须人工批准。
+- DPLEvolve 轻量 smoke 已通过 33 条知识索引、Teacher/Student/Review prompt 生成、0 prompt warning、Tcl 命令和 C++ 入口检查；未运行 EDA，P16 不再安排 full-flow。
+- P16 已完成规划：公开知识/benchmark、持续学习、BYOK、T1/T2 建议门和 Craft→OpenROAD backend；尚未授权实现。
 - 当前全量回归 149 passed；定向 P14/P15/API/Web 55 passed；Node 语法、凭据扫描和 diff 检查通过。
 - 不 push、不部署、不读取或提交凭据；共享 ORFS/OpenROAD/PDK 未修改。
