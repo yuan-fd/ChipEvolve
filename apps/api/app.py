@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import hashlib
 import json
 import mimetypes
@@ -32,14 +33,21 @@ for package_root in reversed(PACKAGE_ROOTS):
     if str(package_root) not in sys.path:
         sys.path.insert(0, str(package_root))
 
-from openroad_platform_contracts import RunRequest, RunStage  # noqa: E402
-from openroad_platform_analysis import OptimizationStudyStore  # noqa: E402
+from openroad_platform_contracts import LearningContext, RunRequest, RunStage  # noqa: E402
+from openroad_platform_analysis import (  # noqa: E402
+    LearningCollector, OptimizationStudyStore, PublicKnowledgeRegistry, RecommendationStore,
+    TenantLearningStore, automation_envelope, build_recommendation,
+    load_public_manifest,
+)
 from openroad_platform_execution import (  # noqa: E402
-    PluginRegistry, ToolchainConfig, build_orfs_task, orfs_plugin_manifest,
+    PluginRegistry, ToolchainConfig, build_craft_flow_plan, build_orfs_task,
+    craft_capability_matrix, craft_plan_to_task, orfs_plugin_manifest,
 )
 from openroad_platform_scheduler import (  # noqa: E402
     ALLOWED_MODELS, CampaignStore, CodexCliSpecProvider, JobStore,
-    NaturalLanguageTaskCompiler, RuleBasedSpecProvider, RuntimeStore,
+    InMemorySecretBroker, NaturalLanguageTaskCompiler,
+    OpenAICompatibleSpecProvider, ProviderProfile, ProviderProfileStore,
+    RuleBasedSpecProvider, RuntimeStore,
     SpecConversationManager, SpecConversationStore, StageAwareCampaignManager,
     WorkflowRuntime,
 )
@@ -70,8 +78,11 @@ class ApiState:
         campaign_db_path: Path | None = None,
         spec_db_path: Path | None = None,
         optimization_db_path: Path | None = None,
+        byok_transport_secure: bool | None = None,
     ):
         self.db_path = db_path.expanduser().resolve()
+        self.byok_transport_secure = (True if byok_transport_secure is None
+                                      else bool(byok_transport_secure))
         self.upload_root = upload_root.expanduser().resolve()
         self.orfs_root = orfs_root.expanduser().resolve()
         self.store = JobStore(self.db_path)
@@ -87,6 +98,17 @@ class ApiState:
         self.optimization_store = OptimizationStudyStore(
             optimization_db_path or state_root / "optimization.db"
         )
+        self.knowledge_registry = PublicKnowledgeRegistry(state_root / "public-knowledge.db")
+        self.knowledge_registry.import_manifest(load_public_manifest(
+            ROOT / "knowledge" / "public-corpus.lock.json"
+        ))
+        self.tenant_learning_store = TenantLearningStore(state_root / "tenant-learning.db")
+        self.learning_collector = LearningCollector(self.runtime_store,
+                                                    self.tenant_learning_store)
+        self.provider_profiles = ProviderProfileStore(state_root / "provider-profiles.db")
+        self.secret_broker = InMemorySecretBroker(default_ttl_seconds=8 * 3600)
+        self.recommendation_store = RecommendationStore(state_root / "recommendations.db")
+        self._spec_provider_bindings: dict[str, dict[str, str]] = {}
         self.designs = DesignService(
             design_root or ROOT / "var" / "designs",
             legacy_root=legacy_root or Path(os.environ.get("ICCAD_ROOT", ROOT.parent / "iccad")),
@@ -120,6 +142,7 @@ class ApiState:
             "openroad": openroad,
             "yosys": yosys,
             "execution_ready": bool(openroad and yosys and self.orfs_root.is_dir()),
+            "byok_input_enabled": self.byok_transport_secure,
         }
         payload.update(self.designs.readiness())
         return payload
@@ -154,6 +177,13 @@ class ApiState:
                     "name": "Evidence-driven Evolution",
                     "description": "Evidence RAG、BO/GP、Pareto 前沿与 RL shadow 证据",
                     "route": "evolve",
+                    "status": "available",
+                },
+                {
+                    "id": "ic-craft",
+                    "name": "IC Craft",
+                    "description": "后端中立 FlowPlan、OpenROAD/ORFS 执行与商业脚本能力对照",
+                    "route": "craft",
                     "status": "available",
                 },
             ],
@@ -342,6 +372,166 @@ class ApiState:
     def get_optimization_study(self, study_id: str) -> dict[str, Any]:
         return self.optimization_store.describe(study_id)
 
+    def public_knowledge(self, query: dict[str, list[str]] | None = None) -> dict[str, Any]:
+        query = query or {}
+        text = (query.get("q") or [""])[0]
+        results = []
+        if text:
+            results = self.knowledge_registry.search(
+                text, platform=(query.get("platform") or ["nangate45"])[0],
+                toolchain=(query.get("toolchain") or [""])[0],
+                stage=(query.get("stage") or ["finish"])[0],
+                design_class=(query.get("design_class") or ["digital"])[0],
+            )
+        return {"sources": self.knowledge_registry.list_sources(),
+                "benchmarks": self.knowledge_registry.list_benchmarks(),
+                "results": results, "knowledge_origin": "external_public",
+                "local_observation": False}
+
+    def save_provider_profile(self, payload: dict[str, Any]) -> dict[str, Any]:
+        owner_id = str(payload.get("owner_id") or "local-user")
+        session_id = str(payload.get("session_id") or "local-session")
+        api_key = payload.get("api_key")
+        if not isinstance(api_key, str) or not api_key:
+            raise ValueError("api_key is required and is held in memory only")
+        profile = ProviderProfile(
+            profile_id=str(payload.get("profile_id") or f"provider-{uuid.uuid4().hex}"),
+            owner_id=owner_id, provider_type="openai-compatible-byok",
+            base_url=str(payload.get("base_url") or ""), model=str(payload.get("model") or ""),
+            timeout_seconds=int(payload.get("timeout_seconds", 60)),
+            max_response_bytes=int(payload.get("max_response_bytes", 1_048_576)),
+            max_calls=int(payload.get("max_calls", 8)),
+            allow_private_endpoint=payload.get("allow_private_endpoint") is True,
+        )
+        if not self._byok_transport_available():
+            raise ValueError("BYOK key input is disabled until the external service uses HTTPS")
+        provider_host = urlparse(profile.base_url).hostname or ""
+        allowed_hosts = {"api.openai.com", "localhost", "127.0.0.1", "::1"}
+        allowed_hosts.update(item.strip().lower() for item in os.environ.get(
+            "OPENROAD_PLATFORM_PROVIDER_ALLOW_HOSTS", "").split(",") if item.strip())
+        if provider_host.lower() not in allowed_hosts:
+            raise ValueError("Provider host is not in the administrator egress allowlist")
+        profile_id = self.provider_profiles.save(profile)
+        handle = self.secret_broker.put(api_key, owner_id=owner_id, session_id=session_id)
+        return {"profile_id": profile_id, "owner_id": owner_id, "session_id": session_id,
+                "secret": self.secret_broker.describe(handle, owner_id=owner_id,
+                                                        session_id=session_id),
+                "persistence": "profile-only; API key is memory-only",
+                "api_key": None}
+
+    def list_provider_profiles(self, owner_id: str) -> dict[str, Any]:
+        return {"profiles": self.provider_profiles.list(owner_id=owner_id),
+                "secret_persistence": "memory-only", "default_ttl_seconds": 8 * 3600}
+
+    def revoke_provider_secret(self, payload: dict[str, Any]) -> dict[str, Any]:
+        revoked = self.secret_broker.revoke(
+            str(payload.get("secret_handle") or ""),
+            owner_id=str(payload.get("owner_id") or ""),
+            session_id=str(payload.get("session_id") or ""),
+        )
+        return {"revoked": revoked}
+
+    def collect_runtime_learning(self, run_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        run = self.runtime_store.get_run(run_id)
+        rtl = run.task_spec.inputs.get("rtl")
+        rtl_sha = rtl.get("sha256") if isinstance(rtl, dict) else run.task_spec.inputs.get("rtl_sha256")
+        if not isinstance(rtl_sha, str):
+            raise ValueError("Runtime task has no immutable RTL fingerprint")
+        context = LearningContext(
+            design_id=run.task_spec.design_id, design_fingerprint=rtl_sha,
+            platform=str(run.task_spec.parameters.get("platform") or "unknown"),
+            pdk_id=str(payload.get("pdk_id") or ""),
+            toolchain_id=str(payload.get("toolchain_id") or ""),
+            flow_stage=str(run.task_spec.parameters.get("target_stage") or "finish"),
+            metric_parser_version=str(payload.get("metric_parser_version") or ""),
+        )
+        receipt = self.learning_collector.collect(
+            run_id, context, tenant_id=str(payload.get("tenant_id") or ""),
+            project_id=str(payload.get("project_id") or run.task_spec.project_id),
+        )
+        return dataclasses.asdict(receipt)
+
+    def list_learning_observations(self, query: dict[str, list[str]]) -> dict[str, Any]:
+        tenant_id = (query.get("tenant_id") or [""])[0]
+        project_id = (query.get("project_id") or [""])[0]
+        observations = self.tenant_learning_store.list(tenant_id, project_id)
+        return {"tenant_id": tenant_id, "project_id": project_id,
+                "observations": [item.to_dict() for item in observations],
+                "source": "observed", "shared": False}
+
+    def _byok_transport_available(self) -> bool:
+        return self.byok_transport_secure
+
+    def create_recommendation(self, study_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        owner_id = str(payload.get("owner_id") or "local-user")
+        study = self.optimization_store.get(study_id)
+        proposals = self.optimization_store.proposals(study_id)
+        if not proposals:
+            raise ValueError("Study has no optimizer proposal")
+        recommendation = build_recommendation(
+            study, proposals[-1], self.optimization_store.observations(study_id),
+            held_out_error=(float(payload["held_out_error"])
+                            if payload.get("held_out_error") is not None else None),
+            interval_coverage=(float(payload["interval_coverage"])
+                               if payload.get("interval_coverage") is not None else None),
+            worst_case_cost_seconds=float(payload.get("worst_case_cost_seconds", 7200)),
+        )
+        self.recommendation_store.save(owner_id, recommendation)
+        envelope = automation_envelope(
+            recommendation, exact_context=payload.get("exact_context", True) is True,
+            study_opt_in=payload.get("study_opt_in") is True,
+            budget_available=payload.get("budget_available", True) is True,
+        )
+        return {"recommendation": recommendation.to_dict(),
+                "automation_envelope": envelope.to_dict()}
+
+    def decide_recommendation(self, recommendation_id: str,
+                              payload: dict[str, Any]) -> dict[str, Any]:
+        owner_id = str(payload.get("owner_id") or "local-user")
+        recommendation = self.recommendation_store.get(owner_id, recommendation_id)
+        study = self.optimization_store.get(recommendation.study_id)
+        bounds = {item.name: (item.lower, item.upper) for item in study.parameter_space}
+        decision = self.recommendation_store.decide(
+            owner_id, recommendation_id, action=str(payload.get("action") or ""),
+            parameters=payload.get("parameters"), comment=str(payload.get("comment") or ""),
+            parameter_bounds=bounds,
+        )
+        return {"decision": decision.to_dict(), "execution_started": False,
+                "next_step": "Use the validated ExperimentPlan/Campaign endpoint to execute."}
+
+    def list_recommendations(self, owner_id: str) -> dict[str, Any]:
+        return {"recommendations": self.recommendation_store.list(owner_id)}
+
+    def craft_plan(self, payload: dict[str, Any]) -> dict[str, Any]:
+        design_id = str(payload.get("design_id") or "").strip()
+        design = self.designs.get(design_id)
+        plan = build_craft_flow_plan(
+            self.designs.rtl_path(design_id), project_id=str(payload.get("project_id") or "openroad-platform"),
+            design_id=design_id, top=str(payload.get("top") or design["module"]),
+            clock=str(payload.get("clock") or "clk"),
+            clock_period_ns=_number(payload, "clock_period_ns", 10.0),
+            target_stage=str(payload.get("target_stage") or "finish"),
+            platform=str(payload.get("platform") or "nangate45"),
+            core_utilization_pct=_number(payload, "core_utilization_pct", 10.0),
+            place_density=_number(payload, "place_density", 0.45),
+            qor_objectives=tuple(str(item) for item in payload.get("qor_objectives", ())),
+            required_capabilities=tuple(str(item) for item in payload.get("required_capabilities", ())),
+        )
+        backend = str(payload.get("backend") or "openroad-orfs")
+        task = craft_plan_to_task(plan, backend,
+                                  commercial_tool_chain=str(payload.get("commercial_tool_chain") or "synopsys"))
+        result = {"flow_plan": plan.to_dict(), "capability_matrix": craft_capability_matrix(plan),
+                  "backend": backend, "task_spec": task.to_dict(), "execution_started": False}
+        if payload.get("execute") is True:
+            if backend != "openroad-orfs":
+                raise ValueError("ImplCraft is script-generation-only in this deployment")
+            run = self.runtime_store.find_run_by_task_id(task.task_id)
+            if run is None:
+                run = self.runtime.submit(task, capability="eda.rtl_to_gds")
+            result["execution_started"] = True
+            result["runtime"] = self.get_runtime_run(run.run_id)
+        return result
+
     def create_stage_campaign(self, payload: dict[str, Any]) -> dict[str, Any]:
         design_id = str(payload.get("design_id") or "").strip()
         design = self.designs.get(design_id)
@@ -375,17 +565,20 @@ class ApiState:
     def create_spec_session(self, payload: dict[str, Any]) -> dict[str, Any]:
         design_id = _optional_string(payload.get("design_id"))
         design = self.designs.get(design_id) if design_id else None
-        provider = self._spec_provider(
-            str(payload.get("provider") or "deterministic"),
-            _optional_string(payload.get("model")),
-        )
+        provider = self._spec_provider_from_payload(payload)
         budgets = payload.get("budgets")
         if budgets is not None and not isinstance(budgets, dict):
             raise ValueError("budgets must be an object")
-        return SpecConversationManager(self.spec_store, provider).create(
+        result = SpecConversationManager(self.spec_store, provider).create(
             message=str(payload.get("message") or ""), design_id=design_id,
             design_context=design, budgets=budgets,
         )
+        if provider.provider_name == "openai-compatible-byok":
+            self._spec_provider_bindings[result["session_id"]] = {
+                key: str(payload[key]) for key in
+                ("owner_id", "session_id", "profile_id", "secret_handle")
+            }
+        return result
 
     def get_spec_session(self, session_id: str) -> dict[str, Any]:
         session = self.spec_store.get(session_id)
@@ -397,7 +590,7 @@ class ApiState:
         session = self.spec_store.get(session_id)
         design_id = session.get("design_id")
         design = self.designs.get(design_id) if design_id else None
-        provider = self._spec_provider(session["provider"], session["model"])
+        provider = self._spec_provider_for_session(session_id, session)
         return SpecConversationManager(self.spec_store, provider).turn(
             session_id, str(payload.get("message") or ""), design_context=design,
         )
@@ -416,7 +609,7 @@ class ApiState:
                 description=session["state"].get("functionality"),
             )
             design_id = design["id"]
-        provider = self._spec_provider(session["provider"], session["model"])
+        provider = self._spec_provider_for_session(session_id, session)
         task = SpecConversationManager(self.spec_store, provider).compile(
             session_id, rtl_path=self.designs.rtl_path(design_id), design_id=design_id,
             confirmed=payload.get("confirmed") is True,
@@ -427,6 +620,30 @@ class ApiState:
         self.spec_store.bind_run(session_id, run.run_id, design_id=design_id)
         return self.get_spec_session(session_id)
 
+    def _spec_provider_from_payload(self, payload: dict[str, Any]):
+        name = str(payload.get("provider") or "deterministic")
+        model = _optional_string(payload.get("model"))
+        if name == "openai-compatible-byok":
+            required = ("owner_id", "session_id", "profile_id", "secret_handle")
+            if any(not payload.get(key) for key in required):
+                raise ValueError("BYOK provider requires owner/session/profile/secret handle")
+            profile = self.provider_profiles.get(str(payload["profile_id"]),
+                                                  owner_id=str(payload["owner_id"]))
+            return OpenAICompatibleSpecProvider(
+                profile, self.secret_broker, str(payload["secret_handle"]),
+                owner_id=str(payload["owner_id"]), session_id=str(payload["session_id"]),
+                profile_store=self.provider_profiles,
+            )
+        return self._spec_provider(name, model)
+
+    def _spec_provider_for_session(self, session_id: str, session: dict[str, Any]):
+        if session["provider"] != "openai-compatible-byok":
+            return self._spec_provider(session["provider"], session["model"])
+        binding = self._spec_provider_bindings.get(session_id)
+        if binding is None:
+            raise ValueError("BYOK session binding expired; re-enter the API key")
+        return self._spec_provider_from_payload({"provider": session["provider"], **binding})
+
     @staticmethod
     def _spec_provider(name: str, model: str | None):
         if name == "deterministic":
@@ -436,7 +653,7 @@ class ApiState:
             if selected not in ALLOWED_MODELS:
                 raise ValueError(f"model must be one of: {', '.join(sorted(ALLOWED_MODELS))}")
             return CodexCliSpecProvider(model=selected)
-        raise ValueError("provider must be deterministic or codex-cli")
+        raise ValueError("provider must be deterministic, codex-cli or openai-compatible-byok")
 
     def cancel_campaign(self, campaign_id: str) -> dict[str, Any]:
         for member in self.campaign_store.members(campaign_id):
@@ -606,6 +823,16 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                     self._json(state.list_campaigns())
                 elif path == "/api/optimization/studies":
                     self._json(state.list_optimization_studies())
+                elif path == "/api/knowledge/public":
+                    self._json(state.public_knowledge(parse_qs(parsed.query)))
+                elif path == "/api/providers":
+                    owner_id = (parse_qs(parsed.query).get("owner_id") or ["local-user"])[0]
+                    self._json(state.list_provider_profiles(owner_id))
+                elif path == "/api/recommendations":
+                    owner_id = (parse_qs(parsed.query).get("owner_id") or ["local-user"])[0]
+                    self._json(state.list_recommendations(owner_id))
+                elif path == "/api/learning/observations":
+                    self._json(state.list_learning_observations(parse_qs(parsed.query)))
                 elif path.startswith("/api/optimization/studies/"):
                     self._json(state.get_optimization_study(
                         unquote(path.removeprefix("/api/optimization/studies/"))))
@@ -649,6 +876,30 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                     return
                 if path == "/api/spec/sessions":
                     self._json(state.create_spec_session(self._read_json()), HTTPStatus.CREATED)
+                    return
+                if path == "/api/providers":
+                    self._json(state.save_provider_profile(self._read_json()), HTTPStatus.CREATED)
+                    return
+                if path == "/api/providers/secrets/revoke":
+                    self._json(state.revoke_provider_secret(self._read_json()))
+                    return
+                if path == "/api/craft/plans":
+                    self._json(state.craft_plan(self._read_json()), HTTPStatus.CREATED)
+                    return
+                match = re.fullmatch(r"/api/optimization/studies/([^/]+)/recommend", path)
+                if match:
+                    self._json(state.create_recommendation(
+                        unquote(match.group(1)), self._read_json()), HTTPStatus.CREATED)
+                    return
+                match = re.fullmatch(r"/api/recommendations/([^/]+)/decision", path)
+                if match:
+                    self._json(state.decide_recommendation(
+                        unquote(match.group(1)), self._read_json()), HTTPStatus.CREATED)
+                    return
+                match = re.fullmatch(r"/api/runtime/runs/([^/]+)/collect-learning", path)
+                if match:
+                    self._json(state.collect_runtime_learning(
+                        unquote(match.group(1)), self._read_json()), HTTPStatus.CREATED)
                     return
                 match = re.fullmatch(r"/api/spec/sessions/([^/]+)/turn", path)
                 if match:
@@ -802,6 +1053,13 @@ def main(argv: list[str] | None = None) -> int:
         default=Path(os.environ.get("ORFS_ROOT", ROOT.parent / "OpenROAD-flow-scripts")),
     )
     args = parser.parse_args(argv)
+    external_url = os.environ.get("OPENROAD_PLATFORM_EXTERNAL_URL", "").strip()
+    external_parsed = urlparse(external_url) if external_url else None
+    loopback_bind = args.host in {"localhost", "127.0.0.1", "::1"}
+    byok_transport_secure = loopback_bind or bool(external_parsed and (
+        external_parsed.scheme == "https"
+        or external_parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+    ))
     state = ApiState(
         args.db,
         args.upload_root,
@@ -811,6 +1069,7 @@ def main(argv: list[str] | None = None) -> int:
         runtime_db_path=args.runtime_db,
         campaign_db_path=args.campaign_db,
         optimization_db_path=args.optimization_db,
+        byok_transport_secure=byok_transport_secure,
     )
     server = build_server(args.host, args.port, state)
     print(f"OpenROAD Platform: http://{args.host}:{server.server_port}")

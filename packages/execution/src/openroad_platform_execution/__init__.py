@@ -46,6 +46,10 @@ from .protected_whitebox import (
     ProtectedWhiteBoxPromotionGate,
     WhiteBoxPolicy,
 )
+from .craft_flow import (
+    BackendNeutralFlowPlan, build_craft_flow_plan, craft_capability_matrix,
+    craft_plan_to_task,
+)
 
 __all__ = [
     "AdapterExecution", "ProcessAdapter", "ORFSRunner", "ProcessGuardian",
@@ -68,4 +72,6 @@ __all__ = [
     "VerificationPolicy",
     "ProtectedWhiteBoxEvaluation", "ProtectedWhiteBoxEvaluator",
     "ProtectedWhiteBoxPromotionGate", "WhiteBoxPolicy",
+    "BackendNeutralFlowPlan", "build_craft_flow_plan", "craft_capability_matrix",
+    "craft_plan_to_task",
 ]

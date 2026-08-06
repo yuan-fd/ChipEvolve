@@ -20,6 +20,10 @@ from .spec_conversation import (
     SpecConversationManager, SpecConversationStore, SpecProposal,
 )
 from .optimization_bridge import OptimizationCampaignBridge
+from .model_provider import (
+    InMemorySecretBroker, OpenAICompatibleSpecProvider, ProviderProfile,
+    ProviderProfileStore,
+)
 
 __all__ = [
     "Job", "JobStore", "Worker", "RuntimeAttempt", "RuntimeRun",
@@ -32,4 +36,6 @@ __all__ = [
     "ALLOWED_MODELS", "CodexCliSpecProvider", "RuleBasedSpecProvider",
     "SpecConversationManager", "SpecConversationStore", "SpecProposal",
     "OptimizationCampaignBridge",
+    "InMemorySecretBroker", "OpenAICompatibleSpecProvider", "ProviderProfile",
+    "ProviderProfileStore",
 ]

@@ -22,6 +22,7 @@
         <button class="nav-item" data-nav="flow"><span>03</span>RTL-to-GDS</button>
         <button class="nav-item" data-nav="three-d"><span>04</span>TaiWei 3D</button>
         <button class="nav-item" data-nav="evolve"><span>05</span>自演化实验</button>
+        <button class="nav-item" data-nav="craft"><span>06</span>IC Craft</button>
       </nav>
 
       <div class="sidebar-foot">
@@ -88,6 +89,13 @@
             <p>Evidence RAG → BO/GP 提案 → Runtime 实测 → Pareto 与 RL shadow。</p>
             <span class="project-link">查看学习证据 <b>→</b></span>
           </button>
+          <button class="project-card circuit-card" data-nav="craft">
+            <span class="project-number">PROJECT 05</span>
+            <div class="circuit-glyph" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+            <h3>IC Craft 多后端</h3>
+            <p>同一 FlowPlan → OpenROAD/ORFS 真实执行，或 ImplCraft 商业脚本生成。</p>
+            <span class="project-link">选择后端 <b>→</b></span>
+          </button>
         </div>
 
         <div class="section-heading compact">
@@ -122,6 +130,49 @@
             </div>
           </div>
           <div class="campaign-strip" id="optimizationEvidence"></div>
+          <div class="surface-body p16-grid">
+            <div>
+              <h3>人控优化建议</h3>
+              <p>建议置信度来自数据覆盖、校准和安全约束，不采用模型自报概率。</p>
+              <button class="outline-button" id="generateRecommendation">生成最新 T1 建议</button>
+              <div class="toolchain-box" id="recommendationBox">尚未生成建议</div>
+              <div class="surface-actions"><button class="quiet-button" data-decision="accepted">接受</button><button class="quiet-button" data-decision="modified">修改后接受</button><button class="quiet-button" data-decision="rejected">拒绝</button></div>
+            </div>
+            <div>
+              <h3>公开知识与 benchmark</h3>
+              <label>检索问题<input id="knowledgeQuery" value="OpenROAD RTL GDS flow"></label>
+              <button class="outline-button" id="searchKnowledge">检索固定语料</button>
+              <div class="toolchain-box" id="knowledgeBox">外部知识与本地实测严格分离</div>
+            </div>
+            <div>
+              <h3>用户自带模型（BYOK）</h3>
+              <label>OpenAI-compatible URL<input id="providerUrl" placeholder="https://provider.example/v1"></label>
+              <label>模型<input id="providerModel" placeholder="model-name"></label>
+              <label>API key<input id="providerKey" type="password" autocomplete="off" placeholder="仅在服务内存保存 8 小时"></label>
+              <button class="outline-button" id="saveProvider">保存会话配置</button>
+              <div class="action-message" id="providerMessage">密钥不会写入数据库、日志、产物或子进程环境。</div>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="view" id="view-craft">
+        <div class="page-intro">
+          <div><span class="kicker">Project 05 / Backend-neutral Craft</span><h1>IC Craft 多后端计划</h1></div>
+          <p>Craft 只表达设计意图；OpenROAD/ORFS 任务仍由统一 Runtime 执行，商业分支只生成脚本。</p>
+        </div>
+        <article class="surface">
+          <div class="surface-head"><span>BACKEND-NEUTRAL FLOWPLAN</span><small>Runtime remains authoritative</small></div>
+          <div class="surface-body">
+            <div class="form-grid">
+              <label>设计<select id="craftDesign"><option value="">请选择设计</option></select></label>
+              <label>后端<select id="craftBackend"><option value="openroad-orfs">OpenROAD / ORFS（可执行）</option><option value="implcraft-scriptgen">ImplCraft（仅脚本）</option></select></label>
+              <label>目标阶段<select id="craftStage"><option value="finish">Finish / GDS</option><option value="route">Route</option><option value="cts">CTS</option><option value="placement">Placement</option><option value="floorplan">Floorplan</option><option value="synthesis">Synthesis</option></select></label>
+              <label>时钟周期 / ns<input id="craftPeriod" type="number" value="10" min="0.01"></label>
+            </div>
+            <div class="surface-actions"><button class="outline-button" id="previewCraft">检查能力并预览</button><button class="primary-button" id="executeCraft">经 Runtime 执行 OpenROAD <span>→</span></button></div>
+            <div class="toolchain-box" id="craftResult">请选择设计和后端。</div>
+          </div>
         </article>
       </section>
 

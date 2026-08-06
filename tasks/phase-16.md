@@ -1,9 +1,12 @@
 # P16：开放知识、BYOK 与人控自演化 v1
 
-status: planned
-approval: awaiting_explicit_execution_start
+status: completed
+approval: approved_and_executed
 planned_at: 2026-08-06
-base_commit: 55c0bde67ecbd9332a7f44d0d5c11ac2a119e1c8
+base_commit: 3bc9829
+
+completion: P16-A through P16-F accepted on 2026-08-06; see
+`docs/evidence/P16_OPEN_PLATFORM_ACCEPTANCE.md`.
 
 ## 1. 阶段目标
 

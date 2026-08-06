@@ -60,6 +60,38 @@ def test_health_distinguishes_web_and_execution_readiness(tmp_path):
     assert health["database_ready"] is True
     assert health["orfs_ready"] is False
     assert health["execution_ready"] is False
+    assert health["byok_input_enabled"] is True
+
+
+def test_api_byok_is_memory_only_revocable_and_disabled_without_secure_transport(tmp_path):
+    state = make_state(tmp_path)
+    canary = "api-state-p16-canary"
+    created = state.save_provider_profile({
+        "owner_id": "alice", "session_id": "browser", "profile_id": "local-fake",
+        "base_url": "http://127.0.0.1:12345/v1", "model": "fake",
+        "api_key": canary, "allow_private_endpoint": True,
+    })
+    assert created["api_key"] is None
+    assert created["secret"]["secret_present"] is True
+    assert canary.encode() not in state.provider_profiles.path.read_bytes()
+    assert state.revoke_provider_secret({
+        "owner_id": "alice", "session_id": "browser",
+        "secret_handle": created["secret"]["handle"],
+    }) == {"revoked": True}
+
+    blocked = ApiState(
+        tmp_path / "blocked-platform.db", tmp_path / "blocked-uploads",
+        tmp_path / "blocked-orfs", design_root=tmp_path / "blocked-designs",
+        legacy_root=tmp_path / "blocked-legacy", yosys_bin=Path("/missing/yosys"),
+        runtime_db_path=tmp_path / "blocked-runtime.db",
+        campaign_db_path=tmp_path / "blocked-campaign.db",
+        byok_transport_secure=False,
+    )
+    with pytest.raises(ValueError, match="HTTPS"):
+        blocked.save_provider_profile({
+            "base_url": "https://api.openai.com/v1", "model": "fake",
+            "api_key": canary,
+        })
 
 
 def test_runtime_and_campaign_queries_use_authoritative_store(tmp_path):

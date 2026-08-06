@@ -1,9 +1,9 @@
 # OpenROAD Platform — 工作记忆
 
 project_id: openroad-platform
-phase: P14/P15 已完成；P16 规划等待批准
-current_subgoal: P16 公开知识、BYOK、人控策略建议与 Craft→OpenROAD 后端
-progress: P0-P15 + P8-Real 已验收；P16 仅完成规划
+phase: P0-P16 已完成
+current_subgoal: 等待 P17 公开服务化、论文扩展与数据规模化规划
+progress: P0-P16 + P8-Real 已验收
 last_updated: 2026-08-06
 
 ## 已确认事实
@@ -42,8 +42,12 @@ last_updated: 2026-08-06
 - P15 固定 OpenROAD 构建 `dpl_evolve` 成功；完整 from-clean 候选可应用，两份 framework delta 前像失配如实保留。
 - P15 尚未执行 evolved candidate 真实 full-flow/liveness/QoR；完成的是受保护迁移 v1。
 - P15 轻量可运行性 smoke 已验证 33 条知识索引、三类 prompt、0 warning、四个 Tcl 命令和两个核心编译符号；共享 ORFS 未改变。
-- P16 计划冻结在 `tasks/phase-16.md`：用户数据默认私有、BYOK key 会话内存保存、T1 建议默认/T2 自动默认关闭、Craft 使用新 OpenROAD backend。
-- 当前全量回归：149 passed；定向 P14/P15/API/Web 55 passed。
+- P16 固定公开语料快照有 10 来源、7 benchmark definitions；许可未完成文件级核验的大数据集仅登记 metadata，外部结果不进入 observed。
+- P16 LearningCollector 完成 quarantine/verify/admit/reject、幂等和 tenant/project 隔离；共享必须逐条 opt-in。
+- P16 BYOK 支持 OpenAI-compatible profile，key 只存内存 8 小时；fake server 覆盖成功、401、429、超时、非法/超大响应、取消、撤销和 owner 隔离。
+- P16 T1 支持接受/修改/拒绝，修改后重验参数；T2 默认关闭且真实 10 条 P14 数据为 not_eligible。
+- P16 Craft backend-neutral FlowPlan 已映射 ORFS Runtime 与 ImplCraft scriptgen。官方 gcd real run `6111c2de...` 六阶段成功，GDS SHA `2d84c09a...`。
+- 当前全量回归：167 passed。
 
 ## 架构定版
 
@@ -79,4 +83,4 @@ last_updated: 2026-08-06
 
 ## handoff_anchor
 
-P0 `afdca1e`；P1 `e750370`；P2 `aa7cf0a`/`6d9d93c`；P3 `9269040`；P4 `0892d57`；P5 `38208ae`；P6 `025dc72`；P7 `339f34f`；P8 `00cf2f8`；P9 `c923f55`；P10 `6499d58`；P11-P13 `36c2155`；P14-P15 `55c0bde`。读取 `memory_snapshots/P16-planning-2026-08-06.md` 与 `tasks/phase-16.md` 恢复；P16 尚未授权执行。
+P0 `afdca1e`；P1 `e750370`；P2 `aa7cf0a`/`6d9d93c`；P3 `9269040`；P4 `0892d57`；P5 `38208ae`；P6 `025dc72`；P7 `339f34f`；P8 `00cf2f8`；P9 `c923f55`；P10 `6499d58`；P11-P13 `36c2155`；P14-P15 `55c0bde`；P16 规划 `3bc9829`，实现提交见最新 Git。读取 `memory_snapshots/P16-complete-2026-08-06.md` 恢复。

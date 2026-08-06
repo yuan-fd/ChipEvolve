@@ -1,7 +1,7 @@
 # 当前状态
 
 updated_at: 2026-08-06
-phase: P0-P15 completed; P16 planned and awaiting approval
+phase: P0-P16 completed
 
 - Runtime 仍是唯一进程、Attempt、Artifact、Event 和终态权威；LLM、BO/GP、离线 RL、DPLEvolve 均无旁路执行权。
 - P0-P13 与 P8-Real 的插件平台、真实 2D/3D、自然语言闭环、stage-aware 批量实验和自动纠错能力保持不变。
@@ -14,6 +14,11 @@ phase: P0-P15 completed; P16 planned and awaiting approval
 - 两份 framework delta 前像不一致被保留为失败证据。尚未做 evolved candidate 真实 full-flow/liveness/QoR，不得称为算法效果验收。
 - P15 候选只能修改 `tools/OpenROAD/src/dpl_evolve/`；生产基线、flow、经典 dpl、rsz、gpl 和评价器受保护；晋级必须人工批准。
 - DPLEvolve 轻量 smoke 已通过 33 条知识索引、Teacher/Student/Review prompt 生成、0 prompt warning、Tcl 命令和 C++ 入口检查；未运行 EDA，P16 不再安排 full-flow。
-- P16 已完成规划：公开知识/benchmark、持续学习、BYOK、T1/T2 建议门和 Craft→OpenROAD backend；尚未授权实现。
-- 当前全量回归 149 passed；定向 P14/P15/API/Web 55 passed；Node 语法、凭据扫描和 diff 检查通过。
+- P16 已完成：10 个固定公开来源、7 个 benchmark definition、可离线重放 CorpusSnapshot；外部知识不进入 observed。
+- Runtime 终态可经 tenant/project 私有 Collector 执行 quarantine/verify/admit；默认不共享，重复采集幂等。
+- OpenAI-compatible BYOK profile 已接入；key 只在会话内存保存 8 小时，支持 owner/session 隔离、撤销、调用预算和受控 egress。
+- BO/GP/RL 建议支持用户接受、修改、拒绝；置信度由数据和校准证据计算。真实 10 条 P14 数据的 T2 结果为 `not_eligible`。
+- IC Craft 新增 backend-neutral FlowPlan；OpenROAD/ORFS 分支生成 TaskSpec 并经 Runtime 执行，ImplCraft 保持商业脚本生成语义。
+- Craft→OpenROAD 官方 gcd 真实 run `6111c2de...` 六阶段成功，DRC=0，GDS SHA `2d84c09a...`；错误 top 的首 run 失败证据保留。
+- 当前全量回归 167 passed；Node/JSON、凭据扫描和 diff 检查通过。
 - 不 push、不部署、不读取或提交凭据；共享 ORFS/OpenROAD/PDK 未修改。

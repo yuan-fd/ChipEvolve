@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "phase": "P16",
+  "status": "accepted",
+  "date": "2026-08-06",
+  "runtime_authoritative": true,
+  "public_knowledge": {
+    "snapshot_id": "public-eda-corpus-2026-08-06",
+    "manifest_sha256": "5b93bb4a7ee9c802297d82810d0461b4c425fc6277abf5e9d2978ddaf42438c9",
+    "corpus_manifest_sha256": "95b216bb987bccfce0e6defff6fc08bd755d18d24572c22f6ec49372cc7d58ce",
+    "source_count": 10,
+    "benchmark_count": 7,
+    "fixed_retrieval_cases": 50,
+    "full_text_or_large_dataset_downloaded": false,
+    "external_results_observed": false
+  },
+  "learning_collector": {
+    "states": ["quarantined", "verified", "admitted", "rejected"],
+    "idempotent": true,
+    "tenant_project_isolated": true,
+    "sharing_requires_opt_in": true,
+    "modifies_runtime": false
+  },
+  "byok": {
+    "secret_storage": "process-memory-only",
+    "default_ttl_seconds": 28800,
+    "persistent_secret_hits": 0,
+    "tested": ["success", "401", "429", "timeout", "invalid_json", "oversize", "secret_echo", "cancel", "owner_isolation", "revoke"],
+    "real_paid_api_calls": 0
+  },
+  "recommendations": {
+    "t1_actions": ["accepted", "modified", "rejected"],
+    "confidence_uses_llm_self_report": false,
+    "p14_real_observation_count": 10,
+    "p14_t2_status": "not_eligible",
+    "maximum_t2_candidates": 1,
+    "policy_can_execute_directly": false
+  },
+  "craft_openroad_real": {
+    "flow_plan_id": "craft-plan-p16-real-gcd",
+    "run_id": "6111c2de98a94b28b7717d2f13cd96a3",
+    "status": "succeeded",
+    "design": "gcd",
+    "platform": "nangate45",
+    "stages_succeeded": ["synth", "floorplan", "place", "cts", "route", "finish"],
+    "runtime_seconds": 99.479,
+    "drc_errors": 0,
+    "setup_wns_ns": 7.4585,
+    "area_um2": 604.352,
+    "wirelength_um": 3799,
+    "gds_size_bytes": 631606,
+    "gds_sha256": "2d84c09a04902177def110104753df597b5b43b91082d8d434d65490a4dc6690",
+    "layout_view_size_bytes": 324820,
+    "layout_view_sha256": "cde6c1e3162789f9085071eb789b94812f4132f02a9352ece5d77516f5d1943d",
+    "runtime_db_sha256": "90239d3e90d3b1ec3e5b1ea3f011688bcc10d980110b02f7041ac6b1b0b32eb7"
+  },
+  "preserved_failure": {
+    "run_id": "d3b5b90540104414946f3a797b91398b",
+    "status": "failed",
+    "stage": "synth",
+    "root_cause": "fixture top module supplied as mux2 but declared as mux_2to1",
+    "runtime_db_sha256": "a99b30be174cc09866548cdeead8e52db578866504b2593cc648a66ac383f1c5"
+  },
+  "regression": {
+    "pytest": "167 passed",
+    "node_check": "passed",
+    "git_diff_check": "passed",
+    "canary_persistent_scan": "0 hits outside test source"
+  },
+  "claims_not_made": [
+    "public dataset payloads or paywalled paper bodies were imported",
+    "ten observations are enough for automatic RL control",
+    "OpenROAD results are commercial signoff",
+    "ImplCraft commercial EDA was executed",
+    "BYOK secrets survive server restart"
+  ]
+}

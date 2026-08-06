@@ -21,9 +21,9 @@ updated_at: 2026-08-06
 | P13 | stage-aware Flow-Agent | 阶段事件、网格并发、剪枝、Top-K、修复子 run |
 | P14 | 证据驱动自演化闭环 v1（已验收） | Evidence RAG、BO/GP 提案、真实回灌、RL 离线 shadow；预测与真实隔离；7 个新增 run |
 | P15 | 受保护白盒 Tool-Evolve / DPLEvolve 迁移 v1（已验收） | 固定源码、路径保护、隔离构建、patch 前像、人工晋级门；实际候选 full-flow 留待后续 |
-| P16 | 开放知识、BYOK 与人控自演化 v1（待批准） | 公开知识/benchmark、持续学习、用户自带模型、T1/T2 建议门、Craft→OpenROAD 后端 |
+| P16 | 开放知识、BYOK 与人控自演化 v1（已验收） | 公开知识/benchmark、持续学习、用户自带模型、T1/T2 建议门、Craft→OpenROAD 真实 GDS |
 
-P14/P15 证据分别见 `docs/evidence/P14_SELF_EVOLUTION_ACCEPTANCE.md` 与 `docs/evidence/P15_DPLEVOLVE_ACCEPTANCE.md`。P16 详细计划见 `tasks/phase-16.md`。P13 的规则剪枝不得包装成 RL/贝叶斯/GP；P14 的离线 RL 也不得包装成已经获得在线控制权。P15 的迁移成功不得包装成 evolved candidate 已完成 full-flow 或 QoR 改善。P16 不用降低安全门来制造自动决策演示。
+P14/P15/P16 证据分别见相应 `docs/evidence/*ACCEPTANCE.md`。P13 的规则剪枝不得包装成 RL/贝叶斯/GP；P14 的离线 RL 也不得包装成已经获得在线控制权。P15 的迁移成功不得包装成 evolved candidate 已完成 full-flow 或 QoR 改善。P16 的 10 条真实数据不足以开放 T2，OpenROAD 结果也不是商业 signoff。
 
 ## 阶段执行规则
 

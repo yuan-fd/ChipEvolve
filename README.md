@@ -1,7 +1,7 @@
 # OpenROAD Platform
 
 OpenROAD Platform is a small, extensible project hub for digital-design demos.
-The home page stays intentionally simple and currently exposes three complete
+The home page stays intentionally simple and currently exposes five
 workspaces:
 
 - **Circuit Studio**: natural-language circuit generation, RTL, synthesized
@@ -12,8 +12,12 @@ workspaces:
 - **TaiWei 3D**: pinned official ORD/asap7_3D/gcd runs, upper/bottom tier
   state, physical HB-via and cross-tier metrics, hashed GDS/DEF/ODB evidence,
   and replay/toolchain provenance.
+- **Evidence-driven Evolution**: public evidence registry, observed-only
+  learning, BO/GP/RL recommendations and explicit user decisions.
+- **IC Craft**: one backend-neutral FlowPlan mapped either to the executable
+  OpenROAD/ORFS Runtime backend or commercial script generation.
 
-The common control plane also includes EDACraft/ImplCraft script generation,
+The common control plane also includes in-memory BYOK model credentials,
 bounded multi-turn Spec-to-GDS sessions, and stage-aware parameter Campaigns.
 Schematics use Graphviz, 2D GDS uses KLayout, and the 3D layer view uses real
 KLayout polygons rendered as a sampled layer stack.
@@ -29,7 +33,7 @@ coupling their runtime to the web shell.
 ```text
 apps/
   api/                  HTTP API, static-site server, design adapter
-  web/                  project hub and the two browser workspaces
+  web/                  project hub and browser workspaces
 packages/
   contracts/            stable requests, results, stages, artifacts
   scheduler/            SQLite queue and independent worker

@@ -15,6 +15,8 @@ const state = {
   selectedThreeD: null,
   optimizationStudies: [],
   selectedOptimizationStudy: null,
+  recommendation: null,
+  providerBinding: null,
 };
 
 function escapeHtml(value) {
@@ -36,7 +38,7 @@ function post(path, payload) {
 function navigate(view) {
   $$(".view").forEach((item) => item.classList.toggle("active", item.id === `view-${view}`));
   $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.nav === view));
-  $("#crumb").textContent = ({home:"PROJECT HUB",design:"CIRCUIT STUDIO",flow:"RTL-TO-GDS","three-d":"TAIWEI 3D",evolve:"SELF EVOLUTION"})[view] || view;
+  $("#crumb").textContent = ({home:"PROJECT HUB",design:"CIRCUIT STUDIO",flow:"RTL-TO-GDS","three-d":"TAIWEI 3D",evolve:"SELF EVOLUTION",craft:"IC CRAFT"})[view] || view;
   history.replaceState(null, "", `#${view}`);
   window.scrollTo({top:0, behavior:"smooth"});
 }
@@ -54,6 +56,11 @@ async function loadHealth() {
     $("#systemDot").classList.toggle("good", ready);
     $("#systemLabel").textContent = ready ? "系统就绪" : "部分能力不可用";
     $("#systemDetail").textContent = ready ? "LLM / Yosys / OpenROAD / ORFS" : "请查看健康检查接口";
+    if (!state.health.byok_input_enabled) {
+      $("#providerKey").disabled = true;
+      $("#saveProvider").disabled = true;
+      setMessage("#providerMessage", "当前服务不是 localhost/HTTPS，BYOK 密钥输入已禁用。", true);
+    }
   } catch (error) {
     $("#systemLabel").textContent = "服务不可用";
     $("#systemDetail").textContent = error.message;
@@ -75,6 +82,9 @@ async function loadDesigns(preferredId = null) {
   ).join("");
   $("#designSelect").innerHTML = options;
   $("#flowDesign").innerHTML = '<option value="">请选择已生成或上传的设计</option>' + state.designs.map((design) =>
+    `<option value="${escapeHtml(design.id)}">${escapeHtml(design.module)} · ${escapeHtml(design.origin)}</option>`
+  ).join("");
+  $("#craftDesign").innerHTML = '<option value="">请选择设计</option>' + state.designs.map((design) =>
     `<option value="${escapeHtml(design.id)}">${escapeHtml(design.module)} · ${escapeHtml(design.origin)}</option>`
   ).join("");
   if (preferredId) {
@@ -343,6 +353,83 @@ async function selectOptimizationStudy(studyId) {
   $("#optimizationEvidence").innerHTML = `<div><small>TRUST BOUNDARY</small><b>${escapeHtml(detail.observation_source)} ≠ ${escapeHtml(detail.prediction_source)}</b><span>Optimizer proposals cannot launch EDA; Runtime remains authoritative.</span></div>`;
 }
 
+async function generateRecommendation() {
+  const studyId = state.selectedOptimizationStudy?.study?.study_id;
+  if (!studyId) { $("#recommendationBox").textContent = "请先选择含有 proposal 的 Study。"; return; }
+  try {
+    const payload = await post(`/api/optimization/studies/${encodeURIComponent(studyId)}/recommend`, {
+      owner_id:"local-user", study_opt_in:false, exact_context:true, budget_available:true,
+    });
+    state.recommendation = payload.recommendation;
+    const confidence = payload.recommendation.confidence;
+    $("#recommendationBox").textContent = JSON.stringify({
+      recommendation_id:payload.recommendation.recommendation_id,
+      parameters:payload.recommendation.parameters,
+      confidence:confidence.overall,
+      evidence:payload.recommendation.evidence_refs,
+      reasons:confidence.reasons,
+      automation:payload.automation_envelope.status,
+      failed_checks:Object.entries(payload.automation_envelope.checks).filter(([,value]) => !value).map(([key]) => key),
+    }, null, 2);
+  } catch (error) { $("#recommendationBox").textContent = error.message; }
+}
+
+async function decideRecommendation(action) {
+  if (!state.recommendation) { $("#recommendationBox").textContent = "请先生成建议。"; return; }
+  let parameters = null;
+  if (action === "modified") {
+    const edited = window.prompt("编辑完整参数 JSON", JSON.stringify(state.recommendation.parameters));
+    if (edited === null) return;
+    try { parameters = JSON.parse(edited); } catch { $("#recommendationBox").textContent = "参数 JSON 无效。"; return; }
+  }
+  try {
+    const result = await post(`/api/recommendations/${encodeURIComponent(state.recommendation.recommendation_id)}/decision`, {owner_id:"local-user", action, parameters});
+    $("#recommendationBox").textContent += `\n\n用户决策：${result.decision.action}\n执行已启动：${result.execution_started}`;
+  } catch (error) { $("#recommendationBox").textContent = error.message; }
+}
+
+async function searchKnowledge() {
+  try {
+    const query = encodeURIComponent($("#knowledgeQuery").value.trim());
+    const payload = await api(`/api/knowledge/public?q=${query}&platform=nangate45&stage=finish&design_class=digital`);
+    $("#knowledgeBox").textContent = JSON.stringify({source_count:payload.sources.length,
+      benchmark_count:payload.benchmarks.length, results:payload.results.map((item) => ({
+        claim:item.claim.text, source:item.source.title, license:item.source.license_id,
+        origin:item.knowledge_origin, local_observation:item.local_observation,
+      }))}, null, 2);
+  } catch (error) { $("#knowledgeBox").textContent = error.message; }
+}
+
+async function saveProvider() {
+  const apiKey = $("#providerKey").value;
+  if (!apiKey) { setMessage("#providerMessage", "请输入 API key。", true); return; }
+  try {
+    const result = await post("/api/providers", {
+      owner_id:"local-user", session_id:"browser-session", profile_id:"browser-byok",
+      base_url:$("#providerUrl").value.trim(), model:$("#providerModel").value.trim(),
+      api_key:apiKey, allow_private_endpoint:false,
+    });
+    state.providerBinding = {owner_id:result.owner_id, session_id:result.session_id,
+      profile_id:result.profile_id, secret_handle:result.secret.handle};
+    $("#providerKey").value = "";
+    setMessage("#providerMessage", `配置已保存；密钥仅驻留内存，约 ${result.secret.expires_in_seconds} 秒后失效。`, false);
+  } catch (error) { setMessage("#providerMessage", error.message, true); }
+}
+
+async function submitCraft(execute) {
+  const designId = $("#craftDesign").value;
+  if (!designId) { $("#craftResult").textContent = "请先选择设计。"; return; }
+  try {
+    const payload = await post("/api/craft/plans", {design_id:designId,
+      backend:$("#craftBackend").value, target_stage:$("#craftStage").value,
+      clock_period_ns:Number($("#craftPeriod").value), execute});
+    $("#craftResult").textContent = JSON.stringify({flow_plan:payload.flow_plan,
+      backend:payload.backend, capability_matrix:payload.capability_matrix,
+      task_id:payload.task_spec.task_id, runtime:payload.runtime?.run,
+      execution_started:payload.execution_started}, null, 2);
+  } catch (error) { $("#craftResult").textContent = error.message; }
+}
+
 $$('[data-nav]').forEach((button) => button.addEventListener("click", (event) => { event.preventDefault(); navigate(button.dataset.nav); }));
 $$('[data-prompt]').forEach((button) => button.addEventListener("click", () => { $("#designPrompt").value = button.dataset.prompt; }));
 $$('[data-evidence]').forEach((button) => button.addEventListener("click", () => {
@@ -362,6 +449,12 @@ $("#runSelect").addEventListener("change", (event) => selectRun(event.target.val
 $("#threeDRunSelect").addEventListener("change", (event) => selectThreeDRun(event.target.value));
 $("#cancelThreeD").addEventListener("click", () => cancelThreeDRun().catch(() => {}));
 $("#optimizationStudySelect").addEventListener("change", (event) => selectOptimizationStudy(event.target.value));
+$("#generateRecommendation").addEventListener("click", generateRecommendation);
+$$('[data-decision]').forEach((button) => button.addEventListener("click", () => decideRecommendation(button.dataset.decision)));
+$("#searchKnowledge").addEventListener("click", searchKnowledge);
+$("#saveProvider").addEventListener("click", saveProvider);
+$("#previewCraft").addEventListener("click", () => submitCraft(false));
+$("#executeCraft").addEventListener("click", () => submitCraft(true));
 $("#refreshAll").addEventListener("click", () => refreshAll());
 
 async function refreshAll() {
@@ -373,7 +466,7 @@ function updateClock() { $("#clock").textContent = new Date().toLocaleString("zh
 updateClock();
 setInterval(updateClock, 1000);
 
-const initialView = ["home","design","flow","three-d","evolve"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "home";
+const initialView = ["home","design","flow","three-d","evolve","craft"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "home";
 navigate(initialView);
 refreshAll().catch((error) => { $("#systemLabel").textContent = "加载失败"; $("#systemDetail").textContent = error.message; });
 setInterval(() => loadRuns().catch(() => {}), 5000);

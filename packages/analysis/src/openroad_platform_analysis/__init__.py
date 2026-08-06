@@ -23,6 +23,15 @@ from .offline_policy import (
     build_trajectory,
     split_by_design,
 )
+from .open_knowledge import (
+    BenchmarkDefinition, CorpusSnapshot, DocumentClaim, KnowledgeSource,
+    PublicKnowledgeRegistry, load_public_manifest,
+)
+from .learning_collector import CollectionReceipt, LearningCollector, TenantLearningStore
+from .recommendations import (
+    AutomationEnvelope, ConfidenceBreakdown, PolicyRecommendation,
+    RecommendationStore, UserDecision, automation_envelope, build_recommendation,
+)
 
 __all__ = [
     "analyze_run", "build_llm_prompt", "build_report", "diagnose",
@@ -34,4 +43,10 @@ __all__ = [
     "OptimizationStudyStore", "pareto_front", "proposal_to_experiment_plan",
     "BehaviorCloningShadowPolicy", "OfflineLinearQShadowPolicy",
     "build_trajectory", "split_by_design",
+    "BenchmarkDefinition", "CorpusSnapshot", "DocumentClaim", "KnowledgeSource",
+    "PublicKnowledgeRegistry", "load_public_manifest",
+    "CollectionReceipt", "LearningCollector", "TenantLearningStore",
+    "AutomationEnvelope", "ConfidenceBreakdown", "PolicyRecommendation",
+    "RecommendationStore", "UserDecision", "automation_envelope",
+    "build_recommendation",
 ]

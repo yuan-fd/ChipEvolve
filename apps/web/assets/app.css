@@ -50,3 +50,5 @@ button { cursor: pointer; }
 @media(max-width:1050px){.project-grid{grid-template-columns:1fr 1fr}.three-d-grid{grid-template-columns:1fr}.three-d-view{border-right:0;border-bottom:1px solid var(--line)}}
 @media(max-width:700px){.project-grid{grid-template-columns:1fr}.tier-kpis{grid-template-columns:1fr 1fr}.surface-actions{width:70%;}.surface-actions select{min-width:0}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.p16-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;border-top:1px solid var(--line)}.p16-grid>div{min-width:0;padding:14px;background:var(--paper);border:1px solid var(--line)}.p16-grid label{display:block;margin:10px 0}.p16-grid .toolchain-box{display:block;margin-top:12px;padding:10px;white-space:pre-wrap;max-height:260px;overflow:auto;font:9px/1.6 var(--mono)}
+@media(max-width:1100px){.p16-grid{grid-template-columns:1fr}}
