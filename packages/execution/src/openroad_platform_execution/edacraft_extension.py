@@ -16,7 +16,9 @@ from openroad_platform_contracts import PluginManifest, TaskSpec
 
 
 EDACRAFT_UPSTREAM_COMMIT = "739eee0f3ced8fc3cbb6f01b6cc89414758fd898"
-EDACRAFT_PLUGIN_VERSION = "1.0.0"
+EDACRAFT_PLUGIN_VERSION = "1.1.0"
+EDACRAFT_CKTCRAFT_SHA256 = "0040bc5d392fb3ad03ee4fc432d861233b2c75e4a9911c2459e8f7910e0a822c"
+EDACRAFT_MOMCRAFT_SHA256 = "0fd99280dfd69befb3ad3c119e7da9ab539014c77e3e379dca4155dfa9e7e6bf"
 
 
 @dataclass(frozen=True)
@@ -59,32 +61,32 @@ EDACRAFT_COMPONENTS = (
         "Generated RTL remains reviewable and must pass normal RTL validation before implementation.",
     ),
     EDACraftComponent(
-        "edacode", "EDACode", "frontend", "eda.analog.agent.audit",
-        "constrained-audit-only",
+        "edacode", "EDACode", "frontend", "eda.analog.agent.proposal",
+        "constrained-proposal-only",
         "Analog and mixed-signal coding agent with an optional VS Code client.",
-        "safe-surface-audit", ("report", "source_snapshot"),
+        "safe-proposal", ("agent_proposal", "report", "source_snapshot"),
         "Upstream shell and file-write tools are not exposed by this platform adapter.",
     ),
     EDACraftComponent(
-        "tcadcraft", "TCADCraft", "device", "eda.tcad.geometry_smoke",
-        "local-geometry-smoke",
+        "tcadcraft", "TCADCraft", "device", "eda.tcad.physics_validation",
+        "local-physics-validation",
         "3D quantum-corrected semiconductor device simulation and device templates.",
-        "geometry", ("device_geometry", "report", "source_snapshot"),
-        "The low-cost smoke validates upstream geometry code, not full solver convergence.",
+        "physics-invariants", ("device_geometry", "physics_validation", "report", "source_snapshot"),
+        "The bounded smoke runs upstream geometry and physics invariants, not the inconsistent full solver build.",
     ),
     EDACraftComponent(
-        "momcraft", "MoMCraft", "interconnect", "eda.em.touchstone_smoke",
-        "local-touchstone-smoke",
+        "momcraft", "MoMCraft", "interconnect", "eda.em.microstrip_solve",
+        "local-numerical-solver-smoke",
         "Method-of-Moments interconnect extraction and Touchstone S-parameter handling.",
-        "touchstone", ("s_parameters", "report", "source_snapshot"),
-        "The low-cost smoke validates upstream Touchstone I/O, not a full-wave solve.",
+        "microstrip-solve", ("s_parameters", "solver_result", "report", "source_snapshot"),
+        "A one-frequency, coarse-mesh upstream numerical solve bounds cost; it is not sign-off EM.",
     ),
     EDACraftComponent(
-        "cktcraft", "CktCraft", "circuit", "eda.spice.source_audit",
-        "source-validated",
+        "cktcraft", "CktCraft", "circuit", "eda.spice.op",
+        "local-numerical-solver-smoke",
         "SPICE/RF simulator supporting OP, DC, AC, HB, PSS, and transient analyses.",
-        "solver-surface-audit", ("report", "source_snapshot"),
-        "A source audit is not represented as a numerical simulation result.",
+        "dc-operating-point", ("simulation_result", "simulation_log", "report", "source_snapshot"),
+        "The fixed upstream resistor-divider .op is a real numerical smoke, not sign-off circuit verification.",
     ),
     EDACraftComponent(
         "implcraft", "ImplCraft", "backend", "eda.implcraft.scriptgen",
@@ -136,6 +138,23 @@ def edacraft_plugin_manifest(
         raise FileNotFoundError(f"EDACraft {component.name} source or Python is missing")
     adapter = (Path(adapter_path).expanduser().resolve() if adapter_path else
                Path(__file__).with_name("edacraft_adapter.py").resolve())
+    project_root = source.parent.parent
+    runtime_root = project_root / ".tools" / "edacraft-runtime"
+    environment = {
+        "EDACRAFT_ROOT": str(source),
+        "EDACRAFT_COMPONENT": component.name,
+        "EDACRAFT_COMPONENT_SLUG": slug,
+        "EDACRAFT_EXPECTED_COMMIT": EDACRAFT_UPSTREAM_COMMIT,
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+    if slug == "cktcraft":
+        environment["EDACRAFT_CKTCRAFT_BIN"] = str(
+            runtime_root / "cktcraft-build" / "bin" / "rfsim"
+        )
+        environment["EDACRAFT_CKTCRAFT_SHA256"] = EDACRAFT_CKTCRAFT_SHA256
+    if slug == "momcraft":
+        environment["EDACRAFT_MOM_PYTHONPATH"] = str(runtime_root / "momcraft-python")
+        environment["EDACRAFT_MOMCRAFT_SHA256"] = EDACRAFT_MOMCRAFT_SHA256
     manifest = PluginManifest(
         plugin_id=component.plugin_id,
         plugin_version=EDACRAFT_PLUGIN_VERSION,
@@ -149,13 +168,7 @@ def edacraft_plugin_manifest(
         artifact_rules=tuple(
             {"kind": kind, "required": True} for kind in component.artifacts
         ),
-        environment={
-            "EDACRAFT_ROOT": str(source),
-            "EDACRAFT_COMPONENT": component.name,
-            "EDACRAFT_COMPONENT_SLUG": slug,
-            "EDACRAFT_EXPECTED_COMMIT": EDACRAFT_UPSTREAM_COMMIT,
-            "PYTHONDONTWRITEBYTECODE": "1",
-        },
+        environment=environment,
     )
     manifest.validate()
     return manifest
@@ -177,7 +190,8 @@ def build_edacraft_task(
         project_id=project_id,
         design_id=design_id,
         plugin_id=component.plugin_id,
-        inputs={"fixture": "p17-low-cost-smoke"},
+        inputs={"fixture": "p18-bounded-real-smoke",
+                "prompt": "Propose a review-only CMOS inverter operating-point plan."},
         parameters={"mode": component.smoke_mode},
         resources={"execution_class": component.execution_class},
         timeout_seconds=timeout_seconds,
@@ -185,7 +199,7 @@ def build_edacraft_task(
         expected_artifacts=component.artifacts,
         labels={
             "optional_extension": "true",
-            "full_solver_executed": "false",
+            "full_solver_executed": "true" if slug in {"cktcraft", "momcraft"} else "false",
         },
     )
     task.validate()

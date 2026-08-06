@@ -1,12 +1,11 @@
-# Current task: P17 EDACraft extension pack and platform delivery
+# Current task: P18-P22 bounded-real platform acceptance
 
-status: completed
+status: completed; awaiting user acceptance
 authorized_at: 2026-08-06
-base_commit: 35ef56d
+base_commit: baa30c2
 
-The executable scope, protected data, and truth gates are frozen in
-`tasks/phase-17.md`.
+Completed scope and truth gates are frozen in `tasks/phase-18-22.md`.
 
-P17 preserves the existing ImplCraft P11 adapter and adds five sibling
-component plugins. EDACraft, TaiWei 3D, and DPLEvolve remain optional
-extensions rather than dependencies of the core learning loop.
+P18-P22 preserve Runtime as the sole execution authority, keep all generated
+benchmark and model outputs separate from observed evidence, and retain
+EDACraft, TaiWei 3D, and DPLEvolve as optional extensions.

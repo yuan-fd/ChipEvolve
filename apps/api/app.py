@@ -35,9 +35,10 @@ for package_root in reversed(PACKAGE_ROOTS):
 
 from openroad_platform_contracts import LearningContext, RunRequest, RunStage  # noqa: E402
 from openroad_platform_analysis import (  # noqa: E402
+    GaussianProcessRegressorLite, RuntimeEvidenceExporter,
     LearningCollector, OptimizationStudyStore, PublicKnowledgeRegistry, RecommendationStore,
     TenantLearningStore, automation_envelope, build_recommendation,
-    load_public_manifest,
+    assess_ood, calibrate_gp, load_public_manifest, proposal_to_experiment_plan,
 )
 from openroad_platform_execution import (  # noqa: E402
     PluginRegistry, ToolchainConfig, build_craft_flow_plan, build_orfs_task,
@@ -51,7 +52,7 @@ from openroad_platform_scheduler import (  # noqa: E402
     OpenAICompatibleSpecProvider, ProviderProfile, ProviderProfileStore,
     RuleBasedSpecProvider, RuntimeStore,
     SpecConversationManager, SpecConversationStore, StageAwareCampaignManager,
-    WorkflowRuntime,
+    WorkflowRuntime, OptimizationCampaignBridge,
 )
 try:  # Supports both `python apps/api/app.py` and package imports in tests.
     from .services import DesignService, PlatformReadModel  # type: ignore[attr-defined]
@@ -142,6 +143,7 @@ class ApiState:
             workspace_root=state_root / "runtime-workspaces",
         )
         self.stage_campaigns = StageAwareCampaignManager(self.campaign_store, self.runtime)
+        self.optimization_bridge = OptimizationCampaignBridge(self.stage_campaigns)
         self.platform = PlatformReadModel(
             designs=self.designs,
             runtime_store=self.runtime_store,
@@ -505,12 +507,17 @@ class ApiState:
         proposals = self.optimization_store.proposals(study_id)
         if not proposals:
             raise ValueError("Study has no optimizer proposal")
+        calibration = None
+        try:
+            calibration = self.calibrate_study(study_id)
+        except ValueError:
+            calibration = None
         recommendation = build_recommendation(
             study, proposals[-1], self.optimization_store.observations(study_id),
-            held_out_error=(float(payload["held_out_error"])
-                            if payload.get("held_out_error") is not None else None),
-            interval_coverage=(float(payload["interval_coverage"])
-                               if payload.get("interval_coverage") is not None else None),
+            held_out_error=(calibration["calibration"]["normalized_rmse"]
+                            if calibration is not None else None),
+            interval_coverage=(calibration["calibration"]["interval_coverage"]
+                               if calibration is not None else None),
             worst_case_cost_seconds=float(payload.get("worst_case_cost_seconds", 7200)),
         )
         self.recommendation_store.save(owner_id, recommendation)
@@ -519,7 +526,7 @@ class ApiState:
             study_opt_in=payload.get("study_opt_in") is True,
             budget_available=payload.get("budget_available", True) is True,
         )
-        return {"recommendation": recommendation.to_dict(),
+        return {"recommendation": recommendation.to_dict(), "calibration": calibration,
                 "automation_envelope": envelope.to_dict()}
 
     def decide_recommendation(self, recommendation_id: str,
@@ -533,8 +540,126 @@ class ApiState:
             parameters=payload.get("parameters"), comment=str(payload.get("comment") or ""),
             parameter_bounds=bounds,
         )
-        return {"decision": decision.to_dict(), "execution_started": False,
-                "next_step": "Use the validated ExperimentPlan/Campaign endpoint to execute."}
+        result: dict[str, Any] = {
+            "decision": decision.to_dict(), "campaign_created": False,
+            "execution_started": False,
+            "next_step": "A rejected decision ends here; an accepted decision may explicitly create a Campaign.",
+        }
+        if decision.action == "rejected" or payload.get("create_campaign") is not True:
+            return result
+        proposal = next((item for item in self.optimization_store.proposals(study.study_id)
+                         if item.proposal_id == recommendation.proposal_id), None)
+        if proposal is None:
+            raise ValueError("Recommendation proposal is no longer available")
+        plan = proposal_to_experiment_plan(proposal, study)
+        candidate = dataclasses.replace(
+            plan.candidates[0], parameters=dict(decision.selected_parameters),
+            candidate_id=f"candidate-{decision.decision_id.removeprefix('decision-')}",
+            source_trial_id=decision.decision_id,
+        )
+        plan = dataclasses.replace(
+            plan, plan_id=f"plan-{decision.decision_id.removeprefix('decision-')}",
+            producer="p21-human-confirmed", candidates=(candidate,),
+            provenance={**plan.provenance, "recommendation_id": recommendation_id,
+                        "decision_id": decision.decision_id,
+                        "human_confirmed": True, "predictions_are_canonical_metrics": False},
+        )
+        design = self.designs.get(study.design_id)
+        base = build_orfs_task(
+            self.designs.rtl_path(study.design_id), project_id="openroad-platform",
+            design_id=study.design_id, top=design["module"],
+            target_stage=str(payload.get("target_stage") or "finish"),
+            clock_period_ns=_number(payload, "clock_period_ns", 10.0),
+            core_utilization_pct=_number(payload, "core_utilization_pct", 10.0),
+            place_density=_number(payload, "place_density", 0.45),
+            stage_timeout_seconds=int(_number(payload, "stage_timeout_seconds", 3600)),
+        )
+        base = dataclasses.replace(
+            base, task_id=f"human-task-{decision.decision_id.removeprefix('decision-')}",
+            labels={**base.labels, "human_decision_id": decision.decision_id,
+                    "recommendation_id": recommendation_id},
+        )
+        campaign_id = self.optimization_bridge.create(
+            str(payload.get("campaign_name") or f"approved-{study.study_id}"), base, plan,
+            max_parallel=1, stage_budgets=payload.get("stage_budgets") or {},
+            objective_metric=(study.objectives[0].metric_name if study.objectives else None),
+            direction=(study.objectives[0].direction if study.objectives else "min"),
+            top_k=1, max_repairs=int(payload.get("max_repairs", 1)),
+        )
+        result.update({"campaign_created": True, "campaign_id": campaign_id,
+                       "campaign": self.stage_campaigns.describe(campaign_id),
+                       "experiment_plan": plan.to_dict(),
+                       "next_step": "Explicitly submit the approved Campaign to queue Runtime work."})
+        if payload.get("submit") is True:
+            run_ids = self.stage_campaigns.ensure_runs(campaign_id)
+            result.update({"execution_started": True, "run_ids": list(run_ids),
+                           "next_step": "Runtime work is queued; collect only after terminal evidence verification."})
+        return result
+
+    def calibrate_study(self, study_id: str) -> dict[str, Any]:
+        import numpy as np
+
+        study = self.optimization_store.get(study_id)
+        observations = [item for item in self.optimization_store.observations(study_id)
+                        if item.status == "succeeded"]
+        names = [item.name for item in study.parameter_space]
+        objective = study.objectives[0]
+        complete = [item for item in observations if objective.metric_name in item.metrics
+                    and all(name in item.parameters for name in names)]
+        if len(complete) < 3:
+            raise ValueError("At least three complete observed samples are required for calibration")
+        lows = np.array([item.lower for item in study.parameter_space], dtype=float)
+        highs = np.array([item.upper for item in study.parameter_space], dtype=float)
+        raw_x = np.array([[item.parameters[name] for name in names] for item in complete], dtype=float)
+        x = (raw_x - lows) / (highs - lows)
+        y = np.array([item.metrics[objective.metric_name] for item in complete], dtype=float)
+        report = calibrate_gp(x, y)
+        proposal = self.optimization_store.proposals(study_id)[-1] \
+            if self.optimization_store.proposals(study_id) else None
+        ood = None
+        if proposal is not None and all(name in proposal.parameters for name in names):
+            candidate = np.array([proposal.parameters[name] for name in names], dtype=float)
+            normalized_candidate = (candidate - lows) / (highs - lows)
+            model = GaussianProcessRegressorLite().fit(x, y)
+            _, stddev = model.predict(normalized_candidate.reshape(1, -1))
+            objective_scale = max(float(np.ptp(y)), float(np.std(y)), 1e-12)
+            ood = assess_ood(candidate, raw_x,
+                             [(item.lower, item.upper) for item in study.parameter_space],
+                             predictive_stddev=float(stddev[0]) / objective_scale).to_dict()
+        return {"study_id": study_id, "objective": objective.metric_name,
+                "calibration": report.to_dict(), "latest_proposal_ood": ood,
+                "source": "observed-only", "execution_started": False}
+
+    def collect_campaign_learning(self, campaign_id: str,
+                                  payload: dict[str, Any]) -> dict[str, Any]:
+        study_id = str(payload.get("study_id") or "")
+        study = self.optimization_store.get(study_id)
+        context = LearningContext(
+            design_id=study.design_id,
+            design_fingerprint=str(payload.get("design_fingerprint") or ""),
+            platform=str(payload.get("platform") or ""),
+            pdk_id=str(payload.get("pdk_id") or ""),
+            toolchain_id=str(payload.get("toolchain_id") or ""),
+            flow_stage=str(payload.get("flow_stage") or "finish"),
+            metric_parser_version=str(payload.get("metric_parser_version") or ""),
+        )
+        if context.fingerprint != study.context_fingerprint:
+            raise ValueError("Learning context does not match the optimization study")
+        receipts = []
+        for member in self.campaign_store.members(campaign_id):
+            if member.run_id:
+                receipts.append(dataclasses.asdict(self.learning_collector.collect(
+                    member.run_id, context, tenant_id=str(payload.get("tenant_id") or "local-user"),
+                    project_id=str(payload.get("project_id") or "openroad-platform"),
+                )))
+        observation_ids = self.optimization_bridge.ingest_terminal(
+            campaign_id, context=context,
+            exporter=RuntimeEvidenceExporter(self.runtime_store),
+            study_store=self.optimization_store, study_id=study_id,
+        )
+        return {"campaign_id": campaign_id, "study_id": study_id,
+                "observation_ids": list(observation_ids), "collection_receipts": receipts,
+                "source": "verified-runtime-observed"}
 
     def list_recommendations(self, owner_id: str) -> dict[str, Any]:
         return {"recommendations": self.recommendation_store.list(owner_id)}
@@ -941,6 +1066,10 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                     self._json(state.create_recommendation(
                         unquote(match.group(1)), self._read_json()), HTTPStatus.CREATED)
                     return
+                match = re.fullmatch(r"/api/optimization/studies/([^/]+)/calibrate", path)
+                if match:
+                    self._json(state.calibrate_study(unquote(match.group(1))))
+                    return
                 match = re.fullmatch(r"/api/recommendations/([^/]+)/decision", path)
                 if match:
                     self._json(state.decide_recommendation(
@@ -962,6 +1091,11 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                     return
                 if path == "/api/campaigns/stage-aware":
                     self._json(state.create_stage_campaign(self._read_json()), HTTPStatus.CREATED)
+                    return
+                match = re.fullmatch(r"/api/campaigns/([^/]+)/collect-learning", path)
+                if match:
+                    self._json(state.collect_campaign_learning(
+                        unquote(match.group(1)), self._read_json()), HTTPStatus.CREATED)
                     return
                 if path == "/api/designs/generate":
                     payload = self._read_json()

@@ -1,25 +1,27 @@
-# Next action after P17
+# Next action after P22
 
 updated_at: 2026-08-06
+status: paused for user acceptance
 
-P17 is complete. The next recommended phase is P18, focused on capability
-promotion and learning scale rather than another structural rewrite.
+P18-P22 are complete. The next action is user review of the five-page website,
+especially the Self-Evolution two-step decision flow and Projects & Results
+evidence views. Concrete UI corrections should be handled before a new product
+phase.
 
-1. Let the user review the live five-page website and collect concrete UI
-   corrections before expanding presentation features.
-2. Promote EDACraft solver capabilities one at a time: CktCraft resistor-divider
-   `.op`, MoMCraft tiny compiled sweep, and a bounded TCADCraft numerical case.
-   Each promotion needs its own environment lock, Runtime artifacts, metrics,
-   timeout, and truth gate.
-3. Add the four user-supplied self-evolution papers/artifacts after license and
-   version audit; map their knowledge, benchmark, policy, and evaluation pieces
-   into the existing provenance model.
-4. Accumulate more cross-design observed Runtime data, add held-out calibration
-   and OOD reports, and keep automatic T2 decisions disabled until gates pass.
-5. Convert accepted T1 recommendations into an explicit, separately confirmed
-   ExperimentPlan/Campaign path with visible cost, concurrency, and quotas.
-6. Add slides and demo videos only when real material is supplied; do not fill
-   the Overview page with synthetic placeholders.
+After acceptance, the recommended P23 direction is sustained real-data growth:
 
-DPLEvolve, TaiWei 3D, and EDACraft remain optional extension capabilities.
-They are not prerequisites of the core Spec→RTL→GDS and learning loop.
+1. Run approved OpenROAD Campaigns across several real designs and tool contexts;
+   keep train/held-out design splits and never relabel imported benchmarks as
+   observed results.
+2. Recompute calibration and OOD reports as verified samples accumulate. Keep
+   automatic T2 action disabled until every context, sample, coverage, safety,
+   opt-in, and budget gate passes.
+3. Repair or update TCADCraft only through a separately reviewed upstream commit
+   or a documented overlay; then add one genuinely converged tiny device case.
+4. Expand MoMCraft/CktCraft cases only with explicit cost limits. Do not treat
+   current coarse smokes as sign-off validation.
+5. Add supplied slides/video to Overview without changing the five-tab product
+   structure. DPLEvolve remains an optional candidate generator, not a main loop.
+
+Do not push, publicly deploy, run expensive DPLEvolve, execute commercial EDA,
+or enable autonomous RL decisions without a new explicit authorization.

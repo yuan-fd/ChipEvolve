@@ -52,7 +52,8 @@ def test_tasks_are_bounded_low_cost_smokes():
         assert task.plugin_id == component.plugin_id
         assert task.max_attempts == 1
         assert task.labels["optional_extension"] == "true"
-        assert task.labels["full_solver_executed"] == "false"
+        expected = "true" if component.slug in {"momcraft", "cktcraft"} else "false"
+        assert task.labels["full_solver_executed"] == expected
 
 
 @pytest.mark.skipif(not (SOURCE / ".git").exists(), reason="pinned EDACraft cache absent")
@@ -70,4 +71,5 @@ def test_pinned_component_smokes_use_runtime_adapter(slug, tmp_path):
     )
     report = json.loads((tmp_path / slug / "capability_report.json").read_text())
     assert report["safety"]["runtime_authoritative"] is True
-    assert report["safety"]["full_solver_executed"] is False
+    assert report["safety"]["full_solver_executed"] is (slug in {"momcraft", "cktcraft"})
+    assert report["safety"]["signoff_claimed"] is False

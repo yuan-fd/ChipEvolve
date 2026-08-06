@@ -32,6 +32,10 @@ from .recommendations import (
     AutomationEnvelope, ConfidenceBreakdown, PolicyRecommendation,
     RecommendationStore, UserDecision, automation_envelope, build_recommendation,
 )
+from .research_methods import RESEARCH_METHODS, ResearchMethod, research_method_catalog
+from .calibration import (
+    CalibrationReport, OODAssessment, assess_ood, bounded_benchmark_points, calibrate_gp,
+)
 
 __all__ = [
     "analyze_run", "build_llm_prompt", "build_report", "diagnose",
@@ -49,4 +53,7 @@ __all__ = [
     "AutomationEnvelope", "ConfidenceBreakdown", "PolicyRecommendation",
     "RecommendationStore", "UserDecision", "automation_envelope",
     "build_recommendation",
+    "RESEARCH_METHODS", "ResearchMethod", "research_method_catalog",
+    "CalibrationReport", "OODAssessment", "assess_ood",
+    "bounded_benchmark_points", "calibrate_gp",
 ]

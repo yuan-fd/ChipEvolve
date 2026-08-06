@@ -23,8 +23,13 @@ updated_at: 2026-08-06
 | P15 | 受保护白盒 Tool-Evolve / DPLEvolve 迁移 v1（已验收） | 固定源码、路径保护、隔离构建、patch 前像、人工晋级门；实际候选 full-flow 留待后续 |
 | P16 | 开放知识、BYOK 与人控自演化 v1（已验收） | 公开知识/benchmark、持续学习、用户自带模型、T1/T2 建议门、Craft→OpenROAD 真实 GDS |
 | P17 | EDACraft 六子项目、五页网站与交付整理（已验收） | 六个独立插件、ImplCraft 兼容、五个英文 Tab、统一结果/学习投影、真实轻量 smoke 与目录审计 |
+| P18 | EDACraft 有界真实能力晋级（已验收） | CktCraft `.op`、MoMCraft 最小数值求解、TCAD 真实物理校验、EDACode proposal-only；全部经 Runtime 留证 |
+| P19 | 四篇论文方法接入（已验收） | DOI/方法/实现符号/成熟度/Runtime 边界可追溯，离线回放通过 |
+| P20 | benchmark、校准、不确定性与 OOD（已验收） | 有界可重放采样、留一校准、区间覆盖、残差尺度和 OOD 报告；预测不冒充观测 |
+| P21 | 人控建议到持续学习闭环（已验收） | 接受/修改/拒绝；二次确认后 Campaign→Runtime；终态证据校验后 observed 回灌 |
+| P22 | 系统演示、恢复与 RC 收口（已验收） | 五页 Web、四条演示、9 库备份恢复、187 tests、凭据扫描、本地 RC |
 
-P14-P17 证据分别见相应 `docs/evidence/*ACCEPTANCE.md`。P13 的规则剪枝不得包装成 RL/贝叶斯/GP；P14 的离线 RL 也不得包装成已经获得在线控制权。P15 的迁移成功不得包装成 evolved candidate 已完成 full-flow 或 QoR 改善。P16 的 10 条真实数据不足以开放 T2，OpenROAD 结果也不是商业 signoff。P17 的源码/几何/I/O smoke 不得包装成 TCAD、EM 或 RF 完整数值求解。
+P14-P22 证据分别见相应 `docs/evidence/*ACCEPTANCE.md`。P13 的规则剪枝不得包装成 RL/贝叶斯/GP；P14/P19 的离线 RL 也不得包装成已经获得在线控制权。P15 的迁移成功不得包装成 evolved candidate 已完成 full-flow 或 QoR 改善。P20 生成的 benchmark 计划和预测不是 observed 数据。P18 的小规模数值 smoke 不是 TCAD、EM 或 RF sign-off，TCADCraft 完整求解器仍有上游源码一致性阻塞。
 
 ## 阶段执行规则
 

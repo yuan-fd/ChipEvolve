@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "name": "P22 platform system demo",
+  "flows": [
+    {
+      "id": "spec-to-2d-gds",
+      "description": "Natural-language Spec review to RTL and a Runtime-owned ORFS 2D GDS run",
+      "evidence": "docs/evidence/P12_SPEC_TO_GDS_ACCEPTANCE.json"
+    },
+    {
+      "id": "agenticpd-campaign-learning",
+      "description": "Human-controlled recommendation to Campaign, Runtime evidence, comparison, and observed-only learning",
+      "evidence": "docs/evidence/P14_SELF_EVOLUTION_ACCEPTANCE.json"
+    },
+    {
+      "id": "taiwei-real-3d-gcd",
+      "description": "Pinned TaiWei gcd 3D implementation with GDS, tier views, HBT metrics, and replay evidence",
+      "evidence": "docs/evidence/P8_REAL_ACCEPTANCE.json"
+    },
+    {
+      "id": "edacraft-bounded-real",
+      "description": "Optional EDACraft CktCraft and MoMCraft real numerical smokes plus bounded TCAD/agent checks",
+      "evidence": "docs/evidence/P18_EDACRAFT_REAL_ACCEPTANCE.json"
+    }
+  ],
+  "authority": "Workflow Runtime",
+  "optional_extensions": ["TaiWei 3D", "EDACraft", "DPLEvolve"],
+  "expensive_dplevolve_run": false
+}

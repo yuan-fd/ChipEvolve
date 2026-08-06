@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "plugin_id": "edacraft-tcadcraft",
-  "plugin_version": "1.0.0",
+  "plugin_version": "1.1.0",
   "adapter_entry": ["python3", "./../../packages/execution/src/openroad_platform_execution/edacraft_adapter.py"],
-  "capabilities": ["eda.tcad.geometry_smoke"],
+  "capabilities": ["eda.tcad.physics_validation"],
   "supported_arch": ["aarch64"],
   "input_schema": {"type": "object"},
   "output_schema": {"type": "object", "required": ["status", "artifacts"]},
@@ -11,6 +11,7 @@
   "default_timeout_seconds": 120,
   "artifact_rules": [
     {"kind": "device_geometry", "required": true},
+    {"kind": "physics_validation", "required": true},
     {"kind": "report", "required": true},
     {"kind": "source_snapshot", "required": true}
   ],

@@ -124,6 +124,9 @@ P11-P13 acceptance can be replayed into new empty ignored directories:
 python scripts/run_p11_acceptance.py --output-root .tools/p11-acceptance/new
 python scripts/run_p12_acceptance.py --output-root .tools/p12-acceptance/new
 python scripts/run_p13_acceptance.py --output-root .tools/p13-acceptance/new
+PYTHONPATH=packages/contracts/src:packages/execution/src:packages/scheduler/src \
+  .tools/venvs/p18-edacraft/bin/python scripts/run_p18_acceptance.py \
+  --output-root .tools/p18-acceptance/new
 ```
 
 `execution_ready` and `generator_ready` must both be `true` for the two full

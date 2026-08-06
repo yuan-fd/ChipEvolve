@@ -1,0 +1,19 @@
+diff --git a/CktCraft/src/util/bench.hpp b/CktCraft/src/util/bench.hpp
+--- a/CktCraft/src/util/bench.hpp
++++ b/CktCraft/src/util/bench.hpp
+@@
+ #include <chrono>
++#include <cstdlib>
+ #include <cstdint>
+diff --git a/MoMCraft/core/include/mom/green/dyadic.hpp b/MoMCraft/core/include/mom/green/dyadic.hpp
+--- a/MoMCraft/core/include/mom/green/dyadic.hpp
++++ b/MoMCraft/core/include/mom/green/dyadic.hpp
+@@
+ #include <functional>
++#include <memory>
+diff --git a/MoMCraft/core/include/mom/solver/pfft.hpp b/MoMCraft/core/include/mom/solver/pfft.hpp
+--- a/MoMCraft/core/include/mom/solver/pfft.hpp
++++ b/MoMCraft/core/include/mom/solver/pfft.hpp
+@@
+ #include <complex>
++#include <memory>

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from openroad_platform_analysis import research_method_catalog
+
 
 NAVIGATION = (
     {"id": "overview", "label": "Overview"},
@@ -123,6 +125,7 @@ class PlatformReadModel:
             "benchmarks": benchmarks,
             "studies": studies,
             "recommendations": recommendations,
+            "research_methods": research_method_catalog()["methods"],
             "learning_loop": [
                 "Retrieve traceable evidence",
                 "Propose with BO / GP or RL shadow policy",

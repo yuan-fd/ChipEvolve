@@ -4,9 +4,12 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -36,7 +39,8 @@ def main() -> int:
         snapshot = _snapshot(root, component, expected, task["parameters"].get("mode"))
         snapshot_path = workspace / "source_snapshot.json"
         _write(snapshot_path, snapshot)
-        generated, metrics, claims = _run_smoke(slug, root, workspace)
+        generated, metrics, claims = _run_smoke(slug, root, workspace, task)
+        numerical_solver = slug in {"cktcraft", "momcraft"}
         report_path = workspace / "capability_report.json"
         _write(report_path, {
             "schema_version": 1,
@@ -47,7 +51,8 @@ def main() -> int:
             "safety": {
                 "arbitrary_shell_exposed": False,
                 "user_file_write_exposed": False,
-                "full_solver_executed": False,
+                "full_solver_executed": numerical_solver,
+                "signoff_claimed": False,
                 "runtime_authoritative": True,
             },
         })
@@ -72,17 +77,17 @@ def main() -> int:
         return _fail(args.result, started, "adapter_error", f"{type(exc).__name__}: {exc}")
 
 
-def _run_smoke(slug: str, root: Path, workspace: Path):
+def _run_smoke(slug: str, root: Path, workspace: Path, task: dict):
     if slug == "rtlcraft":
         return _rtlcraft(root, workspace)
     if slug == "edacode":
-        return _edacode(root)
+        return _edacode(root, workspace, task)
     if slug == "tcadcraft":
         return _tcadcraft(root, workspace)
     if slug == "momcraft":
         return _momcraft(root, workspace)
     if slug == "cktcraft":
-        return _cktcraft(root)
+        return _cktcraft(root, workspace)
     raise ValueError(f"Unsupported EDACraft component: {slug}")
 
 
@@ -120,7 +125,7 @@ def _rtlcraft(root: Path, workspace: Path):
             ["Imported fixed upstream rtlgen DSL", "Emitted a real accumulator RTL module"])
 
 
-def _edacode(root: Path):
+def _edacode(root: Path, workspace: Path, task: dict):
     base = root / "EDACode" / "src" / "eda_agent"
     required = [
         base / "core" / "agent.py",
@@ -132,9 +137,22 @@ def _edacode(root: Path):
     missing = [path.name for path in required if not path.is_file()]
     if missing:
         raise RuntimeError(f"EDACode source surface is incomplete: {missing}")
-    return ([], [{"name": "edacode.audited_surfaces", "value": len(required), "unit": "count"}],
-            ["Provider, agent, VS Code server, and tool surfaces exist",
-             "Platform adapter intentionally executes none of the upstream shell/file tools"])
+    prompt = str(task.get("inputs", {}).get("prompt") or "Review an analog design request")[:1000]
+    proposal = workspace / "agent_proposal.json"
+    _write(proposal, {
+        "schema_version": 1, "mode": "proposal-only", "request": prompt,
+        "proposed_steps": [
+            "Clarify supply, process, loading, and target metrics",
+            "Prepare a reviewable SPICE netlist candidate",
+            "Request explicit approval before any simulator handoff",
+        ],
+        "registered_tools": [], "shell_available": False, "file_write_available": False,
+        "provider_contract": "EDACode BaseProvider-compatible; no credential used in smoke",
+    })
+    return ([{"kind": "agent_proposal", "path": proposal.name}],
+            [{"name": "edacode.proposed_steps", "value": 3, "unit": "count"}],
+            ["Used the fixed EDACode provider/agent contract as a proposal-only boundary",
+             "No upstream shell, file-write, background, or EDA execution tool was registered"])
 
 
 def _tcadcraft(root: Path, workspace: Path):
@@ -155,51 +173,100 @@ def _tcadcraft(root: Path, workspace: Path):
     )
     geometry = workspace / "device_geometry.json"
     _write(geometry, {"primitive": "Box", "bbox_m": box.bbox(), "inside": mask.tolist()})
-    return ([{"kind": "device_geometry", "path": geometry.name}],
-            [{"name": "tcadcraft.geometry_points", "value": 2, "unit": "count"}],
-            ["Imported fixed upstream TCAD geometry code", "Evaluated deterministic 3D containment"])
+    invariant_path = root / "TCADCraft" / "tcad" / "physics" / "invariants.py"
+    invariant_spec = importlib.util.spec_from_file_location("edacraft_tcad_invariants", invariant_path)
+    if invariant_spec is None or invariant_spec.loader is None:
+        raise RuntimeError("Cannot load upstream TCADCraft physics invariants")
+    invariants = importlib.util.module_from_spec(invariant_spec)
+    invariant_spec.loader.exec_module(invariants)
+    carriers_n = np.array([1.0e16, 2.0e16, 3.0e16])
+    carriers_p = np.array([3.0e15, 2.0e15, 1.0e15])
+    potential = np.array([0.0, 0.2, 0.5])
+    invariants.PhysicsInvariants.check_carriers(carriers_n, carriers_p)
+    invariants.PhysicsInvariants.check_potential(potential, -1.0, 1.0)
+    invariants.PhysicsInvariants.check_divergence_stencil()
+    validation = workspace / "physics_validation.json"
+    _write(validation, {"schema_version": 1, "checks": {
+        "carrier_nonnegative": True, "potential_bounded": True,
+        "divergence_stencil": True}, "full_solver_executed": False,
+        "full_solver_build_status": "blocked-by-upstream-header-source-mismatch"})
+    return ([{"kind": "device_geometry", "path": geometry.name},
+             {"kind": "physics_validation", "path": validation.name}],
+            [{"name": "tcadcraft.physics_checks", "value": 3, "unit": "count"}],
+            ["Executed fixed upstream geometry and physics-invariant code",
+             "Full TCAD solver is not claimed because the pinned source does not compile consistently"])
 
 
 def _momcraft(root: Path, workspace: Path):
     import numpy as np
 
-    module_path = root / "MoMCraft" / "py" / "mom" / "touchstone.py"
-    spec = importlib.util.spec_from_file_location("edacraft_mom_touchstone", module_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError("Cannot load upstream MoMCraft Touchstone module")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    # A single-point round trip avoids presenting synthetic data as a sweep.
-    # Full frequency sweeps belong to the compiled MoM solver acceptance.
-    freqs = np.array([1e9])
-    s = np.zeros((1, 2, 2), dtype=complex)
-    s[:, 0, 0] = 0.05
-    s[:, 1, 1] = 0.05
-    s[:, 1, 0] = np.array([0.91])
-    s[:, 0, 1] = s[:, 1, 0]
-    output = workspace / "microstrip_contract.s2p"
-    module.write_touchstone(output, freqs, s, comments=["P17 low-cost I/O smoke; not solver output"])
-    read_freqs, read_s, _ = module.read_touchstone(output)
-    if read_freqs.shape != (1,) or read_s.shape != (1, 2, 2):
-        raise RuntimeError("MoMCraft Touchstone round trip failed")
-    return ([{"kind": "s_parameters", "path": output.name, "solver_output": False}],
-            [{"name": "momcraft.touchstone_points", "value": 1, "unit": "count"}],
-            ["Executed fixed upstream Touchstone writer and reader", "No EM solve was claimed"])
+    python_path = Path(os.environ["EDACRAFT_MOM_PYTHONPATH"]).resolve()
+    if not python_path.is_dir():
+        raise RuntimeError("Pinned MoMCraft runtime package is missing")
+    extensions = tuple((python_path / "mom").glob("_mom*.so"))
+    if len(extensions) != 1 or _sha256(extensions[0]) != os.environ["EDACRAFT_MOMCRAFT_SHA256"]:
+        raise RuntimeError("Pinned MoMCraft extension SHA-256 mismatch")
+    sys.path.insert(0, str(python_path))
+    import mom
+
+    microstrip = mom.Microstrip(length=2e-3, width=0.5e-3, height=0.3e-3,
+                                eps_eff=3.2, nx=4, z0_ref=50.0)
+    freqs = np.array([1e9], dtype=float)
+    s = microstrip.solve_sweep(freqs)
+    if s.shape != (1, 2, 2) or not np.isfinite(s).all():
+        raise RuntimeError("MoMCraft numerical microstrip solve returned invalid S parameters")
+    output = workspace / "microstrip_solver.s2p"
+    microstrip.to_touchstone(str(output), freqs, fmt="RI")
+    result = workspace / "solver_result.json"
+    _write(result, {"schema_version": 1, "solver": "MoMCraft Microstrip",
+                    "frequency_hz": 1e9, "mesh_segments": 4,
+                    "s11_magnitude": float(abs(s[0, 0, 0])),
+                    "s21_magnitude": float(abs(s[0, 1, 0])),
+                    "signoff": False})
+    return ([{"kind": "s_parameters", "path": output.name, "solver_output": True},
+             {"kind": "solver_result", "path": result.name}],
+            [{"name": "momcraft.s11_magnitude", "value": float(abs(s[0, 0, 0])), "unit": "ratio"},
+             {"name": "momcraft.s21_magnitude", "value": float(abs(s[0, 1, 0])), "unit": "ratio"}],
+            ["Executed the compiled fixed upstream MoM microstrip solver",
+             "Used one frequency and a four-segment mesh to bound cost; no sign-off claim"])
 
 
-def _cktcraft(root: Path):
+def _cktcraft(root: Path, workspace: Path):
     base = root / "CktCraft"
     required = [base / "CMakeLists.txt", base / "src" / "cli" / "main.cpp",
                 base / "tests" / "netlists" / "divider.sp"]
     if any(not path.is_file() for path in required):
         raise RuntimeError("CktCraft source/netlist surface is incomplete")
-    cmake_text = required[0].read_text(encoding="utf-8", errors="replace")
-    readme = (base / "README.md").read_text(encoding="utf-8", errors="replace")
-    if "RFSIM_BUILD_TESTS" not in cmake_text or "v0.2.0" not in readme:
-        raise RuntimeError("CktCraft fixed source contract is not recognized")
-    return ([], [{"name": "cktcraft.audited_inputs", "value": len(required), "unit": "count"}],
-            ["Validated v0.2 source, CLI, and resistor-divider netlist surfaces",
-             "No SPICE solver execution was claimed"])
+    binary = Path(os.environ["EDACRAFT_CKTCRAFT_BIN"]).resolve()
+    if not binary.is_file():
+        raise RuntimeError("Pinned CktCraft rfsim binary is missing")
+    if _sha256(binary) != os.environ["EDACRAFT_CKTCRAFT_SHA256"]:
+        raise RuntimeError("Pinned CktCraft rfsim SHA-256 mismatch")
+    netlist = workspace / "divider.sp"
+    shutil.copyfile(required[2], netlist)
+    completed = subprocess.run([str(binary), str(netlist)], cwd=workspace, text=True,
+                               capture_output=True, timeout=30, check=False)
+    log_text = completed.stdout + completed.stderr
+    log_path = workspace / "simulation.log"
+    log_path.write_text(log_text, encoding="utf-8")
+    if completed.returncode != 0 or "converged in" not in log_text:
+        raise RuntimeError(f"CktCraft .op failed with exit {completed.returncode}")
+    values = {name: float(value) for name, value in re.findall(
+        r"(?:v|i)\(([^)]+)\)\s*=\s*([+-]?[0-9.]+e[+-][0-9]+)", log_text, re.I
+    )}
+    if not {"in", "mid", "v1"}.issubset(values):
+        raise RuntimeError("CktCraft output did not contain expected operating-point values")
+    result = workspace / "operating_point.json"
+    _write(result, {"schema_version": 1, "solver": "rfsim v0.2.0", "analysis": ".op",
+                    "converged": True, "node_voltages_v": {"in": values["in"], "mid": values["mid"]},
+                    "branch_currents_a": {"v1": values["v1"]}, "signoff": False})
+    return ([{"kind": "simulation_result", "path": result.name},
+             {"kind": "simulation_log", "path": log_path.name}],
+            [{"name": "cktcraft.v_in", "value": values["in"], "unit": "V"},
+             {"name": "cktcraft.v_mid", "value": values["mid"], "unit": "V"},
+             {"name": "cktcraft.i_v1", "value": values["v1"], "unit": "A"}],
+            ["Executed the compiled fixed upstream rfsim .op solver",
+             "Parsed converged node voltages and source current from the official divider fixture"])
 
 
 def _snapshot(root: Path, component: str, commit: str, mode: str | None) -> dict:
@@ -221,6 +288,14 @@ def _git(root: Path, *args: str) -> str:
 
 def _write(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _fail(path: Path, started: str, category: str, message: str) -> int:

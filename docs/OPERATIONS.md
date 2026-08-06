@@ -69,6 +69,21 @@ Spec session 的 `/turn` 只追加提案；`/execute` 必须提交
 
 live WAL 数据库不能直接在运行中用普通 `cp` 作为可信备份。使用 SQLite backup API；P8-Real 验收器已经生成一致性 snapshot。恢复演练：
 
+P22 提供了通用的非覆盖式备份/恢复命令。每个 `--database` 都通过
+SQLite online backup API 复制并运行 `PRAGMA integrity_check`；恢复只允许
+写入新的空目录，并先校验大小与 SHA-256：
+
+```bash
+python3 scripts/platform_state.py backup \
+  --database /tmp/openroad-platform-$(id -u)/runtime.db \
+  --database /tmp/openroad-platform-$(id -u)/campaign.db \
+  --output .tools/backups/platform-$(date +%Y%m%d)
+
+python3 scripts/platform_state.py restore \
+  --manifest .tools/backups/platform-$(date +%Y%m%d)/backup.manifest.json \
+  --target-root /tmp/openroad-platform-restore-check
+```
+
 ```bash
 python scripts/verify_runtime_backup.py \
   --snapshot .tools/p8-real-acceptance/runtime-20260805/runtime.db.snapshot \

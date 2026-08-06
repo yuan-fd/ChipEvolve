@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "phases": ["P19", "P20", "P21", "P22"],
+  "accepted": true,
+  "p19": {
+    "method_profiles": 4,
+    "dois": [
+      "10.1109/TCAD.2022.3167858",
+      "10.1145/3676536.3676730",
+      "10.1109/ASP-DAC47756.2020.9045559",
+      "10.3390/electronics9040685"
+    ],
+    "runtime_execution_authority_preserved": true
+  },
+  "p20": {
+    "bounded_latin_hypercube": true,
+    "maximum_points": 64,
+    "gp_leave_one_out_calibration": true,
+    "empirical_interval_coverage": true,
+    "ood_bounds_distance_uncertainty": true,
+    "predictions_are_observations": false
+  },
+  "p21": {
+    "human_actions": ["accepted", "modified", "rejected"],
+    "two_step_campaign_submission": true,
+    "idempotent_decision_to_campaign": true,
+    "verified_runtime_observed_reingestion": true,
+    "browser_owns_eda_process": false
+  },
+  "p22": {
+    "english_tabs": 5,
+    "database_backup_count": 9,
+    "backup_manifest_sha256": "f8940ec50c503743de0924e4ce19dc22442277dbe1974aa17450d9f6710318fc",
+    "restore_target": "/tmp/openroad-platform-p22-restore-20260806",
+    "restore_policy": "new-empty-directory-only",
+    "tests": {"passed": 187, "skipped": 2, "failed": 0},
+    "skips": ["optional pya module unavailable in the isolated test environment"],
+    "node_syntax": "passed",
+    "python_compile": "passed",
+    "json_files_validated": 41,
+    "credential_pattern_scan": "clean",
+    "git_diff_check": "passed",
+    "external_edacraft_source_clean": true,
+    "push_or_public_deployment": false
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "source_commit": "739eee0f3ced8fc3cbb6f01b6cc89414758fd898",
+  "architecture": "aarch64",
+  "compiler": "GCC 10.3.1",
+  "cmake": "3.31.9",
+  "python": "3.9.9",
+  "numpy": "2.0.2",
+  "build_overlay": "p18-build-fixes.patch",
+  "artifacts": {
+    "cktcraft_rfsim": {
+      "path": ".tools/edacraft-runtime/cktcraft-build/bin/rfsim",
+      "sha256": "0040bc5d392fb3ad03ee4fc432d861233b2c75e4a9911c2459e8f7910e0a822c"
+    },
+    "momcraft_extension": {
+      "path": ".tools/edacraft-runtime/momcraft-python/mom/_mom.cpython-39-aarch64-linux-gnu.so",
+      "sha256": "0fd99280dfd69befb3ad3c119e7da9ab539014c77e3e379dca4155dfa9e7e6bf"
+    }
+  },
+  "tcadcraft_full_solver": {
+    "status": "blocked-upstream",
+    "reason": "Pinned v0.2.0 device_simulator.cpp references declarations and result fields absent from device_simulator.h; no full-solver claim is made."
+  }
+}

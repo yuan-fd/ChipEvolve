@@ -1,15 +1,17 @@
 {
   "schema_version": 1,
   "plugin_id": "edacraft-cktcraft",
-  "plugin_version": "1.0.0",
+  "plugin_version": "1.1.0",
   "adapter_entry": ["python3", "./../../packages/execution/src/openroad_platform_execution/edacraft_adapter.py"],
-  "capabilities": ["eda.spice.source_audit"],
+  "capabilities": ["eda.spice.op"],
   "supported_arch": ["aarch64"],
   "input_schema": {"type": "object"},
   "output_schema": {"type": "object", "required": ["status", "artifacts"]},
   "required_tools": ["git", "python3"],
   "default_timeout_seconds": 120,
   "artifact_rules": [
+    {"kind": "simulation_result", "required": true},
+    {"kind": "simulation_log", "required": true},
     {"kind": "report", "required": true},
     {"kind": "source_snapshot", "required": true}
   ],
@@ -17,6 +19,8 @@
     "EDACRAFT_COMPONENT": "CktCraft",
     "EDACRAFT_COMPONENT_SLUG": "cktcraft",
     "EDACRAFT_EXPECTED_COMMIT": "739eee0f3ced8fc3cbb6f01b6cc89414758fd898",
+    "EDACRAFT_CKTCRAFT_BIN": ".tools/edacraft-runtime/cktcraft-build/bin/rfsim",
+    "EDACRAFT_CKTCRAFT_SHA256": "0040bc5d392fb3ad03ee4fc432d861233b2c75e4a9911c2459e8f7910e0a822c",
     "PYTHONDONTWRITEBYTECODE": "1"
   }
 }

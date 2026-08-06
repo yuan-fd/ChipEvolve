@@ -1,9 +1,9 @@
 # OpenROAD Platform — 工作记忆
 
 project_id: openroad-platform
-phase: P0-P17 已完成
-current_subgoal: P17 网站待用户验收；之后进入 P18 能力晋级与数据规模化
-progress: P0-P17 + P8-Real 已验收
+phase: P0-P22 已完成
+current_subgoal: 等待用户验收五页网站与 P18-P22 交付
+progress: P0-P22 + P8-Real 已验收
 last_updated: 2026-08-06
 
 ## 已确认事实
@@ -52,6 +52,13 @@ last_updated: 2026-08-06
 - P17 网站固定为五个英文 Tab：Overview、Frontend Design、Backend Design、Projects & Results、Self-Evolution；项目结果和学习页面读取真实数据库投影并提供空状态。
 - P17 API 新增独立 `PlatformReadModel`，统一导航、结果、自演化和 EDACraft catalog；网页不拥有 EDA 进程。
 - 当前全量回归：182 tests。
+- P18 CktCraft 真实 `.op` 收敛：5.0 V / 4.2 V / 0.4 mA；MoMCraft 真实 1 GHz 四段微带数值 smoke 成功，二者均不宣称 sign-off。
+- P18 TCADCraft 完成几何与三项物理不变量；固定提交完整 solver 因上游 header/source 不一致未冒充成功。EDACode 为零执行工具的 proposal-only。
+- P19 将 PTPT、ORD-QA RAG、DRiLLS、analog GP 四篇论文的 DOI、方法和实现符号注册到平台，Runtime 权威不变。
+- P20 新增 3-64 点有界 Latin-hypercube、GP 留一校准、区间覆盖、残差尺度和 bounds/distance/uncertainty OOD。
+- P21 用户接受/修改/拒绝后可创建幂等单候选 Campaign；再次确认才提交 Runtime；终态实测可校验后回灌 tenant/store 和 study。
+- P22 五页站增加论文、置信度、OOD 与二次提交控件；9 个 SQLite 库完成 online backup、SHA/integrity 校验和新目录恢复。
+- P18-P22 全量回归：187 passed、2 个可选 pya tests skipped、0 failed；Node/Python/JSON/diff/凭据模式/固定源码检查通过。
 
 ## 架构定版
 
@@ -71,6 +78,7 @@ last_updated: 2026-08-06
 - P14 学习对象均带 PDK、工具链、RTL 指纹、stage、parser version；只有 SHA 校验通过的 Runtime 登记报告可进入 observed KPI。
 - P14/P15 所有模型和代码候选只产生提案；Runtime 与人工 promotion gate 分别控制执行和源码晋级。
 - P17 的 EDACraft umbrella catalog 只负责发现；六个组件分别拥有 plugin identity、capability、artifact rules 和 truth boundary。ImplCraft 保持原适配器，不重写历史。
+- P19-P21 学习编排定版为 Evidence RAG → GP/RL shadow → MOBO ExperimentPlan → 人工决策 → Campaign → Runtime → verified observed 回灌；任何预测都不能写成 observation。
 
 ## 风险与后置门槛
 
@@ -88,4 +96,4 @@ last_updated: 2026-08-06
 
 ## handoff_anchor
 
-P0 `afdca1e`；P1 `e750370`；P2 `aa7cf0a`/`6d9d93c`；P3 `9269040`；P4 `0892d57`；P5 `38208ae`；P6 `025dc72`；P7 `339f34f`；P8 `00cf2f8`；P9 `c923f55`；P10 `6499d58`；P11-P13 `36c2155`；P14-P15 `55c0bde`；P16 `35ef56d`；P17 实现提交见最新 Git。读取 `memory_snapshots/P17-edacraft-web-delivery-2026-08-06.md` 恢复。
+P0 `afdca1e`；P1 `e750370`；P2 `aa7cf0a`/`6d9d93c`；P3 `9269040`；P4 `0892d57`；P5 `38208ae`；P6 `025dc72`；P7 `339f34f`；P8 `00cf2f8`；P9 `c923f55`；P10 `6499d58`；P11-P13 `36c2155`；P14-P15 `55c0bde`；P16 `35ef56d`；P17 `baa30c2`；P18-P22 见最新本地 RC。读取 `memory_snapshots/P22-platform-acceptance-2026-08-06.md` 恢复。
