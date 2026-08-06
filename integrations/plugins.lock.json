@@ -44,6 +44,23 @@
       }
     },
     {
+      "plugin_id": "edacraft-extension-pack",
+      "repository": "https://github.com/ephonic/EDACraft.git",
+      "branch_at_audit": "main",
+      "commit": "739eee0f3ced8fc3cbb6f01b6cc89414758fd898",
+      "cache_path": ".external-src/edacraft",
+      "license": "MIT-like, non-commercial restriction",
+      "components": [
+        "edacraft-rtlcraft",
+        "edacraft-edacode",
+        "edacraft-tcadcraft",
+        "edacraft-momcraft",
+        "edacraft-cktcraft",
+        "edacraft-implcraft"
+      ],
+      "execution_class": "optional-layered-extension"
+    },
+    {
       "plugin_id": "dplevolve",
       "repository": "https://github.com/CODA-Team/DPLEvolve",
       "visibility_at_audit": "private",

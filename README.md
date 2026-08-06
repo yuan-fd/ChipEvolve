@@ -1,21 +1,25 @@
 # OpenROAD Platform
 
-OpenROAD Platform is a small, extensible project hub for digital-design demos.
-The home page stays intentionally simple and currently exposes five
-workspaces:
+OpenROAD Platform is an evidence-first control plane for reproducible EDA
+workflows. Its English web interface has exactly five top-level pages:
 
-- **Circuit Studio**: natural-language circuit generation, RTL, synthesized
+- **Overview**: product purpose, control/execution/evidence architecture, live
+  counts, and the optional extension ecosystem.
+- **Frontend Design**: natural-language circuit generation, RTL, synthesized
   gate-level netlist, SVG schematic, and deterministic structural analysis.
-- **RTL-to-GDS Flow**: durable job submission, six native ORFS stages, live
+- **Backend Design**: durable job submission, six native ORFS stages, live
   status, GDS/DEF/netlist artifacts, timing/DRC/power metrics, and physical
-  diagnosis.
-- **TaiWei 3D**: pinned official ORD/asap7_3D/gcd runs, upper/bottom tier
-  state, physical HB-via and cross-tier metrics, hashed GDS/DEF/ODB evidence,
-  and replay/toolchain provenance.
-- **Evidence-driven Evolution**: public evidence registry, observed-only
+  diagnosis. TaiWei 3D and ImplCraft appear here as optional backend modes.
+- **Projects & Results**: one database-backed index for designs and Runtime
+  runs, with project detail, schematic/layout views, artifacts, and hashes.
+- **Self-Evolution**: public evidence registry, observed-only
   learning, BO/GP/RL recommendations and explicit user decisions.
-- **IC Craft**: one backend-neutral FlowPlan mapped either to the executable
-  OpenROAD/ORFS Runtime backend or commercial script generation.
+
+The optional **EDACraft Extension Pack** exposes six independent plugins:
+RTLCraft, EDACode, TCADCraft, MoMCraft, CktCraft, and the preserved ImplCraft
+adapter. They are grouped by frontend, device, interconnect, circuit, and
+backend layers; they are not dependencies of the core RTL-to-GDS or learning
+loop.
 
 The common control plane also includes in-memory BYOK model credentials,
 bounded multi-turn Spec-to-GDS sessions, and stage-aware parameter Campaigns.
@@ -32,16 +36,16 @@ coupling their runtime to the web shell.
 
 ```text
 apps/
-  api/                  HTTP API, static-site server, design adapter
-  web/                  project hub and browser workspaces
+  api/                  HTTP shell plus focused design/platform services
+  web/                  five-page English browser workspace
 packages/
   contracts/            stable requests, results, stages, artifacts
   scheduler/            SQLite queue and independent worker
   execution/            ORFS runner, process control, configuration
   analysis/             netlist and physical-result analysis
   visualization/        schematic and layout visualization
-workflows/               extension slots for future projects
-integrations/            external adapter boundary
+workflows/               cross-plugin workflow definitions and documentation
+integrations/            pinned external manifests, locks, and license audits
 tests/                   contracts, API, scheduler, runner, analysis
 var/                     generated runtime evidence (git-ignored)
 ```

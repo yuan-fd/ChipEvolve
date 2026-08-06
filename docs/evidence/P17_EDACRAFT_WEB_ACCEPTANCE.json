@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "phase": "P17",
+  "date": "2026-08-06",
+  "edacraft_commit": "739eee0f3ced8fc3cbb6f01b6cc89414758fd898",
+  "component_runs": {
+    "RTLCraft": "f637c8cecb7e44489c6720fec25f90aa",
+    "EDACode": "7f2aefe773584e6ab4dd074b72e238af",
+    "TCADCraft": "bb0fff0fc84f4a5da7f3a3576ad5f092",
+    "MoMCraft": "e44f3a59f458465b834435c84361b0f5",
+    "CktCraft": "238782625b7b434c94d21fb6427b9cd1",
+    "ImplCraft": "d1fc443767c74254bd6fd7ff2eea62a0"
+  },
+  "all_succeeded": true,
+  "top_level_tabs": [
+    "Overview",
+    "Frontend Design",
+    "Backend Design",
+    "Projects & Results",
+    "Self-Evolution"
+  ],
+  "full_solver_claims": {
+    "tcad": false,
+    "em": false,
+    "spice_rf": false,
+    "commercial_eda": false
+  },
+  "runtime_authoritative": true
+}

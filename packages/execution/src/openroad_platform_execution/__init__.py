@@ -50,6 +50,11 @@ from .craft_flow import (
     BackendNeutralFlowPlan, build_craft_flow_plan, craft_capability_matrix,
     craft_plan_to_task,
 )
+from .edacraft_extension import (
+    EDACRAFT_COMPONENTS, EDACRAFT_PLUGIN_VERSION, EDACRAFT_UPSTREAM_COMMIT,
+    EDACraftComponent, build_edacraft_task, edacraft_catalog,
+    edacraft_component, edacraft_plugin_manifest,
+)
 
 __all__ = [
     "AdapterExecution", "ProcessAdapter", "ORFSRunner", "ProcessGuardian",
@@ -74,4 +79,7 @@ __all__ = [
     "ProtectedWhiteBoxPromotionGate", "WhiteBoxPolicy",
     "BackendNeutralFlowPlan", "build_craft_flow_plan", "craft_capability_matrix",
     "craft_plan_to_task",
+    "EDACRAFT_COMPONENTS", "EDACRAFT_PLUGIN_VERSION", "EDACRAFT_UPSTREAM_COMMIT",
+    "EDACraftComponent", "build_edacraft_task", "edacraft_catalog",
+    "edacraft_component", "edacraft_plugin_manifest",
 ]

@@ -1,4 +1,4 @@
-# P16 开放知识、BYOK、人控建议与 Craft 后端
+# P16 开放知识、BYOK、人控建议与后端中立 FlowPlan
 
 P16 新增四条平台能力，但没有改变 Runtime 的执行权威。
 
@@ -46,7 +46,7 @@ BO/GP/RL 输出先转为 T1 `PolicyRecommendation`。页面展示参数、证据
 
 T2 `AutomationEnvelope` 默认不执行，只计算资格。它要求精确上下文、至少 20 条同上下文样本、至少 5 条候选邻域样本、held-out 校准通过、非 OOD、安全约束通过、Study opt-in 和预算充足；最多一个候选。当前 P14 的 10 条真实 observation 正确结果是 `not_eligible`。
 
-## IC Craft OpenROAD/ORFS 后端
+## 后端中立 FlowPlan（P17 前的历史命名修正）
 
 `BackendNeutralFlowPlan` 保存设计、RTL 哈希、时钟、平台、阶段、参数、QoR 意图及所需能力。两个 adapter 为：
 
@@ -55,5 +55,6 @@ T2 `AutomationEnvelope` 默认不执行，只计算资格。它要求精确上�
 
 商业 MMMC、PrimeTime/Calibre signoff 和专有数据库能力不会被 OpenROAD 冒充；请求这些能力会 fail closed。
 
-真实验收 run `6111c2de98a94b28b7717d2f13cd96a3` 使用官方 ORFS gcd，经 Runtime 完成 synth、floorplan、place、CTS、route、finish，登记 GDS/DEF/ODB/网表、报告和 KLayout 2D 图像。详见 `docs/evidence/P16_OPEN_PLATFORM_ACCEPTANCE.md`。
+P17 已把产品层面的 “IC Craft” 正式修正为 “EDACraft 六子项目分层扩展”。这里的 `BackendNeutralFlowPlan` 仍保留，作为 OpenROAD/ORFS 与 ImplCraft 两种数字后端语义的兼容资产，不代表已经覆盖 EDACraft 其它五个项目。
 
+真实验收 run `6111c2de98a94b28b7717d2f13cd96a3` 使用官方 ORFS gcd，经 Runtime 完成 synth、floorplan、place、CTS、route、finish，登记 GDS/DEF/ODB/网表、报告和 KLayout 2D 图像。详见 `docs/evidence/P16_OPEN_PLATFORM_ACCEPTANCE.md`。

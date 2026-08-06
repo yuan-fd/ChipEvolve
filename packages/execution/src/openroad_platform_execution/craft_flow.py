@@ -1,4 +1,8 @@
-"""Backend-neutral IC Craft intent and Runtime TaskSpec adapters."""
+"""Backend-neutral digital FlowPlan and Runtime TaskSpec adapters.
+
+The ``craft_*`` function names remain as a P16 API compatibility surface. The
+product-level integration is now the six-component EDACraft Extension Pack.
+"""
 
 from __future__ import annotations
 
@@ -128,7 +132,7 @@ def craft_plan_to_task(plan: BackendNeutralFlowPlan, backend: str, *,
             core_utilization_pct=plan.parameters["core_utilization_pct"],
             place_density=plan.parameters["place_density"], timeout_seconds=timeout_seconds,
             task_id=f"craft-orfs-{hashlib.sha256((plan.plan_id + backend).encode()).hexdigest()[:24]}",
-            labels={"source": "ic-craft", "craft_plan_id": plan.plan_id,
+            labels={"source": "backend-neutral-flowplan", "craft_plan_id": plan.plan_id,
                     "craft_backend": backend, "commercial_signoff": "false"},
         )
     return build_implcraft_task(

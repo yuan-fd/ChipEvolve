@@ -1,474 +1,171 @@
-const $ = (selector) => document.querySelector(selector);
-const $$ = (selector) => [...document.querySelectorAll(selector)];
-const stageOrder = ["synth", "floorplan", "place", "cts", "route", "finish"];
-const stageLabels = {synth:"综合",floorplan:"布局规划",place:"放置",cts:"时钟树",route:"布线",finish:"GDS 输出"};
+"use strict";
 
-const state = {
-  health: null,
-  projects: [],
-  designs: [],
-  runs: [],
-  runtimeRuns: [],
-  campaigns: [],
-  selectedDesign: null,
-  selectedRun: null,
-  selectedThreeD: null,
-  optimizationStudies: [],
-  selectedOptimizationStudy: null,
-  recommendation: null,
-  providerBinding: null,
-};
+const $ = (selector, root = document) => root.querySelector(selector);
+const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+const state = {platform:null, designs:[], runs:[], results:[], selectedDesign:null, selectedRun:null, resultFilter:"all"};
+const stages = ["synth","floorplan","place","cts","route","finish"];
 
-function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>'"]/g, (char) => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[char]));
+function esc(value) { return String(value ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c])); }
+async function api(path, options={}) {
+  const response = await fetch(path, {headers:{"Content-Type":"application/json",...(options.headers||{})},...options});
+  const type = response.headers.get("content-type") || "";
+  const body = type.includes("json") ? await response.json() : await response.text();
+  if (!response.ok) throw new Error(body?.error || body || `Request failed (${response.status})`);
+  return body;
+}
+const post = (path, body) => api(path, {method:"POST",body:JSON.stringify(body)});
+function message(selector, value, error=false) { const el=$(selector); el.textContent=value || ""; el.classList.toggle("error", error); }
+
+function route(name) {
+  if (!$( `#page-${name}`)) name="overview";
+  $$(".page").forEach(page => page.classList.toggle("active", page.id === `page-${name}`));
+  $$(".tab").forEach(tab => tab.classList.toggle("active", tab.dataset.route === name));
+  history.replaceState(null, "", `#${name}`);
+  window.scrollTo({top:0,behavior:"instant"});
+  if (name === "projects") loadResults();
+  if (name === "evolution") loadEvolution();
 }
 
-async function api(path, options = {}) {
-  const response = await fetch(path, options);
-  let payload;
-  try { payload = await response.json(); } catch { payload = {error: `HTTP ${response.status}`}; }
-  if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
-  return payload;
+function extensionCard(item) {
+  return `<article class="extension-card"><div class="extension-top"><span class="layer">${esc(item.layer)}</span><span class="pill optional">Optional</span></div><h3>${esc(item.name)}</h3><p>${esc(item.summary)}</p><small>${esc(item.execution_class)} · ${esc(item.smoke_mode)}</small></article>`;
 }
 
-function post(path, payload) {
-  return api(path, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)});
-}
-
-function navigate(view) {
-  $$(".view").forEach((item) => item.classList.toggle("active", item.id === `view-${view}`));
-  $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.nav === view));
-  $("#crumb").textContent = ({home:"PROJECT HUB",design:"CIRCUIT STUDIO",flow:"RTL-TO-GDS","three-d":"TAIWEI 3D",evolve:"SELF EVOLUTION",craft:"IC CRAFT"})[view] || view;
-  history.replaceState(null, "", `#${view}`);
-  window.scrollTo({top:0, behavior:"smooth"});
-}
-
-function setMessage(selector, message, isError = false) {
-  const element = $(selector);
-  element.textContent = message;
-  element.classList.toggle("error", isError);
-}
-
-async function loadHealth() {
+async function loadPlatform() {
   try {
-    state.health = await api("/api/health");
-    const ready = state.health.execution_ready && state.health.generator_ready && state.health.yosys_ready;
-    $("#systemDot").classList.toggle("good", ready);
-    $("#systemLabel").textContent = ready ? "系统就绪" : "部分能力不可用";
-    $("#systemDetail").textContent = ready ? "LLM / Yosys / OpenROAD / ORFS" : "请查看健康检查接口";
-    if (!state.health.byok_input_enabled) {
-      $("#providerKey").disabled = true;
-      $("#saveProvider").disabled = true;
-      setMessage("#providerMessage", "当前服务不是 localhost/HTTPS，BYOK 密钥输入已禁用。", true);
-    }
+    const [platform, health] = await Promise.all([api("/api/platform"),api("/api/health")]);
+    state.platform=platform;
+    $("#healthDot").className=health.ok ? "ok" : "bad";
+    $("#healthText").textContent=health.execution_ready ? "Execution ready" : "Console ready";
+    const c=platform.counts;
+    $("#countDesigns").textContent=c.designs; $("#countRuns").textContent=c.runtime_runs;
+    $("#countCampaigns").textContent=c.campaigns; $("#countKnowledge").textContent=c.knowledge_sources;
+    const components=platform.extensions.components || [];
+    $("#overviewExtensions").innerHTML=components.map(extensionCard).join("");
+    $("#frontendExtensions").innerHTML=components.filter(x=>x.layer==="frontend").map(extensionCard).join("");
   } catch (error) {
-    $("#systemLabel").textContent = "服务不可用";
-    $("#systemDetail").textContent = error.message;
+    $("#healthDot").className="bad"; $("#healthText").textContent="API unavailable";
+    $("#overviewExtensions").innerHTML=`<div class="empty-row">${esc(error.message)}</div>`;
   }
 }
 
-async function loadProjects() {
+async function loadDesigns(preferred=null) {
   try {
-    state.projects = (await api("/api/projects")).projects;
-    $("#projectCount").textContent = state.projects.filter((item) => item.status === "available").length;
-  } catch { state.projects = []; }
-}
-
-async function loadDesigns(preferredId = null) {
-  state.designs = (await api("/api/designs")).designs;
-  $("#designCount").textContent = state.designs.length;
-  const options = '<option value="">选择设计</option>' + state.designs.map((design) =>
-    `<option value="${escapeHtml(design.id)}">${escapeHtml(design.module)} · ${escapeHtml(design.description.slice(0, 28))}</option>`
-  ).join("");
-  $("#designSelect").innerHTML = options;
-  $("#flowDesign").innerHTML = '<option value="">请选择已生成或上传的设计</option>' + state.designs.map((design) =>
-    `<option value="${escapeHtml(design.id)}">${escapeHtml(design.module)} · ${escapeHtml(design.origin)}</option>`
-  ).join("");
-  $("#craftDesign").innerHTML = '<option value="">请选择设计</option>' + state.designs.map((design) =>
-    `<option value="${escapeHtml(design.id)}">${escapeHtml(design.module)} · ${escapeHtml(design.origin)}</option>`
-  ).join("");
-  if (preferredId) {
-    $("#designSelect").value = preferredId;
-    $("#flowDesign").value = preferredId;
-    await selectDesign(preferredId);
-  }
+    state.designs=(await api("/api/designs")).designs || [];
+    const options='<option value="">Select a registered design</option>'+state.designs.map(x=>`<option value="${esc(x.id)}">${esc(x.module)} · ${esc(x.id.slice(-8))}</option>`).join("");
+    $("#frontendDesign").innerHTML=options; $("#backendDesign").innerHTML=options;
+    const id=preferred || state.selectedDesign?.id || state.designs[0]?.id;
+    if (id) { $("#frontendDesign").value=id; $("#backendDesign").value=id; await selectDesign(id); }
+  } catch (error) { message("#specMessage",error.message,true); }
 }
 
 async function selectDesign(id) {
-  if (!id) {
-    state.selectedDesign = null;
-    $("#designEmpty").hidden = false;
-    $("#designResult").hidden = true;
-    return;
-  }
-  const design = await api(`/api/designs/${encodeURIComponent(id)}`);
-  state.selectedDesign = design;
-  $("#designSelect").value = id;
-  $("#designEmpty").hidden = true;
-  $("#designResult").hidden = false;
-  $("#designOrigin").textContent = design.origin === "natural_language" ? "NATURAL LANGUAGE" : "IMPORTED RTL";
-  $("#designName").textContent = design.module;
-  $("#designDescription").textContent = design.description;
-  const analysis = design.analysis || {};
-  const cellTypes = analysis.cell_types || {};
-  $("#designKpis").innerHTML = [
-    [analysis.instance_count ?? 0, "Instances"],
-    [Object.keys(cellTypes).length, "Cell types"],
-    [analysis.dff_count ?? 0, "Registers"],
-    [analysis.max_combinational_depth ?? 0, "Logic depth"],
-  ].map(([value,label]) => `<div class="kpi"><b>${escapeHtml(value)}</b><small>${label}</small></div>`).join("");
-  $("#schematicImage").src = `/api/designs/${encodeURIComponent(id)}/schematic.svg?t=${Date.now()}`;
-  $("#rtlCode").textContent = design.rtl_source || "";
-  $("#netlistCode").textContent = design.netlist_source || "";
-  $("#designAnalysis").innerHTML = [
-    ["顶层模块", analysis.module],
-    ["输入端口", (analysis.inputs || []).join(", ") || "--"],
-    ["输出端口", (analysis.outputs || []).join(", ") || "--"],
-    ["门类型分布", Object.entries(cellTypes).map(([key,value]) => `${key}: ${value}`).join(" · ") || "--"],
-    ["最大组合深度", analysis.max_combinational_depth ?? 0],
-    ["最长路径", analysis.max_depth_path ? `${analysis.max_depth_path.source} → ${analysis.max_depth_path.destination}` : "无可达组合路径"],
-  ].map(([label,value]) => `<div class="analysis-item"><small>${label}</small><b>${escapeHtml(value)}</b></div>`).join("");
-  $("#flowDesign").value = id;
-  $("#flowTop").value = design.module;
-}
-
-async function generateDesign() {
-  const description = $("#designPrompt").value.trim();
-  if (!description) { setMessage("#designMessage", "请先描述需要生成的电路。", true); return; }
-  const button = $("#generateDesign");
-  button.disabled = true;
-  button.firstChild.textContent = "正在调用 LLM、综合并分析... ";
-  setMessage("#designMessage", "生成过程中会自动执行 Yosys，并在失败时让模型修正 RTL。", false);
-  try {
-    const design = await post("/api/designs/generate", {description});
-    await loadDesigns(design.id);
-    setMessage("#designMessage", `已生成 ${design.module}，网表、电路图和分析均已就绪。`, false);
-  } catch (error) {
-    setMessage("#designMessage", error.message, true);
-  } finally {
-    button.disabled = false;
-    button.firstChild.textContent = "生成电路与网表 ";
-  }
-}
-
-async function importDesign(file) {
-  if (!file || !/\.(v|sv)$/i.test(file.name)) { setMessage("#designMessage", "请选择 .v 或 .sv 文件。", true); return; }
-  setMessage("#designMessage", "正在综合上传的 RTL 并生成分析证据...", false);
-  try {
-    const design = await post("/api/designs/import", {filename:file.name, rtl_source:await file.text()});
-    await loadDesigns(design.id);
-    setMessage("#designMessage", `已导入并完成分析：${design.module}`, false);
-  } catch (error) { setMessage("#designMessage", error.message, true); }
-}
-
-function statusLabel(status) {
-  return ({queued:"排队中",preparing:"准备中",running:"执行中",retry_wait:"等待重试",cancel_requested:"取消中",cancelled:"已取消",succeeded:"已完成",failed:"未通过",timed_out:"已超时",lost:"Worker 丢失"})[status] || status;
-}
-
-async function loadRuns(preferredId = null) {
-  state.runs = (await api("/api/runtime/runs")).runs.filter((run) => run.plugin_id === "orfs");
-  $("#runCount").textContent = state.runs.length;
-  $("#runSelect").innerHTML = '<option value="">选择运行记录</option>' + state.runs.map((run) => {
-    const name = state.designs.find((item) => item.id === run.design_id)?.module || run.design_id;
-    return `<option value="${escapeHtml(run.run_id)}">${escapeHtml(name || "design")} · ${statusLabel(run.status)}</option>`;
-  }).join("");
-  const selected = preferredId || state.selectedRun?.run?.run_id;
-  if (selected && state.runs.some((run) => run.run_id === selected)) {
-    $("#runSelect").value = selected;
-    await selectRun(selected);
-  } else if (state.runs.length && !state.selectedRun) {
-    $("#runSelect").value = state.runs[0].run_id;
-    await selectRun(state.runs[0].run_id);
-  }
-}
-
-async function startFlow() {
-  const designId = $("#flowDesign").value;
-  if (!designId) { setMessage("#flowMessage", "请先选择一个设计。", true); return; }
-  const button = $("#startFlow");
-  button.disabled = true;
-  setMessage("#flowMessage", "正在写入持久化队列...", false);
-  try {
-    const detail = await post("/api/runtime/runs/from-design", {
-      design_id: designId,
-      top: $("#flowTop").value.trim() || null,
-      clock: $("#flowClock").value.trim() || null,
-      clock_period_ns: Number($("#flowPeriod").value),
-      core_utilization_pct: Number($("#flowUtil").value),
-      place_density: Number($("#flowDensity").value),
-      target_stage: $("#flowTarget").value,
-    });
-    const runId = detail.run.run_id;
-    setMessage("#flowMessage", `Runtime 任务 ${runId.slice(0,12)} 已提交，worker 将独立执行。`, false);
-    await loadRuns(runId);
-  } catch (error) { setMessage("#flowMessage", error.message, true); }
-  finally { button.disabled = false; }
-}
-
-async function selectRun(id) {
   if (!id) return;
-  const detail = await api(`/api/runtime/runs/${encodeURIComponent(id)}`);
-  const run = detail.run;
-  state.selectedRun = detail;
-  $("#runSelect").value = id;
-  const task = run.task_spec || {};
-  const design = state.designs.find((item) => item.id === task.design_id);
-  $("#flowSummary").innerHTML = `<span class="run-status ${escapeHtml(run.status)}">${escapeHtml(run.status.toUpperCase())}</span><div><b>${escapeHtml(design?.module || task.inputs?.top || "Design")} · ${statusLabel(run.status)}</b><small>${escapeHtml(run.run_id)} · target ${escapeHtml(task.parameters?.target_stage || "finish")}</small></div>`;
-  const stages = new Map();
-  (detail.events || []).forEach((event) => {
-    const name = event.payload?.tool_stage;
-    if (event.event_type === "tool.stage.started" && name) stages.set(name, {status:"running"});
-    if (event.event_type === "tool.stage.finished" && name) stages.set(name, {status:event.payload.status, seconds:event.payload.seconds});
-  });
-  $("#stageRail").innerHTML = stageOrder.map((name,index) => {
-    const stage = stages.get(name);
-    const className = stage?.status === "succeeded" ? "done" : stage?.status === "failed" ? "failed" : "";
-    const seconds = Number.isFinite(Number(stage?.seconds)) ? ` · ${Number(stage.seconds).toFixed(1)}s` : "";
-    return `<div class="flow-stage ${className}"><span>0${index+1}</span><b>${name}</b><small>${stage ? `${statusLabel(stage.status)}${seconds}` : stageLabels[name]}</small></div>`;
-  }).join("");
-  renderPhysicalEvidence(detail);
+  const design=await api(`/api/designs/${encodeURIComponent(id)}`);
+  state.selectedDesign=design;
+  $("#frontendDesign").value=id; $("#backendDesign").value=id;
+  $("#designMeta").innerHTML=`<b>${esc(design.module)}</b><span>${esc(design.description)} · ${esc(design.origin)}</span>`;
+  await renderDesignView();
 }
 
-function renderPhysicalEvidence(detail) {
-  const run = detail.run;
-  const attempts = (detail.stages || []).flatMap((stage) => stage.attempts || []);
-  const attempt = attempts[attempts.length - 1];
-  if (!attempt) {
-    $("#physicalEvidence").innerHTML = '<div class="empty-state"><b>任务正在等待或执行</b><p>页面每 5 秒自动读取一次持久化状态。</p></div>';
-    return;
-  }
-  const kinds = new Set((attempt.artifacts || []).map((item) => item.kind));
-  const milestones = {
-    synthesizable: kinds.has("odb"), functionally_verified: false,
-    implementation_valid: run.status === "succeeded" && kinds.has("gds"),
-    gds_complete: kinds.has("gds"),
-  };
-  const milestoneLabels = {synthesizable:"可综合",functionally_verified:"功能已验证",implementation_valid:"实现有效",gds_complete:"GDS 完成"};
-  const metrics = attempt.metrics || [];
-  const views = (attempt.artifacts || []).filter((artifact) => artifact.kind === "layout_view");
-  $("#physicalEvidence").innerHTML = `
-    <div class="milestone-row">${Object.entries(milestoneLabels).map(([key,label]) => `<div class="milestone"><small>${label}</small><b class="${milestones[key] ? "pass" : ""}">${milestones[key] ? "PASS" : "NOT PROVEN"}</b></div>`).join("")}</div>
-    ${attempt.failure ? `<p class="action-message error">${escapeHtml(attempt.failure.message || attempt.failure.category)}</p>` : ""}
-    ${views.map((view) => `<figure class="layout-preview"><img src="${escapeHtml(view.url)}" alt="2D GDS 版图"><figcaption>KLayout 真实 GDS 预览 · ${escapeHtml(view.store_key)}</figcaption></figure>`).join("")}
-    <table class="metrics-table">${metrics.slice(0,12).map((metric) => `<tr><td>${escapeHtml(metric.name)}</td><td>${escapeHtml(metric.value)} ${escapeHtml(metric.unit || "")}</td></tr>`).join("")}</table>
-    <div class="artifact-list">${(attempt.artifacts || []).map((artifact) => `<a class="artifact" href="${escapeHtml(artifact.url)}" target="_blank" rel="noopener"><span>${escapeHtml(artifact.kind)}</span><span>${escapeHtml(artifact.store_key)}</span><span>${(artifact.size_bytes/1024).toFixed(1)} KiB</span></a>`).join("")}</div>`;
+async function renderDesignView() {
+  const design=state.selectedDesign, kind=$("#frontendView").value;
+  if (!design) return;
+  const canvas=$("#frontendCanvas");
+  if (kind==="schematic") canvas.innerHTML=`<img src="/api/designs/${encodeURIComponent(design.id)}/schematic.svg" alt="Synthesized circuit schematic">`;
+  else if (kind==="analysis") canvas.innerHTML=`<pre>${esc(JSON.stringify(design.analysis || {},null,2))}</pre>`;
+  else { const text=await api(`/api/designs/${encodeURIComponent(design.id)}/source?kind=${kind}`); canvas.innerHTML=`<pre>${esc(text)}</pre>`; }
 }
 
-async function loadThreeDRuns(preferredId = null) {
-  const payload = await api("/api/runtime/runs");
-  state.runtimeRuns = payload.runs.filter((run) => run.plugin_id === "taiwei-pin-3d");
-  try { state.campaigns = (await api("/api/campaigns")).campaigns; } catch { state.campaigns = []; }
-  $("#threeDRunSelect").innerHTML = '<option value="">选择 3D 运行</option>' + state.runtimeRuns.map((run) =>
-    `<option value="${escapeHtml(run.run_id)}">gcd · ${statusLabel(run.status)} · ${escapeHtml(run.run_id.slice(0,12))}</option>`
-  ).join("");
-  const selected = preferredId || state.selectedThreeD?.run?.run_id || state.runtimeRuns[0]?.run_id;
-  if (selected && state.runtimeRuns.some((run) => run.run_id === selected)) {
-    $("#threeDRunSelect").value = selected;
-    await selectThreeDRun(selected);
-  }
-}
-
-async function selectThreeDRun(runId) {
-  if (!runId) return;
-  const detail = await api(`/api/runtime/runs/${encodeURIComponent(runId)}`);
-  state.selectedThreeD = detail;
-  const run = detail.run;
-  const data = detail.three_d || {tiers:{},metrics:{},toolchain:{},artifacts:[],replayable:false};
-  $("#threeDSummary").innerHTML = `<span class="run-status ${escapeHtml(run.status)}">${escapeHtml(run.status.toUpperCase())}</span><div><b>gcd · ${statusLabel(run.status)}</b><small>${escapeHtml(run.run_id)} · ${data.replayable ? "可完整重放" : "证据生成中"}</small></div>`;
-  $("#cancelThreeD").disabled = !["queued","running","cancel_requested"].includes(run.status);
-  const tiers = data.tiers || {};
-  const hbViaCount = metricValue(data.metrics, "finish__route__hb_via__count__phys");
-  $("#tierKpis").innerHTML = [
-    [tiers.upper_instances ?? "--", "Upper tier"],
-    [tiers.bottom_instances ?? "--", "Bottom tier"],
-    [hbViaCount !== "--" ? hbViaCount : (tiers.hbt_named_instances ?? "--"), "HB via (physical)"],
-    [metricValue(data.metrics, "finish__route__cross_tier_nets__all"), "Cross-tier nets"],
-  ].map(([value,label]) => `<div class="kpi"><b>${escapeHtml(value ?? "--")}</b><small>${escapeHtml(label)}</small></div>`).join("");
-  const views = data.artifacts.filter((artifact) => ["layout_view","three_d_view"].includes(artifact.kind));
-  $("#threeDView").innerHTML = views.length
-    ? views.map((view) => `<figure><img src="${escapeHtml(view.url)}" alt="TaiWei gcd ${escapeHtml(view.kind)}"><figcaption>${escapeHtml(view.store_key)}</figcaption></figure>`).join("")
-    : '<div class="empty-state"><b>3D 视图生成中</b><p>完成 final DEF 后自动出现。</p></div>';
-  const important = Object.entries(data.metrics || {}).filter(([name]) =>
-    /hb_via|cross_tier|timing__setup|power__total|instance__area|drc_errors/.test(name)
-  );
-  $("#threeDMetrics").innerHTML = important.map(([name,record]) =>
-    `<tr><td>${escapeHtml(name)}</td><td>${escapeHtml(record?.value ?? record)}</td></tr>`
-  ).join("") || '<tr><td>指标尚未登记</td><td>--</td></tr>';
-  const tool = data.toolchain || {};
-  $("#threeDToolchain").innerHTML = [
-    ["OpenROAD", tool.openroad_commit || "--"], ["Yosys", tool.yosys_version || "--"],
-    ["ORFS-Research", tool.orfs_commit || "--"], ["TaiWei", tool.taiwei_commit || "--"],
-  ].map(([label,value]) => `<div><small>${label}</small><code>${escapeHtml(value)}</code></div>`).join("");
-  $("#threeDArtifacts").innerHTML = data.artifacts.map((artifact) =>
-    `<a class="artifact" href="${escapeHtml(artifact.url)}" target="_blank" rel="noopener"><span>${escapeHtml(artifact.kind)}</span><span>${escapeHtml(artifact.store_key)}</span><span>${((artifact.size_bytes || 0)/1024).toFixed(1)} KiB · ${escapeHtml((artifact.sha256 || "").slice(0,10))}</span></a>`
-  ).join("");
-  const campaigns = state.campaigns.filter((campaign) => (campaign.members || []).some((member) => member.run_id === runId));
-  $("#threeDCampaigns").innerHTML = campaigns.length
-    ? campaigns.map((campaign) => `<div><small>CAMPAIGN</small><b>${escapeHtml(campaign.name || campaign.campaign_id)}</b><span>${campaign.members.length} members</span></div>`).join("")
-    : '<div><small>CAMPAIGN</small><b>独立验收运行</b><span>可由 Campaign 成员引用同一 Runtime run</span></div>';
-}
-
-function metricValue(metrics, name) {
-  const record = (metrics || {})[name];
-  return record && typeof record === "object" ? record.value : (record ?? "--");
-}
-
-async function cancelThreeDRun() {
-  const runId = state.selectedThreeD?.run?.run_id;
-  if (!runId) return;
-  await post(`/api/runtime/runs/${encodeURIComponent(runId)}/cancel`, {});
-  await loadThreeDRuns(runId);
-}
-
-async function loadOptimizationStudies(preferredId = null) {
-  const payload = await api("/api/optimization/studies");
-  state.optimizationStudies = payload.studies || [];
-  $("#optimizationStudySelect").innerHTML = '<option value="">选择 Study</option>' + state.optimizationStudies.map((study) =>
-    `<option value="${escapeHtml(study.study_id)}">${escapeHtml(study.design_id)} · ${escapeHtml(study.status)} · ${study.observation_count}/${study.max_runs}</option>`
-  ).join("");
-  const selected = preferredId || state.selectedOptimizationStudy?.study?.study_id || state.optimizationStudies[0]?.study_id;
-  if (selected && state.optimizationStudies.some((study) => study.study_id === selected)) {
-    $("#optimizationStudySelect").value = selected;
-    await selectOptimizationStudy(selected);
-  }
-}
-
-async function selectOptimizationStudy(studyId) {
-  if (!studyId) return;
-  const detail = await api(`/api/optimization/studies/${encodeURIComponent(studyId)}`);
-  state.selectedOptimizationStudy = detail;
-  const study = detail.study;
-  const observations = detail.observations || [];
-  const proposals = detail.proposals || [];
-  const pareto = new Set(detail.pareto_observation_ids || []);
-  $("#optimizationSummary").innerHTML = `<span class="run-status ${escapeHtml(study.status)}">${escapeHtml(study.status.toUpperCase())}</span><div><b>${escapeHtml(study.design_id)} · ${escapeHtml(study.study_id)}</b><small>context ${escapeHtml(study.context_fingerprint.slice(0,12))} · seed ${escapeHtml(study.seed)}</small></div>`;
-  $("#optimizationKpis").innerHTML = [
-    [observations.length, "Observed runs"], [proposals.length, "BO/GP proposals"],
-    [pareto.size, "Pareto points"], [`${observations.length}/${study.max_runs}`, "Budget"],
-  ].map(([value,label]) => `<div class="kpi"><b>${escapeHtml(value)}</b><small>${label}</small></div>`).join("");
-  const paretoRows = observations.filter((item) => pareto.has(item.observation_id));
-  $("#paretoTable").innerHTML = paretoRows.map((item) => `<tr><td>${escapeHtml(item.observation_id)}</td><td>${escapeHtml(Object.entries(item.metrics).map(([key,value]) => `${key}=${value}`).join(" · "))}</td><td>observed</td></tr>`).join("") || '<tr><td>尚无完整实测 Pareto 点</td><td>--</td><td>observed</td></tr>';
-  const latest = proposals[proposals.length - 1];
-  $("#predictionTable").innerHTML = (latest?.predictions || []).map((item) => `<tr><td>${escapeHtml(item.metric_name)}</td><td>${Number(item.mean).toPrecision(6)} ± ${Number(item.stddev).toPrecision(4)}</td><td>predicted</td></tr>`).join("") || '<tr><td>初始采样尚无 GP 预测</td><td>--</td><td>predicted</td></tr>';
-  $("#optimizationEvidence").innerHTML = `<div><small>TRUST BOUNDARY</small><b>${escapeHtml(detail.observation_source)} ≠ ${escapeHtml(detail.prediction_source)}</b><span>Optimizer proposals cannot launch EDA; Runtime remains authoritative.</span></div>`;
-}
-
-async function generateRecommendation() {
-  const studyId = state.selectedOptimizationStudy?.study?.study_id;
-  if (!studyId) { $("#recommendationBox").textContent = "请先选择含有 proposal 的 Study。"; return; }
+async function importRtl() {
+  const button=$("#importRtl"); button.disabled=true; message("#specMessage","Synthesizing the imported RTL…");
   try {
-    const payload = await post(`/api/optimization/studies/${encodeURIComponent(studyId)}/recommend`, {
-      owner_id:"local-user", study_opt_in:false, exact_context:true, budget_available:true,
-    });
-    state.recommendation = payload.recommendation;
-    const confidence = payload.recommendation.confidence;
-    $("#recommendationBox").textContent = JSON.stringify({
-      recommendation_id:payload.recommendation.recommendation_id,
-      parameters:payload.recommendation.parameters,
-      confidence:confidence.overall,
-      evidence:payload.recommendation.evidence_refs,
-      reasons:confidence.reasons,
-      automation:payload.automation_envelope.status,
-      failed_checks:Object.entries(payload.automation_envelope.checks).filter(([,value]) => !value).map(([key]) => key),
-    }, null, 2);
-  } catch (error) { $("#recommendationBox").textContent = error.message; }
+    const design=await post("/api/designs/import",{filename:$("#rtlFilename").value.trim(),rtl_source:$("#rtlSource").value,description:"Imported from the web workspace"});
+    message("#specMessage",`Registered ${design.module}.`); await loadDesigns(design.id);
+  } catch(error){message("#specMessage",error.message,true)} finally{button.disabled=false}
 }
 
-async function decideRecommendation(action) {
-  if (!state.recommendation) { $("#recommendationBox").textContent = "请先生成建议。"; return; }
-  let parameters = null;
-  if (action === "modified") {
-    const edited = window.prompt("编辑完整参数 JSON", JSON.stringify(state.recommendation.parameters));
-    if (edited === null) return;
-    try { parameters = JSON.parse(edited); } catch { $("#recommendationBox").textContent = "参数 JSON 无效。"; return; }
-  }
+async function createSpec() {
+  const prompt=$("#specPrompt").value.trim(); if(!prompt) return message("#specMessage","Enter a circuit specification first.",true);
+  const button=$("#createSpec"); button.disabled=true; message("#specMessage","Building a review session…");
   try {
-    const result = await post(`/api/recommendations/${encodeURIComponent(state.recommendation.recommendation_id)}/decision`, {owner_id:"local-user", action, parameters});
-    $("#recommendationBox").textContent += `\n\n用户决策：${result.decision.action}\n执行已启动：${result.execution_started}`;
-  } catch (error) { $("#recommendationBox").textContent = error.message; }
-}
-
-async function searchKnowledge() {
-  try {
-    const query = encodeURIComponent($("#knowledgeQuery").value.trim());
-    const payload = await api(`/api/knowledge/public?q=${query}&platform=nangate45&stage=finish&design_class=digital`);
-    $("#knowledgeBox").textContent = JSON.stringify({source_count:payload.sources.length,
-      benchmark_count:payload.benchmarks.length, results:payload.results.map((item) => ({
-        claim:item.claim.text, source:item.source.title, license:item.source.license_id,
-        origin:item.knowledge_origin, local_observation:item.local_observation,
-      }))}, null, 2);
-  } catch (error) { $("#knowledgeBox").textContent = error.message; }
+    const payload={message:prompt,provider:"deterministic"}; if(state.selectedDesign) payload.design_id=state.selectedDesign.id;
+    const result=await post("/api/spec/sessions",payload);
+    message("#specMessage",`Session ${result.session_id.slice(0,12)} is ${result.status}. Review and confirmation remain separate.`);
+  } catch(error){message("#specMessage",error.message,true)} finally{button.disabled=false}
 }
 
 async function saveProvider() {
-  const apiKey = $("#providerKey").value;
-  if (!apiKey) { setMessage("#providerMessage", "请输入 API key。", true); return; }
+  const key=$("#providerKey").value; if(!key) return message("#specMessage","Enter an API key for this session.",true);
   try {
-    const result = await post("/api/providers", {
-      owner_id:"local-user", session_id:"browser-session", profile_id:"browser-byok",
-      base_url:$("#providerUrl").value.trim(), model:$("#providerModel").value.trim(),
-      api_key:apiKey, allow_private_endpoint:false,
-    });
-    state.providerBinding = {owner_id:result.owner_id, session_id:result.session_id,
-      profile_id:result.profile_id, secret_handle:result.secret.handle};
-    $("#providerKey").value = "";
-    setMessage("#providerMessage", `配置已保存；密钥仅驻留内存，约 ${result.secret.expires_in_seconds} 秒后失效。`, false);
-  } catch (error) { setMessage("#providerMessage", error.message, true); }
+    const result=await post("/api/providers",{owner_id:"local-user",session_id:`web-${Date.now()}`,profile_id:`web-provider-${Date.now()}`,base_url:$("#providerUrl").value,model:$("#providerModel").value,api_key:key});
+    $("#providerKey").value=""; message("#specMessage",`Provider ${result.profile_id} saved; the key was not persisted.`);
+  } catch(error){message("#specMessage",error.message,true)}
 }
 
-async function submitCraft(execute) {
-  const designId = $("#craftDesign").value;
-  if (!designId) { $("#craftResult").textContent = "请先选择设计。"; return; }
+async function loadRuns(preferred=null) {
   try {
-    const payload = await post("/api/craft/plans", {design_id:designId,
-      backend:$("#craftBackend").value, target_stage:$("#craftStage").value,
-      clock_period_ns:Number($("#craftPeriod").value), execute});
-    $("#craftResult").textContent = JSON.stringify({flow_plan:payload.flow_plan,
-      backend:payload.backend, capability_matrix:payload.capability_matrix,
-      task_id:payload.task_spec.task_id, runtime:payload.runtime?.run,
-      execution_started:payload.execution_started}, null, 2);
-  } catch (error) { $("#craftResult").textContent = error.message; }
+    state.runs=(await api("/api/runtime/runs")).runs || [];
+    $("#runSelect").innerHTML='<option value="">Choose a Runtime run</option>'+state.runs.map(x=>`<option value="${esc(x.run_id)}">${esc(x.design_id)} · ${esc(x.plugin_id)} · ${esc(x.status)}</option>`).join("");
+    const id=preferred || state.selectedRun?.run?.run_id || state.runs[0]?.run_id;
+    if(id){$("#runSelect").value=id; await selectRun(id)} else renderStageRail(new Map());
+  } catch(error){message("#flowMessage",error.message,true)}
 }
 
-$$('[data-nav]').forEach((button) => button.addEventListener("click", (event) => { event.preventDefault(); navigate(button.dataset.nav); }));
-$$('[data-prompt]').forEach((button) => button.addEventListener("click", () => { $("#designPrompt").value = button.dataset.prompt; }));
-$$('[data-evidence]').forEach((button) => button.addEventListener("click", () => {
-  $$('[data-evidence]').forEach((item) => item.classList.toggle("active", item === button));
-  $$(".evidence-pane").forEach((pane) => pane.classList.toggle("active", pane.id === `evidence-${button.dataset.evidence}`));
-}));
-$("#generateDesign").addEventListener("click", generateDesign);
-$("#designFile").addEventListener("change", (event) => importDesign(event.target.files[0]));
-$("#designSelect").addEventListener("change", (event) => selectDesign(event.target.value));
-$("#flowDesign").addEventListener("change", (event) => {
-  const design = state.designs.find((item) => item.id === event.target.value);
-  $("#flowTop").value = design?.module || "";
-});
-$("#useInFlow").addEventListener("click", () => { if (state.selectedDesign) { $("#flowDesign").value = state.selectedDesign.id; $("#flowTop").value = state.selectedDesign.module; navigate("flow"); } });
-$("#startFlow").addEventListener("click", startFlow);
-$("#runSelect").addEventListener("change", (event) => selectRun(event.target.value));
-$("#threeDRunSelect").addEventListener("change", (event) => selectThreeDRun(event.target.value));
-$("#cancelThreeD").addEventListener("click", () => cancelThreeDRun().catch(() => {}));
-$("#optimizationStudySelect").addEventListener("change", (event) => selectOptimizationStudy(event.target.value));
-$("#generateRecommendation").addEventListener("click", generateRecommendation);
-$$('[data-decision]').forEach((button) => button.addEventListener("click", () => decideRecommendation(button.dataset.decision)));
-$("#searchKnowledge").addEventListener("click", searchKnowledge);
-$("#saveProvider").addEventListener("click", saveProvider);
-$("#previewCraft").addEventListener("click", () => submitCraft(false));
-$("#executeCraft").addEventListener("click", () => submitCraft(true));
-$("#refreshAll").addEventListener("click", () => refreshAll());
-
-async function refreshAll() {
-  await Promise.all([loadHealth(), loadProjects(), loadDesigns()]);
-  await Promise.all([loadRuns(), loadThreeDRuns(), loadOptimizationStudies()]);
+function renderStageRail(values) {
+  $("#stageRail").innerHTML=stages.map((name,index)=>{const v=values.get(name);const cls=v?.status==="succeeded"?"done":v?.status==="failed"?"failed":"";return `<div class="stage ${cls}"><i></i><b>0${index+1} · ${name}</b><small>${esc(v?.status || "waiting")}${v?.seconds?` · ${Number(v.seconds).toFixed(1)}s`:""}</small></div>`}).join("");
 }
 
-function updateClock() { $("#clock").textContent = new Date().toLocaleString("zh-CN", {hour12:false}); }
-updateClock();
-setInterval(updateClock, 1000);
+async function selectRun(id) {
+  if(!id)return; const detail=await api(`/api/runtime/runs/${encodeURIComponent(id)}`); state.selectedRun=detail;
+  const run=detail.run, task=run.task_spec || {};
+  $("#runHeading").innerHTML=`<div><b>${esc(task.design_id)} · ${esc(task.plugin_id)}</b><span>${esc(run.run_id)} · ${esc(task.parameters?.target_stage || "extension task")}</span></div><span class="status ${esc(run.status)}">${esc(run.status)}</span>`;
+  const values=new Map(); (detail.events||[]).forEach(e=>{const n=e.payload?.tool_stage;if(e.event_type==="tool.stage.started"&&n)values.set(n,{status:"running"});if(e.event_type==="tool.stage.finished"&&n)values.set(n,{status:e.payload.status,seconds:e.payload.seconds})}); renderStageRail(values);
+  const attempts=(detail.stages||[]).flatMap(s=>s.attempts||[]), attempt=attempts.at(-1);
+  if(!attempt){$("#backendEvidence").innerHTML='<div class="empty"><span>⋯</span><h3>Waiting for a Runtime worker.</h3><p>The durable queued state is already recorded.</p></div>';return}
+  const artifacts=attempt.artifacts||[], views=artifacts.filter(a=>["layout_view","three_d_view"].includes(a.kind));
+  $("#backendEvidence").innerHTML=`${views.map(v=>`<figure class="layout-figure"><img src="${esc(v.url)}" alt="Registered layout view"><figcaption>${esc(v.store_key)} · SHA-256 ${esc((v.sha256||"").slice(0,12))}…</figcaption></figure>`).join("")}<div class="artifact-grid">${artifacts.map(a=>`<a class="artifact-link" href="${esc(a.url)}" target="_blank" rel="noopener"><b>${esc(a.kind)}</b><span>${esc(a.store_key)} · ${esc((a.sha256||"").slice(0,10))}…</span></a>`).join("")}</div>${attempt.failure?`<div class="message error">${esc(attempt.failure.message||attempt.failure.category)}</div>`:""}`;
+}
 
-const initialView = ["home","design","flow","three-d","evolve","craft"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "home";
-navigate(initialView);
-refreshAll().catch((error) => { $("#systemLabel").textContent = "加载失败"; $("#systemDetail").textContent = error.message; });
-setInterval(() => loadRuns().catch(() => {}), 5000);
-setInterval(() => loadThreeDRuns().catch(() => {}), 5000);
-setInterval(() => loadOptimizationStudies().catch(() => {}), 10000);
+async function submitFlow() {
+  const id=$("#backendDesign").value; if(!id)return message("#flowMessage","Select a registered design first.",true);
+  const button=$("#submitFlow");button.disabled=true;message("#flowMessage","Submitting an immutable Runtime task…");
+  try { const detail=await post("/api/runtime/runs/from-design",{design_id:id,clock:$("#flowClock").value.trim()||null,clock_period_ns:Number($("#flowPeriod").value),core_utilization_pct:Number($("#flowUtil").value),place_density:Number($("#flowDensity").value),target_stage:$("#flowTarget").value});message("#flowMessage",`Run ${detail.run.run_id.slice(0,12)} is queued.`);await loadRuns(detail.run.run_id)}catch(error){message("#flowMessage",error.message,true)}finally{button.disabled=false}
+}
+
+async function loadResults() {
+  try { const payload=await api("/api/platform/results");state.results=payload.records||[];renderResults() } catch(error){$("#resultList").innerHTML=`<div class="empty-row">${esc(error.message)}</div>`}
+}
+function renderResults() {
+  const records=state.results.filter(x=>state.resultFilter==="all"||x.record_type===state.resultFilter);
+  $("#resultList").innerHTML=records.length?records.map(x=>`<button class="result-row" data-result="${esc(x.id)}"><div><small>${esc(x.project_type)} · ${esc(x.status)}</small><b>${esc(x.name)}</b><span>${esc(x.summary)}</span></div><time>${formatDate(x.created_at)}</time></button>`).join(""):'<div class="empty"><span>○</span><h3>No matching records.</h3><p>Results appear only after a design or Runtime task is registered.</p></div>';
+  $$("[data-result]").forEach(button=>button.addEventListener("click",()=>selectResult(button.dataset.result)));
+}
+async function selectResult(id) {
+  const record=state.results.find(x=>x.id===id);if(!record)return;
+  $$("[data-result]").forEach(x=>x.classList.toggle("active",x.dataset.result===id));
+  try { const detail=await api(record.detail_url); const visual=record.visualization_url?`<img src="${esc(record.visualization_url)}" alt="Project visualization">`:""; const run=detail.run||{}; const task=run.task_spec||{}; $("#resultDetail").innerHTML=`<div class="detail-head"><span class="pill ${record.record_type==="design"?"core":"optional"}">${esc(record.record_type)}</span><h2>${esc(record.name)}</h2><p>${esc(record.id)}</p></div><div class="detail-body">${visual}<div class="kv"><span>Status</span><b>${esc(record.status)}</b></div><div class="kv"><span>Type</span><b>${esc(record.project_type)}</b></div>${task.plugin_id?`<div class="kv"><span>Plugin</span><b>${esc(task.plugin_id)}</b></div>`:""}<div class="kv"><span>Replay context</span><b>${record.replayable?"Registered":"Pending / not applicable"}</b></div><details class="inline-details"><summary>Raw authoritative record</summary><pre class="detail-code">${esc(JSON.stringify(detail,null,2))}</pre></details></div>` } catch(error){$("#resultDetail").innerHTML=`<div class="empty-row">${esc(error.message)}</div>`}
+}
+
+async function loadEvolution() {
+  try {
+    const x=await api("/api/platform/evolution"), c=x.counts;
+    $("#evoSources").textContent=c.knowledge_sources;$("#evoBenchmarks").textContent=c.benchmarks;$("#evoObservations").textContent=c.observed_samples;$("#evoStudies").textContent=c.optimization_studies;$("#evoRecommendations").textContent=c.recommendations;
+    $("#learningLoop").innerHTML=x.learning_loop.map((item,i)=>`<div class="loop-step"><span>0${i+1}</span><p>${esc(item)}</p></div>`).join("");
+    $("#knowledgeList").innerHTML=[...x.knowledge_sources,...x.benchmarks].map(item=>`<div class="data-item"><div><b>${esc(item.title||item.source_id||item.benchmark_id)}</b><span>${esc(item.organization||item.version||item.entrypoint)}</span></div><small>${esc(item.content_kind||item.license_id)}</small></div>`).join("")||'<div class="empty-row">No audited public sources are registered.</div>';
+    $("#studyList").innerHTML=x.studies.map(item=>`<div class="data-item"><div><b>${esc(item.design_id)}</b><span>${esc(item.observation_count)} observations · ${esc(item.proposal_count)} proposals</span></div><small>${esc(item.status)}</small></div>`).join("")||'<div class="empty-row">No optimization study has been created in this database yet.</div>';
+    $("#recommendationList").innerHTML=x.recommendations.map(item=>{const r=item.recommendation||item;return `<div class="data-item"><div><b>${esc(r.policy_kind||"Optimizer advice")}</b><span>${esc(JSON.stringify(r.parameters||{}))}</span></div><small>${esc(r.permission_tier||"T1 advice")}</small></div>`}).join("")||'<div class="empty-row">No user-facing recommendation is recorded yet. Advice will appear with confidence and OOD evidence.</div>';
+  } catch(error){$("#knowledgeList").innerHTML=`<div class="empty-row">${esc(error.message)}</div>`}
+}
+
+function formatDate(value){if(value===null||value===undefined)return "";const d=typeof value==="number"?new Date(value*1000):new Date(value);return Number.isNaN(d.valueOf())?"":d.toLocaleDateString(undefined,{month:"short",day:"2-digit"})}
+
+$$('[data-route]').forEach(el=>el.addEventListener("click",()=>route(el.dataset.route)));
+$("#frontendDesign").addEventListener("change",e=>selectDesign(e.target.value));
+$("#backendDesign").addEventListener("change",e=>selectDesign(e.target.value));
+$("#frontendView").addEventListener("change",renderDesignView);
+$("#importRtl").addEventListener("click",importRtl);$("#createSpec").addEventListener("click",createSpec);$("#saveProvider").addEventListener("click",saveProvider);
+$("#runSelect").addEventListener("change",e=>selectRun(e.target.value));$("#submitFlow").addEventListener("click",submitFlow);
+$("#refreshResults").addEventListener("click",loadResults);
+$$('#resultFilters button').forEach(button=>button.addEventListener("click",()=>{$$('#resultFilters button').forEach(x=>x.classList.remove("active"));button.classList.add("active");state.resultFilter=button.dataset.filter;renderResults()}));
+
+Promise.all([loadPlatform(),loadDesigns(),loadRuns()]).finally(()=>route(location.hash.slice(1)||"overview"));

@@ -41,7 +41,9 @@ from openroad_platform_analysis import (  # noqa: E402
 )
 from openroad_platform_execution import (  # noqa: E402
     PluginRegistry, ToolchainConfig, build_craft_flow_plan, build_orfs_task,
-    craft_capability_matrix, craft_plan_to_task, orfs_plugin_manifest,
+    build_edacraft_task, craft_capability_matrix, craft_plan_to_task,
+    edacraft_catalog, edacraft_component, edacraft_plugin_manifest,
+    implcraft_plugin_manifest, orfs_plugin_manifest,
 )
 from openroad_platform_scheduler import (  # noqa: E402
     ALLOWED_MODELS, CampaignStore, CodexCliSpecProvider, JobStore,
@@ -52,9 +54,9 @@ from openroad_platform_scheduler import (  # noqa: E402
     WorkflowRuntime,
 )
 try:  # Supports both `python apps/api/app.py` and package imports in tests.
-    from .services import DesignService  # type: ignore[attr-defined]
+    from .services import DesignService, PlatformReadModel  # type: ignore[attr-defined]
 except ImportError:
-    from services import DesignService  # type: ignore[no-redef]
+    from services import DesignService, PlatformReadModel  # type: ignore[no-redef]
 
 
 MAX_BODY_BYTES = 2 * 1024 * 1024
@@ -123,11 +125,33 @@ class ApiState:
             klayout_bin=_find_tool("klayout", ROOT.parent / "bin" / "klayout")
             or ROOT.parent / "bin" / "klayout",
         )
+        manifests = [orfs_plugin_manifest(toolchain)]
+        edacraft_source = ROOT / ".external-src" / "edacraft"
+        if edacraft_source.is_dir():
+            for slug in ("rtlcraft", "edacode", "tcadcraft", "momcraft", "cktcraft"):
+                manifests.append(edacraft_plugin_manifest(
+                    slug, edacraft_source, Path(sys.executable)
+                ))
+            implcraft_python = ROOT / ".tools" / "venvs" / "implcraft" / "bin" / "python"
+            if implcraft_python.is_file():
+                manifests.append(implcraft_plugin_manifest(
+                    edacraft_source, implcraft_python
+                ))
         self.runtime = WorkflowRuntime(
-            self.runtime_store, PluginRegistry([orfs_plugin_manifest(toolchain)]),
+            self.runtime_store, PluginRegistry(manifests),
             workspace_root=state_root / "runtime-workspaces",
         )
         self.stage_campaigns = StageAwareCampaignManager(self.campaign_store, self.runtime)
+        self.platform = PlatformReadModel(
+            designs=self.designs,
+            runtime_store=self.runtime_store,
+            campaign_store=self.campaign_store,
+            optimization_store=self.optimization_store,
+            knowledge_registry=self.knowledge_registry,
+            recommendation_store=self.recommendation_store,
+            tenant_learning_store=self.tenant_learning_store,
+            extension_catalog=edacraft_catalog(),
+        )
 
     def health(self) -> dict[str, Any]:
         openroad = _find_tool("openroad", ROOT.parent / "bin" / "openroad")
@@ -154,36 +178,36 @@ class ApiState:
                 {
                     "id": "circuit-studio",
                     "name": "Circuit Studio",
-                    "description": "自然语言生成 RTL、门级网表、电路图和结构分析",
-                    "route": "design",
+                    "description": "Natural-language specification, RTL, netlist, schematic, and validation.",
+                    "route": "frontend",
                     "status": "available",
                 },
                 {
                     "id": "physical-flow",
                     "name": "RTL-to-GDS Flow",
-                    "description": "六阶段 ORFS 实现、硬门禁、产物和物理分析",
-                    "route": "flow",
+                    "description": "Six-stage ORFS implementation, campaigns, evidence, and 2D layout analysis.",
+                    "route": "backend",
                     "status": "available",
                 },
                 {
                     "id": "taiwei-3d",
                     "name": "TaiWei 3D",
-                    "description": "固定官方工具链的双层 gcd、HBT 指标、真实产物与可重放证据",
-                    "route": "three-d",
+                    "description": "Pinned two-tier gcd flow, HBT metrics, artifacts, and replay evidence.",
+                    "route": "backend",
                     "status": "available",
                 },
                 {
                     "id": "self-evolution",
                     "name": "Evidence-driven Evolution",
-                    "description": "Evidence RAG、BO/GP、Pareto 前沿与 RL shadow 证据",
-                    "route": "evolve",
+                    "description": "Evidence RAG, BO/GP, Pareto analysis, and human-controlled RL advice.",
+                    "route": "evolution",
                     "status": "available",
                 },
                 {
-                    "id": "ic-craft",
-                    "name": "IC Craft",
-                    "description": "后端中立 FlowPlan、OpenROAD/ORFS 执行与商业脚本能力对照",
-                    "route": "craft",
+                    "id": "edacraft-extension-pack",
+                    "name": "EDACraft Extension Pack",
+                    "description": "Six independent frontend, device, interconnect, circuit, and backend extensions.",
+                    "route": "overview",
                     "status": "available",
                 },
             ],
@@ -191,6 +215,19 @@ class ApiState:
                 "manifest": "project id, name, description, route, status",
                 "runtime": "adapter submits durable requests and returns evidence",
             },
+        }
+
+    def submit_edacraft_smoke(self, slug: str) -> dict[str, Any]:
+        component = edacraft_component(slug)
+        if slug == "implcraft":
+            raise ValueError("ImplCraft requires a registered RTL design; use the preserved Craft plan API")
+        task = build_edacraft_task(slug)
+        run = self.runtime.submit(task, capability=component.capability)
+        return {
+            "run": self.get_runtime_run(run.run_id),
+            "component": component.to_dict(),
+            "execution_started": False,
+            "notice": "Submitted to Workflow Runtime; a worker owns execution.",
         }
 
     def list_runs(self, limit: int = 50) -> list[dict[str, Any]]:
@@ -790,6 +827,14 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
             try:
                 if path == "/api/health":
                     self._json(state.health())
+                elif path == "/api/platform":
+                    self._json(state.platform.snapshot())
+                elif path == "/api/platform/results":
+                    self._json(state.platform.results())
+                elif path == "/api/platform/evolution":
+                    self._json(state.platform.evolution())
+                elif path == "/api/extensions/edacraft":
+                    self._json(edacraft_catalog())
                 elif path == "/api/projects":
                     self._json(state.projects())
                 elif path == "/api/designs":
@@ -885,6 +930,11 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                     return
                 if path == "/api/craft/plans":
                     self._json(state.craft_plan(self._read_json()), HTTPStatus.CREATED)
+                    return
+                match = re.fullmatch(r"/api/extensions/edacraft/([^/]+)/smoke", path)
+                if match:
+                    self._json(state.submit_edacraft_smoke(
+                        unquote(match.group(1))), HTTPStatus.CREATED)
                     return
                 match = re.fullmatch(r"/api/optimization/studies/([^/]+)/recommend", path)
                 if match:

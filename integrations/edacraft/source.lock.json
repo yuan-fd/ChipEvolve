@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "repository": "https://github.com/ephonic/EDACraft",
+  "commit": "739eee0f3ced8fc3cbb6f01b6cc89414758fd898",
+  "cache_path": ".external-src/edacraft",
+  "license": "MIT-like, non-commercial restriction",
+  "components": [
+    "RTLCraft",
+    "EDACode",
+    "TCADCraft",
+    "MoMCraft",
+    "CktCraft",
+    "ImplCraft"
+  ],
+  "update_policy": "fail-closed; explicit re-audit required"
+}

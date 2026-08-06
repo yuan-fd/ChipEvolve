@@ -58,10 +58,17 @@ P8 状态：`taiwei-pin-3d@1.0.0` 协议接入完成；固定 3D 工具链因 Gi
 - P15 已完成固定构建和 patch 前像检查；两份完整 from-clean 候选可应用，两份 framework delta 失配。
 - 尚未执行 evolved candidate 的真实 full-flow/QoR 对照，不得宣称代码优化效果已验证。
 
-## EDACraft / ImplCraft
+## EDACraft Extension Pack
 
 - 官方仓库：`ephonic/EDACraft`；固定 commit `739eee0f3ced8fc3cbb6f01b6cc89414758fd898`。
-- 平台对应组件是 `ImplCraft 0.2.0`，用于生成/编排 Synopsys、Cadence 等商业后端脚本。
 - 根许可证是 MIT-like 加 Non-Commercial 限制；仅允许本机私有非商业验收。
+- 平台按六个独立插件接入，而不是把整个 monorepo 包装为一个含糊的 “IC Craft”：
+  - `edacraft-rtlcraft`：前端白盒 Python DSL、SystemVerilog 生成和验证表面；
+  - `edacraft-edacode`：模拟/混合信号 Agent 与 VS Code 表面，当前禁止暴露上游任意 shell/file-write；
+  - `edacraft-tcadcraft`：器件级 3D TCAD，当前执行真实几何 smoke，不声称完整求解；
+  - `edacraft-momcraft`：互连电磁与 S 参数，当前执行真实 Touchstone I/O smoke，不声称全波求解；
+  - `edacraft-cktcraft`：SPICE/RF 求解器表面，固定版 v0.2 使用 Verilog-A→C++ 静态模型，当前为源码准入；
+  - `edacraft-implcraft`：保留原 P11 数字后端 dry-run 脚本生成接入。
 - P11 上游回归 220 项：215 passed、5 个固定已知失败。
 - 本机无商业 EDA binary/license；`edacraft-implcraft@1.0.0` 只声明 `eda.implcraft.scriptgen` 和 `eda.backend.plan`，禁止宣称商业 GDS/signoff。
+- P17 六组件均经 Workflow Runtime 产生独立 run 和哈希证据；能力等级详见 `docs/evidence/P17_EDACRAFT_WEB_ACCEPTANCE.md`。

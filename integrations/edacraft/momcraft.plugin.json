@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "plugin_id": "edacraft-momcraft",
+  "plugin_version": "1.0.0",
+  "adapter_entry": ["python3", "./../../packages/execution/src/openroad_platform_execution/edacraft_adapter.py"],
+  "capabilities": ["eda.em.touchstone_smoke"],
+  "supported_arch": ["aarch64"],
+  "input_schema": {"type": "object"},
+  "output_schema": {"type": "object", "required": ["status", "artifacts"]},
+  "required_tools": ["git", "python3"],
+  "default_timeout_seconds": 120,
+  "artifact_rules": [
+    {"kind": "s_parameters", "required": true},
+    {"kind": "report", "required": true},
+    {"kind": "source_snapshot", "required": true}
+  ],
+  "environment": {
+    "EDACRAFT_COMPONENT": "MoMCraft",
+    "EDACRAFT_COMPONENT_SLUG": "momcraft",
+    "EDACRAFT_EXPECTED_COMMIT": "739eee0f3ced8fc3cbb6f01b6cc89414758fd898",
+    "PYTHONDONTWRITEBYTECODE": "1"
+  }
+}

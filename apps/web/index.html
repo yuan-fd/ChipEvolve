@@ -1,285 +1,180 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>OpenROAD Workspace</title>
+  <meta name="description" content="An evidence-first, self-evolving OpenROAD design platform.">
+  <title>OpenROAD Evolving Platform</title>
   <link rel="stylesheet" href="/assets/app.css">
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <a class="brand" href="#home" data-nav="home" aria-label="返回工作台首页">
-        <span class="brand-mark">OR</span>
-        <span><b>OpenROAD</b><small>Workspace</small></span>
-      </a>
+  <header class="site-header">
+    <a class="wordmark" href="#overview" data-route="overview" aria-label="OpenROAD Evolving Platform home">
+      <span class="mark">O</span>
+      <span>OpenROAD <i>Evolving Platform</i></span>
+    </a>
+    <nav class="tabs" aria-label="Primary navigation">
+      <button class="tab active" data-route="overview">Overview</button>
+      <button class="tab" data-route="frontend">Frontend Design</button>
+      <button class="tab" data-route="backend">Backend Design</button>
+      <button class="tab" data-route="projects">Projects &amp; Results</button>
+      <button class="tab" data-route="evolution">Self-Evolution</button>
+    </nav>
+    <div class="health" title="Platform API status"><span id="healthDot"></span><b id="healthText">Connecting</b></div>
+  </header>
 
-      <nav aria-label="项目导航">
-        <p class="nav-label">Workspace</p>
-        <button class="nav-item active" data-nav="home"><span>01</span>项目中心</button>
-        <p class="nav-label">Projects</p>
-        <button class="nav-item" data-nav="design"><span>02</span>电路生成与分析</button>
-        <button class="nav-item" data-nav="flow"><span>03</span>RTL-to-GDS</button>
-        <button class="nav-item" data-nav="three-d"><span>04</span>TaiWei 3D</button>
-        <button class="nav-item" data-nav="evolve"><span>05</span>自演化实验</button>
-        <button class="nav-item" data-nav="craft"><span>06</span>IC Craft</button>
-      </nav>
-
-      <div class="sidebar-foot">
-        <div class="system-dot" id="systemDot"></div>
-        <div><b id="systemLabel">连接中</b><small id="systemDetail">正在检查运行环境</small></div>
+  <main>
+    <section class="page active" id="page-overview">
+      <div class="hero wrap">
+        <p class="eyebrow">Evidence-first silicon automation</p>
+        <h1>From intent to layout,<br>with every decision accounted for.</h1>
+        <p class="hero-copy">A unified control plane for natural-language design, reproducible RTL-to-GDS workflows, stage-aware optimization, and evidence-backed learning.</p>
+        <div class="hero-actions">
+          <button class="button primary" data-route="frontend">Start a design <span>→</span></button>
+          <button class="button" data-route="projects">Browse results</button>
+        </div>
       </div>
-    </aside>
 
-    <main class="main">
-      <header class="topbar">
-        <div>
-          <span class="crumb">OPENROAD PLATFORM / <b id="crumb">PROJECT HUB</b></span>
-        </div>
-        <div class="top-actions">
-          <span class="clock" id="clock"></span>
-          <button class="quiet-button" id="refreshAll">刷新数据</button>
-        </div>
-      </header>
+      <div class="stat-band">
+        <div><b id="countDesigns">—</b><span>Registered designs</span></div>
+        <div><b id="countRuns">—</b><span>Runtime runs</span></div>
+        <div><b id="countCampaigns">—</b><span>Campaigns</span></div>
+        <div><b id="countKnowledge">—</b><span>Knowledge sources</span></div>
+      </div>
 
-      <section class="view active" id="view-home">
-        <div class="hero">
-          <div class="hero-copy">
-            <span class="kicker">Modular silicon workspace</span>
-            <h1>从一个清晰入口，<br>进入每一条芯片工作流。</h1>
-            <p>项目、运行与证据彼此隔离；统一接口负责发现能力、提交任务和读取结果。</p>
-          </div>
-          <div class="hero-status">
-            <div><small>AVAILABLE PROJECTS</small><b id="projectCount">2</b></div>
-            <div><small>DESIGNS</small><b id="designCount">0</b></div>
-            <div><small>FLOW RUNS</small><b id="runCount">0</b></div>
-          </div>
-        </div>
-
-        <div class="section-heading">
-          <div><span class="index">A</span><h2>项目入口</h2></div>
-          <p>当前保留两条可演示、可执行的主流程</p>
-        </div>
-        <div class="project-grid">
-          <button class="project-card circuit-card" data-nav="design">
-            <span class="project-number">PROJECT 01</span>
-            <div class="circuit-glyph" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-            <h3>电路生成与分析</h3>
-            <p>自然语言描述 → RTL → Yosys 门级网表 → 电路结构图 → 确定性分析。</p>
-            <span class="project-link">进入项目 <b>→</b></span>
-          </button>
-          <button class="project-card flow-card" data-nav="flow">
-            <span class="project-number">PROJECT 02</span>
-            <div class="wafer-glyph" aria-hidden="true"></div>
-            <h3>RTL-to-GDS Flow</h3>
-            <p>六阶段 ORFS 实现、持久化队列、硬门禁、产物哈希与物理设计分析。</p>
-            <span class="project-link">进入项目 <b>→</b></span>
-          </button>
-          <button class="project-card three-d-card" data-nav="three-d">
-            <span class="project-number">PROJECT 03</span>
-            <div class="tier-glyph" aria-hidden="true"><i></i><i></i></div>
-            <h3>TaiWei 3D 实现</h3>
-            <p>固定官方版本的 gcd 双层布局、HBT / cross-tier 指标、真实 GDS 与完整可重放证据。</p>
-            <span class="project-link">查看 3D 运行 <b>→</b></span>
-          </button>
-          <button class="project-card flow-card" data-nav="evolve">
-            <span class="project-number">PROJECT 04</span>
-            <div class="wafer-glyph" aria-hidden="true"></div>
-            <h3>证据驱动自演化</h3>
-            <p>Evidence RAG → BO/GP 提案 → Runtime 实测 → Pareto 与 RL shadow。</p>
-            <span class="project-link">查看学习证据 <b>→</b></span>
-          </button>
-          <button class="project-card circuit-card" data-nav="craft">
-            <span class="project-number">PROJECT 05</span>
-            <div class="circuit-glyph" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-            <h3>IC Craft 多后端</h3>
-            <p>同一 FlowPlan → OpenROAD/ORFS 真实执行，或 ImplCraft 商业脚本生成。</p>
-            <span class="project-link">选择后端 <b>→</b></span>
-          </button>
-        </div>
-
-        <div class="section-heading compact">
-          <div><span class="index">B</span><h2>框架接口</h2></div>
-        </div>
-        <div class="framework-strip">
-          <div><small>DISCOVERY</small><code>GET /api/projects</code><p>发现已注册项目及入口。</p></div>
-          <div><small>REQUEST</small><code>POST /api/runs</code><p>通过统一契约提交持久化任务。</p></div>
-          <div><small>EVIDENCE</small><code>GET /api/runs/:id</code><p>读取阶段、指标、产物与分析证据。</p></div>
-          <div><small>CAMPAIGN</small><code>GET /api/campaigns</code><p>观察有界并发实验组、成员状态与恢复结果。</p></div>
-          <div><small>EVOLVE</small><code>GET /api/optimization/studies</code><p>读取预测、实测、预算与 Pareto 证据。</p></div>
+      <section class="wrap section-space">
+        <div class="section-title"><p class="eyebrow">One durable path</p><h2>A platform, not a pile of scripts.</h2><p>The browser expresses intent. Workflow Runtime owns execution and terminal state. Every tool returns versioned evidence.</p></div>
+        <div class="architecture" aria-label="Platform architecture">
+          <article><span>01</span><h3>Intent</h3><p>Natural language, RTL, constraints, objectives</p></article>
+          <i>→</i>
+          <article><span>02</span><h3>Control plane</h3><p>Contracts, Runtime, Campaigns, policy gates</p></article>
+          <i>→</i>
+          <article><span>03</span><h3>Execution</h3><p>Isolated plugins and fixed toolchains</p></article>
+          <i>→</i>
+          <article><span>04</span><h3>Evidence</h3><p>Metrics, artifacts, hashes, replay context</p></article>
+          <i>→</i>
+          <article><span>05</span><h3>Learning</h3><p>RAG, BO/GP, Pareto, RL advice</p></article>
         </div>
       </section>
 
-      <section class="view" id="view-evolve">
-        <div class="page-intro">
-          <div><span class="kicker">Project 04 / Evidence-driven Evolution</span><h1>自演化实验与证据</h1></div>
-          <p>预测只用于选择候选；真实 QoR 只来自 Runtime 执行后的 observed 指标。</p>
-        </div>
-        <article class="surface three-d-console">
-          <div class="surface-head"><span>OPTIMIZATION STUDY</span><select id="optimizationStudySelect" aria-label="选择优化研究"><option value="">选择 Study</option></select></div>
-          <div class="flow-summary" id="optimizationSummary"><span class="run-status idle">IDLE</span><div><b>等待优化研究</b><small>BO/GP 与 RL shadow 不拥有执行权</small></div></div>
-          <div class="tier-kpis" id="optimizationKpis"></div>
-          <div class="three-d-grid">
-            <div class="three-d-details">
-              <h3>Pareto 实测点</h3>
-              <table class="metrics-table" id="paretoTable"></table>
-            </div>
-            <div class="three-d-details">
-              <h3>最新预测与不确定性</h3>
-              <table class="metrics-table" id="predictionTable"></table>
-            </div>
-          </div>
-          <div class="campaign-strip" id="optimizationEvidence"></div>
-          <div class="surface-body p16-grid">
-            <div>
-              <h3>人控优化建议</h3>
-              <p>建议置信度来自数据覆盖、校准和安全约束，不采用模型自报概率。</p>
-              <button class="outline-button" id="generateRecommendation">生成最新 T1 建议</button>
-              <div class="toolchain-box" id="recommendationBox">尚未生成建议</div>
-              <div class="surface-actions"><button class="quiet-button" data-decision="accepted">接受</button><button class="quiet-button" data-decision="modified">修改后接受</button><button class="quiet-button" data-decision="rejected">拒绝</button></div>
-            </div>
-            <div>
-              <h3>公开知识与 benchmark</h3>
-              <label>检索问题<input id="knowledgeQuery" value="OpenROAD RTL GDS flow"></label>
-              <button class="outline-button" id="searchKnowledge">检索固定语料</button>
-              <div class="toolchain-box" id="knowledgeBox">外部知识与本地实测严格分离</div>
-            </div>
-            <div>
-              <h3>用户自带模型（BYOK）</h3>
-              <label>OpenAI-compatible URL<input id="providerUrl" placeholder="https://provider.example/v1"></label>
-              <label>模型<input id="providerModel" placeholder="model-name"></label>
-              <label>API key<input id="providerKey" type="password" autocomplete="off" placeholder="仅在服务内存保存 8 小时"></label>
-              <button class="outline-button" id="saveProvider">保存会话配置</button>
-              <div class="action-message" id="providerMessage">密钥不会写入数据库、日志、产物或子进程环境。</div>
-            </div>
-          </div>
-        </article>
-      </section>
-
-      <section class="view" id="view-craft">
-        <div class="page-intro">
-          <div><span class="kicker">Project 05 / Backend-neutral Craft</span><h1>IC Craft 多后端计划</h1></div>
-          <p>Craft 只表达设计意图；OpenROAD/ORFS 任务仍由统一 Runtime 执行，商业分支只生成脚本。</p>
-        </div>
-        <article class="surface">
-          <div class="surface-head"><span>BACKEND-NEUTRAL FLOWPLAN</span><small>Runtime remains authoritative</small></div>
-          <div class="surface-body">
-            <div class="form-grid">
-              <label>设计<select id="craftDesign"><option value="">请选择设计</option></select></label>
-              <label>后端<select id="craftBackend"><option value="openroad-orfs">OpenROAD / ORFS（可执行）</option><option value="implcraft-scriptgen">ImplCraft（仅脚本）</option></select></label>
-              <label>目标阶段<select id="craftStage"><option value="finish">Finish / GDS</option><option value="route">Route</option><option value="cts">CTS</option><option value="placement">Placement</option><option value="floorplan">Floorplan</option><option value="synthesis">Synthesis</option></select></label>
-              <label>时钟周期 / ns<input id="craftPeriod" type="number" value="10" min="0.01"></label>
-            </div>
-            <div class="surface-actions"><button class="outline-button" id="previewCraft">检查能力并预览</button><button class="primary-button" id="executeCraft">经 Runtime 执行 OpenROAD <span>→</span></button></div>
-            <div class="toolchain-box" id="craftResult">请选择设计和后端。</div>
-          </div>
-        </article>
-      </section>
-
-      <section class="view" id="view-three-d">
-        <div class="page-intro">
-          <div><span class="kicker">Project 03 / TaiWei 3D</span><h1>真实 3D 实现证据</h1></div>
-          <p>Runtime 是唯一状态权威；这里读取上下层状态、HBT / cross-tier 指标、固定工具链和带 SHA-256 的产物。</p>
-        </div>
-        <article class="surface three-d-console">
-          <div class="surface-head"><span>TAIWEI RUNTIME</span><div class="surface-actions"><select id="threeDRunSelect" aria-label="选择 TaiWei 3D 运行"><option value="">选择 3D 运行</option></select><button class="quiet-button" id="cancelThreeD" disabled>取消运行</button></div></div>
-          <div class="flow-summary" id="threeDSummary"><span class="run-status idle">IDLE</span><div><b>等待真实 3D 运行</b><small>ord / asap7_3D / gcd</small></div></div>
-          <div class="tier-kpis" id="tierKpis"></div>
-          <div class="three-d-grid">
-            <div class="three-d-view" id="threeDView"><div class="empty-state"><b>暂无 3D 视图</b><p>真实最终 DEF 完成后自动生成。</p></div></div>
-            <div class="three-d-details">
-              <h3>关键指标</h3><table class="metrics-table" id="threeDMetrics"></table>
-              <h3>固定工具链</h3><div class="toolchain-box" id="threeDToolchain">--</div>
-            </div>
-          </div>
-          <div class="artifact-list" id="threeDArtifacts"></div>
-          <div class="campaign-strip" id="threeDCampaigns"></div>
-        </article>
-      </section>
-
-      <section class="view" id="view-design">
-        <div class="page-intro">
-          <div><span class="kicker">Project 01 / Circuit Studio</span><h1>电路生成与分析</h1></div>
-          <p>输入自然语言需求，得到可综合 RTL、门级网表、电路框图和结构化分析。</p>
-        </div>
-
-        <div class="design-layout">
-          <article class="surface generator-panel">
-            <div class="surface-head"><span>DESIGN BRIEF</span><small>Natural language → Verilog</small></div>
-            <div class="surface-body">
-              <label class="field-label" for="designPrompt">描述你需要的数字电路</label>
-              <textarea id="designPrompt" rows="7" placeholder="例如：设计一个带异步复位和使能信号的 8 位循环移位寄存器"></textarea>
-              <div class="prompt-examples">
-                <button data-prompt="设计一个带异步复位的四位二进制计数器">4 位计数器</button>
-                <button data-prompt="设计一个四位全加器，带进位输入和进位输出">4 位全加器</button>
-                <button data-prompt="设计一个带使能的八位移位寄存器">8 位移位寄存器</button>
-              </div>
-              <button class="primary-button" id="generateDesign">生成电路与网表 <span>→</span></button>
-              <div class="divider"><span>或者</span></div>
-              <label class="upload-button" for="designFile">上传已有 RTL 并自动综合分析</label>
-              <input id="designFile" type="file" accept=".v,.sv" hidden>
-              <p class="action-message" id="designMessage">生成能力由适配器提供，分析与产物统一进入新平台。</p>
-            </div>
-          </article>
-
-          <article class="surface result-panel">
-            <div class="surface-head"><span>DESIGN EVIDENCE</span><select id="designSelect" aria-label="选择已有设计"><option value="">选择设计</option></select></div>
-            <div class="empty-state" id="designEmpty"><b>还没有选中设计</b><p>生成或上传 RTL 后，这里会展示网表、电路图和分析结果。</p></div>
-            <div id="designResult" hidden>
-              <div class="result-title"><div><span id="designOrigin">GENERATED</span><h2 id="designName">--</h2><p id="designDescription"></p></div><button class="outline-button" id="useInFlow">送入 RTL-to-GDS →</button></div>
-              <div class="kpi-row" id="designKpis"></div>
-              <div class="evidence-tabs" role="tablist">
-                <button class="active" data-evidence="schematic">电路图</button>
-                <button data-evidence="analysis">分析</button>
-                <button data-evidence="rtl">RTL</button>
-                <button data-evidence="netlist">门级网表</button>
-              </div>
-              <div class="evidence-pane active" id="evidence-schematic"><img id="schematicImage" alt="电路结构图"></div>
-              <div class="evidence-pane" id="evidence-analysis"><div class="analysis-grid" id="designAnalysis"></div></div>
-              <div class="evidence-pane" id="evidence-rtl"><pre id="rtlCode"></pre></div>
-              <div class="evidence-pane" id="evidence-netlist"><pre id="netlistCode"></pre></div>
-            </div>
-          </article>
+      <section class="soft-section">
+        <div class="wrap">
+          <div class="section-title split"><div><p class="eyebrow">Optional ecosystem</p><h2>EDACraft, integrated by layer.</h2></div><p>Six independent components share the same Runtime contract. They do not become hidden dependencies of the core flow.</p></div>
+          <div class="extension-grid" id="overviewExtensions"></div>
+          <p class="fine-print">DPLEvolve, TaiWei 3D, and the EDACraft Extension Pack are optional capabilities. The core self-evolution loop remains usable without them.</p>
         </div>
       </section>
+    </section>
 
-      <section class="view" id="view-flow">
-        <div class="page-intro">
-          <div><span class="kicker">Project 02 / Physical Design</span><h1>RTL-to-GDS 全流程</h1></div>
-          <p>独立 worker 执行六阶段 ORFS，网页只负责提交、观察和读取分析证据。</p>
-        </div>
+    <section class="page" id="page-frontend">
+      <div class="page-head wrap">
+        <div><p class="eyebrow">Frontend design</p><h1>Describe the circuit.<br>Inspect what was built.</h1></div>
+        <p>Natural-language sessions, BYOK model configuration, RTL import, Yosys netlists, and Graphviz-backed schematics live in one reviewable workspace.</p>
+      </div>
+      <div class="workspace wrap">
+        <aside class="panel composer">
+          <div class="panel-label"><span>Design intent</span><small>Nothing runs before confirmation</small></div>
+          <label>Existing design<select id="frontendDesign"><option value="">Create or select a design</option></select></label>
+          <label>Natural-language specification<textarea id="specPrompt" rows="7" placeholder="Build a parameterized synchronous FIFO with ready/valid handshakes, active-high reset, and an 8-bit data path."></textarea></label>
+          <button class="button primary full" id="createSpec">Create review session <span>→</span></button>
+          <div class="message" id="specMessage"></div>
+          <details class="inline-details">
+            <summary>Import Verilog / SystemVerilog</summary>
+            <label>Filename<input id="rtlFilename" value="design.v"></label>
+            <label>RTL source<textarea id="rtlSource" rows="8" placeholder="module design(input a, output y); assign y = ~a; endmodule"></textarea></label>
+            <button class="button full" id="importRtl">Import and synthesize</button>
+          </details>
+          <details class="inline-details">
+            <summary>Model provider · BYOK</summary>
+            <label>OpenAI-compatible endpoint<input id="providerUrl" value="https://api.openai.com/v1"></label>
+            <label>Model<input id="providerModel" placeholder="Model identifier"></label>
+            <label>API key<input id="providerKey" type="password" autocomplete="off" placeholder="Held in memory only"></label>
+            <button class="button full" id="saveProvider">Save session profile</button>
+            <p class="fine-print">Keys are memory-only, revocable, and accepted only over a secure transport.</p>
+          </details>
+        </aside>
+        <section class="panel canvas-panel">
+          <div class="panel-label"><span>Design evidence</span><select id="frontendView"><option value="schematic">Schematic</option><option value="rtl">RTL source</option><option value="netlist">Gate netlist</option><option value="analysis">Analysis</option></select></div>
+          <div class="design-meta" id="designMeta"><b>No design selected</b><span>Import RTL or choose an existing project.</span></div>
+          <div class="visual-canvas" id="frontendCanvas"><div class="empty"><span>◇</span><h3>A reviewable circuit will appear here.</h3><p>Schematics are rendered from the synthesized netlist, not hand-drawn.</p></div></div>
+        </section>
+      </div>
+      <div class="wrap extension-callout">
+        <div><p class="eyebrow">EDACraft frontend extensions</p><h2>White-box RTL and analog-agent surfaces.</h2></div>
+        <div id="frontendExtensions" class="mini-extension-grid"></div>
+      </div>
+    </section>
 
-        <div class="flow-layout">
-          <article class="surface flow-config">
-            <div class="surface-head"><span>FLOW CONFIGURATION</span><small>Nangate45</small></div>
-            <div class="surface-body">
-              <label class="field-label">选择电路设计<select id="flowDesign"><option value="">请选择已生成或上传的设计</option></select></label>
-              <div class="form-grid">
-                <label>Top module<input id="flowTop" placeholder="自动读取"></label>
-                <label>Clock port<input id="flowClock" placeholder="例如 clk"></label>
-                <label>Clock period / ns<input id="flowPeriod" type="number" min="0.01" step="0.1" value="10"></label>
-                <label>Core utilization / %<input id="flowUtil" type="number" min="1" max="99" value="10"></label>
-                <label>Place density<input id="flowDensity" type="number" min="0.01" max="1" step="0.01" value="0.45"></label>
-                <label>Target stage<select id="flowTarget"><option value="finish">Finish / GDS</option><option value="route">Route</option><option value="place">Place</option><option value="synth">Synthesis</option></select></label>
-              </div>
-              <button class="primary-button" id="startFlow">提交 RTL-to-GDS <span>→</span></button>
-              <p class="action-message" id="flowMessage">完整流程可能需要数分钟；页面可关闭，任务状态保存在 SQLite。</p>
-            </div>
-          </article>
-
-          <article class="surface flow-monitor">
-            <div class="surface-head"><span>LIVE FLOW</span><select id="runSelect" aria-label="选择运行"><option value="">选择运行记录</option></select></div>
-            <div class="flow-summary" id="flowSummary">
-              <span class="run-status idle">IDLE</span><div><b>等待选择运行</b><small>阶段证据会在 worker 完成后自动刷新</small></div>
-            </div>
-            <div class="stage-rail" id="stageRail"></div>
-            <div class="physical-evidence" id="physicalEvidence"><div class="empty-state"><b>暂无物理分析</b><p>提交一个运行后查看指标、里程碑和产物。</p></div></div>
-          </article>
+    <section class="page" id="page-backend">
+      <div class="page-head wrap">
+        <div><p class="eyebrow">Backend design</p><h1>Run the flow.<br>Keep the evidence.</h1></div>
+        <p>OpenROAD/ORFS remains the executable core. Flow-Agent monitors stages, campaigns explore parameters, and recovery stays policy-bounded.</p>
+      </div>
+      <div class="workspace backend-workspace wrap">
+        <aside class="panel composer">
+          <div class="panel-label"><span>Implementation request</span><small>Submitted to Runtime</small></div>
+          <label>Design<select id="backendDesign"><option value="">Select a registered design</option></select></label>
+          <div class="two-fields"><label>Clock port<input id="flowClock" value="clk"></label><label>Period · ns<input id="flowPeriod" type="number" value="10" min="0.01" step="0.1"></label></div>
+          <div class="two-fields"><label>Core utilization · %<input id="flowUtil" type="number" value="30" min="1" max="99"></label><label>Place density<input id="flowDensity" type="number" value="0.55" min="0.01" max="1" step="0.01"></label></div>
+          <label>Target stage<select id="flowTarget"><option value="finish">Finish · GDS</option><option value="route">Routing</option><option value="cts">Clock tree</option><option value="place">Placement</option><option value="floorplan">Floorplan</option><option value="synth">Synthesis</option></select></label>
+          <button class="button primary full" id="submitFlow">Submit RTL-to-GDS <span>→</span></button>
+          <div class="message" id="flowMessage"></div>
+          <div class="truth-note"><b>State authority</b><p>The web server submits a durable task. It does not own the EDA process or invent completion state.</p></div>
+        </aside>
+        <section class="panel run-panel">
+          <div class="panel-label"><span>Flow observation</span><select id="runSelect"><option value="">Choose a Runtime run</option></select></div>
+          <div class="run-heading" id="runHeading"><div><b>No run selected</b><span>Completed and active Runtime records appear here.</span></div></div>
+          <div class="stage-rail" id="stageRail"></div>
+          <div class="result-evidence" id="backendEvidence"><div class="empty"><span>□</span><h3>Physical evidence, not screenshots.</h3><p>KLayout-generated views, GDS, DEF, ODB, reports, and hashes are displayed when registered.</p></div></div>
+        </section>
+      </div>
+      <section class="wrap backend-modes">
+        <div class="section-title split"><div><p class="eyebrow">Backend modes</p><h2>One core, optional specialist extensions.</h2></div><p>Toolchains remain isolated. A missing optional extension cannot silently change the 2D OpenROAD environment.</p></div>
+        <div class="mode-grid">
+          <article><span class="pill core">Core</span><h3>OpenROAD / ORFS</h3><p>Six-stage digital physical implementation, Campaigns, 2D GDS, QoR, cancellation, and recovery.</p></article>
+          <article><span class="pill optional">Optional</span><h3>TaiWei 3D</h3><p>Pinned 3D gcd flow with upper/bottom tiers, HBT and cross-tier metrics, views, and replay evidence.</p></article>
+          <article><span class="pill optional">Optional</span><h3>ImplCraft</h3><p>The preserved P11 adapter generates commercial-tool scripts in dry-run mode. It does not claim live commercial EDA.</p></article>
         </div>
       </section>
-    </main>
-  </div>
+    </section>
 
+    <section class="page" id="page-projects">
+      <div class="page-head wrap compact-head">
+        <div><p class="eyebrow">Projects &amp; results</p><h1>Every project leaves<br>a navigable record.</h1></div>
+        <p>RTL, physical design, 3D, TCAD, EM, RF/analog, and code-evolution records share one evidence-oriented index.</p>
+      </div>
+      <div class="wrap result-toolbar"><div class="segmented" id="resultFilters"><button class="active" data-filter="all">All</button><button data-filter="design">Designs</button><button data-filter="runtime_run">Runtime runs</button></div><button class="button small" id="refreshResults">Refresh</button></div>
+      <div class="wrap results-layout">
+        <div class="result-list" id="resultList"><div class="empty"><span>○</span><h3>Loading project records…</h3></div></div>
+        <aside class="panel detail-panel" id="resultDetail"><div class="empty"><span>↗</span><h3>Select a project.</h3><p>Its visualization, artifacts, versions, hashes, and replay data will open here.</p></div></aside>
+      </div>
+    </section>
+
+    <section class="page" id="page-evolution">
+      <div class="page-head wrap">
+        <div><p class="eyebrow">Self-evolution</p><h1>Learning that can<br>show its work.</h1></div>
+        <p>Public knowledge informs retrieval. Only verified Runtime outcomes become observations. Recommendations stay visible and controllable.</p>
+      </div>
+      <div class="stat-band evolution-stats">
+        <div><b id="evoSources">—</b><span>Public sources</span></div>
+        <div><b id="evoBenchmarks">—</b><span>Benchmarks</span></div>
+        <div><b id="evoObservations">—</b><span>Observed samples</span></div>
+        <div><b id="evoStudies">—</b><span>BO / GP studies</span></div>
+        <div><b id="evoRecommendations">—</b><span>User-facing advice</span></div>
+      </div>
+      <section class="wrap section-space">
+        <div class="learning-loop" id="learningLoop"></div>
+      </section>
+      <div class="wrap evolution-grid">
+        <section class="panel evolution-panel"><div class="panel-label"><span>Knowledge &amp; benchmarks</span><small>External provenance</small></div><div id="knowledgeList" class="data-list"></div></section>
+        <section class="panel evolution-panel"><div class="panel-label"><span>BO / Gaussian Process studies</span><small>Prediction ≠ observation</small></div><div id="studyList" class="data-list"></div></section>
+        <section class="panel evolution-panel wide"><div class="panel-label"><span>RL and optimizer recommendations</span><small>Human decision gate</small></div><div id="recommendationList" class="data-list"></div></section>
+      </div>
+      <div class="wrap safety-banner"><div><span>Policy</span><b>RL learns beside the flow before it acts inside the flow.</b></div><p>Low-confidence and out-of-distribution proposals remain advice. Execution requires context match, calibration, budget, opt-in, and Runtime submission.</p></div>
+    </section>
+  </main>
+
+  <footer><span>OpenROAD Evolving Platform</span><span>Local research workspace · evidence before claims</span></footer>
   <script src="/assets/app.js"></script>
 </body>
 </html>

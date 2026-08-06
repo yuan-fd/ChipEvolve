@@ -1,9 +1,9 @@
 # OpenROAD Platform — 工作记忆
 
 project_id: openroad-platform
-phase: P0-P16 已完成
-current_subgoal: 等待 P17 公开服务化、论文扩展与数据规模化规划
-progress: P0-P16 + P8-Real 已验收
+phase: P0-P17 已完成
+current_subgoal: P17 网站待用户验收；之后进入 P18 能力晋级与数据规模化
+progress: P0-P17 + P8-Real 已验收
 last_updated: 2026-08-06
 
 ## 已确认事实
@@ -47,7 +47,11 @@ last_updated: 2026-08-06
 - P16 BYOK 支持 OpenAI-compatible profile，key 只存内存 8 小时；fake server 覆盖成功、401、429、超时、非法/超大响应、取消、撤销和 owner 隔离。
 - P16 T1 支持接受/修改/拒绝，修改后重验参数；T2 默认关闭且真实 10 条 P14 数据为 not_eligible。
 - P16 Craft backend-neutral FlowPlan 已映射 ORFS Runtime 与 ImplCraft scriptgen。官方 gcd real run `6111c2de...` 六阶段成功，GDS SHA `2d84c09a...`。
-- 当前全量回归：167 passed。
+- P17 正式将产品层 “IC Craft” 修正为 EDACraft 六子项目分层扩展；RTLCraft、EDACode、TCADCraft、MoMCraft、CktCraft 为新增独立插件，既有 ImplCraft 适配器与 P11 证据保留。
+- P17 六个独立 Runtime run 全部成功：RTLCraft 实际生成 RTL，TCADCraft 实际执行几何代码，MoMCraft 实际执行 Touchstone I/O，EDACode/CktCraft 为明确受限审计，ImplCraft 生成 3 份 Tcl。
+- P17 网站固定为五个英文 Tab：Overview、Frontend Design、Backend Design、Projects & Results、Self-Evolution；项目结果和学习页面读取真实数据库投影并提供空状态。
+- P17 API 新增独立 `PlatformReadModel`，统一导航、结果、自演化和 EDACraft catalog；网页不拥有 EDA 进程。
+- 当前全量回归：182 tests。
 
 ## 架构定版
 
@@ -66,6 +70,7 @@ last_updated: 2026-08-06
 - P13 doomed-run v1 是可解释阶段预算规则，不是学习预测器。
 - P14 学习对象均带 PDK、工具链、RTL 指纹、stage、parser version；只有 SHA 校验通过的 Runtime 登记报告可进入 observed KPI。
 - P14/P15 所有模型和代码候选只产生提案；Runtime 与人工 promotion gate 分别控制执行和源码晋级。
+- P17 的 EDACraft umbrella catalog 只负责发现；六个组件分别拥有 plugin identity、capability、artifact rules 和 truth boundary。ImplCraft 保持原适配器，不重写历史。
 
 ## 风险与后置门槛
 
@@ -79,8 +84,8 @@ last_updated: 2026-08-06
 - 所有平台产出在 `~/openroad-platform/`；第三方源码缓存不进入 Git。
 - 凭据只通过环境或项目外私有配置注入。
 - 不修改共享 ORFS/OpenROAD/PDK，不删除 `var/` 原始证据。
-- 不 push、不部署；真实 EDA 与 LLM 必须由阶段任务明确授权和预算。
+- 不 push、不部署；真实 EDA 与 LLM 必须由阶段任务明确授权和预算。P17 后网站只作为本机/可信网络验收服务启动。
 
 ## handoff_anchor
 
-P0 `afdca1e`；P1 `e750370`；P2 `aa7cf0a`/`6d9d93c`；P3 `9269040`；P4 `0892d57`；P5 `38208ae`；P6 `025dc72`；P7 `339f34f`；P8 `00cf2f8`；P9 `c923f55`；P10 `6499d58`；P11-P13 `36c2155`；P14-P15 `55c0bde`；P16 规划 `3bc9829`，实现提交见最新 Git。读取 `memory_snapshots/P16-complete-2026-08-06.md` 恢复。
+P0 `afdca1e`；P1 `e750370`；P2 `aa7cf0a`/`6d9d93c`；P3 `9269040`；P4 `0892d57`；P5 `38208ae`；P6 `025dc72`；P7 `339f34f`；P8 `00cf2f8`；P9 `c923f55`；P10 `6499d58`；P11-P13 `36c2155`；P14-P15 `55c0bde`；P16 `35ef56d`；P17 实现提交见最新 Git。读取 `memory_snapshots/P17-edacraft-web-delivery-2026-08-06.md` 恢复。
