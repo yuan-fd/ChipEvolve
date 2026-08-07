@@ -4,7 +4,8 @@ updated_at: 2026-08-07
 status: paused for user acceptance
 
 P18-P22 and the requested information-architecture revision are complete. The
-next action is user review of the six-page website. Review the Overview order,
+next action is user review of the modern-minimal six-page website. Review the
+Overview order,
 the three Frontend input paths, the vertical Backend flow, clickable Extensions,
 per-project detail, and the visual Self-Evolution loop before a new product phase.
 

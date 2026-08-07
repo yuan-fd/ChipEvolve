@@ -62,6 +62,8 @@ last_updated: 2026-08-06
 - 2026-08-07 UI 整改将网站升级为六个英文 Tab：Overview 按定位/能力/媒体/流程/教程组织，新增独立 Extensions；Frontend、Backend、Projects 全部改为纵向任务路径，Self-Evolution 改为知识与观测→GP/BO/RL→人工决策→Runtime→验证反馈的主流程图。
 - Frontend 新增 8 个可综合示例（含 ALU、控制器、UART、mini RISC-V），复杂网表自动使用有界的综合结构概览，避免 Graphviz 大图阻塞；DPLEvolve 保持可选、用户配置和禁止自动启动。
 - UI 整改回归：190 passed、Node syntax 与 Python compile 通过；用户 `plan/` 未修改、未提交。
+- 2026-08-07 视觉层进一步切换为现代简约效率工具风格：白/浅灰中性色、单一蓝色强调、无衬线层级、小圆角与细分割线；删除杂志式衬线、大色块、普通卡片阴影和过量留白，DPLEvolve 长面板仅在用户主动选择扩展后显示。
+- 现代简约 UI 回归：191 passed；六页 1440px 与 Frontend 390px 视口完成视觉检查。
 
 ## 架构定版
 

@@ -312,6 +312,7 @@ function selectExtension(id) {
   const extension = state.extensions.find(item => item.id === id);
   if (!extension) return;
   state.selectedExtension = id;
+  $("#dplevolveDashboard").classList.toggle("visible", id === "dplevolve");
   renderExtensions();
   const isCraft = id.startsWith("edacraft-");
   const slug = id.replace("edacraft-", "");

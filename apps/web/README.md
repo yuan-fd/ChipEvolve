@@ -19,6 +19,15 @@ UART transmitter, and compact RISC-V teaching core. Small netlists use a full
 Graphviz connectivity view; large netlists automatically use a deterministic
 port/cell overview to keep rendering bounded.
 
+## Visual system
+
+The interface uses a restrained efficiency-tool style: neutral white/light-gray
+surfaces, one blue action color, sans-serif type, compact 4/8-based spacing,
+small radii, visible hairlines, and no decorative shadows on ordinary content.
+Typography and grouping establish hierarchy before borders. Long optional
+surfaces such as the DPLEvolve dashboard stay hidden until the user selects the
+corresponding extension.
+
 Serve it through `apps/api/app.py`; opening `index.html` directly does not work
 because all views read live state from `/api/*`.
 

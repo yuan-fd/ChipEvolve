@@ -30,6 +30,15 @@ def test_web_has_six_clear_english_primary_tabs():
     assert "IC Craft" not in html
 
 
+def test_web_uses_a_restrained_minimal_visual_system():
+    css = (ROOT / "apps" / "web" / "assets" / "app.css").read_text(encoding="utf-8")
+    assert "--accent: #2563eb" in css
+    assert "--radius: 6px" in css
+    assert "Georgia" not in css
+    assert ".tool-dashboard { display: none" in css
+    assert "box-shadow: 0 18px" not in css
+
+
 def test_platform_read_model_matches_six_page_information_architecture(tmp_path):
     state = make_state(tmp_path)
     snapshot = state.platform.snapshot()
