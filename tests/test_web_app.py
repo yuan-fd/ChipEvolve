@@ -1,4 +1,7 @@
 import hashlib
+import json
+import os
+import time
 from pathlib import Path
 from shutil import which
 
@@ -60,7 +63,21 @@ def test_health_distinguishes_web_and_execution_readiness(tmp_path):
     assert health["database_ready"] is True
     assert health["orfs_ready"] is False
     assert health["execution_ready"] is False
+    assert health["runtime_worker_ready"] is False
     assert health["byok_input_enabled"] is True
+
+
+def test_health_reports_only_a_fresh_live_runtime_worker(tmp_path):
+    state = make_state(tmp_path)
+    (tmp_path / "runtime-worker.heartbeat.json").write_text(json.dumps({
+        "pid": os.getpid(), "status": "idle", "active_run": None,
+        "updated_at": "now", "updated_at_epoch": time.time(),
+    }))
+
+    health = state.health()
+
+    assert health["runtime_worker_ready"] is True
+    assert health["runtime_worker_status"] == "idle"
 
 
 def test_api_byok_is_memory_only_revocable_and_disabled_without_secure_transport(tmp_path):

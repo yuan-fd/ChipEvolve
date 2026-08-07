@@ -26,11 +26,8 @@ for required_path in "$DEMO_ORFS_ROOT" "$DEMO_OPENROAD_BIN" "$DEMO_YOSYS_BIN"; d
 done
 
 cd "$PLATFORM_ROOT"
-python3 -m openroad_platform_scheduler.cli --db "$DEMO_DB" worker \
-  --work-root "$PLATFORM_ROOT/var/runs" \
-  --orfs-root "$DEMO_ORFS_ROOT" \
-  --openroad-bin "$DEMO_OPENROAD_BIN" \
-  --yosys-bin "$DEMO_YOSYS_BIN" &
+python3 scripts/run_runtime_worker.py --db "$DEMO_DB" \
+  --orfs-root "$DEMO_ORFS_ROOT" &
 WORKER_PID=$!
 
 cleanup() {

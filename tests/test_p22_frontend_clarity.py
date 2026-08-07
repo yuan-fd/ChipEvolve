@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -17,12 +18,15 @@ def test_frontend_exposes_readable_code_and_evidence_dashboard() -> None:
 
     assert "RTLScout run dashboard" in html
     assert "How RTLScout works" in html
-    assert "These are separate tools, not additional RTLScout steps" in html
+    assert "TCADCraft" in html and "MoMCraft" in html and "CktCraft" in html
+    assert "RTLCraft" not in html and "EDACode" not in html
     assert ".code-viewer" in css and "background: #fff" in css
     assert ".provider-connect" in css and "background: #111827" in css
     assert "formatCodeForDisplay" in javascript
     assert "result.all_evals" in javascript
-    assert "pendingExtension" in javascript
+    assert 'route("backend")' in javascript
+    assert "pendingExtension" not in javascript
+    assert 'id="page-extensions"' not in html
 
 
 def test_frontend_and_backend_follow_the_reference_task_sequence() -> None:
@@ -40,6 +44,10 @@ def test_frontend_and_backend_follow_the_reference_task_sequence() -> None:
     assert ".task-panel .stage" in css and "grid-template-columns: 18px 95px 1fr 55px" in css
     assert "attempt.metrics" in javascript
     assert "parameter_grid" in javascript
+    assert "state.designs[0]" not in javascript
+    assert "physicalRuns[0]" not in javascript
+    assert "Design\", \"设计" in javascript and "Run\", \"任务" in javascript
+    assert "runtime_worker_ready" in javascript
 
 
 def test_language_switch_has_persisted_real_translations() -> None:
@@ -51,6 +59,10 @@ def test_language_switch_has_persisted_real_translations() -> None:
     assert '"backend.run.action": "开始 RTL-to-GDS"' in javascript
     assert 'localStorage.setItem("openroad-platform-locale"' in javascript
     assert 'document.documentElement.lang = state.locale === "zh" ? "zh-CN" : "en"' in javascript
+    html_keys = set(re.findall(r'data-i18n="([^"]+)"', html))
+    zh_block = javascript.split("const ZH = {", 1)[1].split("};", 1)[0]
+    translated_keys = set(re.findall(r'"([^"]+)"\s*:', zh_block))
+    assert html_keys <= translated_keys
 
 
 def test_rtlscout_web_task_is_bounded_and_contains_no_credential(tmp_path: Path) -> None:

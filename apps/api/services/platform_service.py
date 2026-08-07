@@ -1,4 +1,4 @@
-"""Read models for the six-page platform UI.
+"""Read models for the five-page platform UI.
 
 This service intentionally performs no scheduling. It projects authoritative
 stores into a stable, presentation-neutral API shape.
@@ -15,7 +15,6 @@ NAVIGATION = (
     {"id": "overview", "label": "Overview"},
     {"id": "frontend", "label": "Frontend Design"},
     {"id": "backend", "label": "Backend Design"},
-    {"id": "extensions", "label": "Extensions"},
     {"id": "projects", "label": "Projects & Results"},
     {"id": "evolution", "label": "Self-Evolution"},
 )
@@ -48,7 +47,7 @@ class PlatformReadModel:
                     "Runtime-governed RTL-to-GDS implementation",
                     "Stage-aware Flow-Agent campaigns, diagnosis, and repair",
                     "Evidence-backed learning with human-controlled recommendations",
-                    "Optional 3D IC, EDACraft, and source-code evolution",
+                    "Optional 3D IC, device/EM/SPICE, and source-code evolution",
                 ],
             },
             "navigation": list(NAVIGATION),
@@ -104,7 +103,7 @@ class PlatformReadModel:
                 "record_type": "runtime_run",
                 "project_type": _project_type(plugin),
                 "name": run.task_spec.design_id,
-                "summary": f"{plugin} · {run.task_spec.task_id}",
+                "summary": plugin,
                 "status": run.status.value,
                 "created_at": run.created_at,
                 "detail_url": f"/api/runtime/runs/{run.run_id}",

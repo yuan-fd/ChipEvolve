@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import sys
+import time
 import uuid
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -96,6 +97,7 @@ class ApiState:
         ))
         state_root = ((runtime_db_path.expanduser().resolve().parent
                        if runtime_db_path is not None else local_state))
+        self.local_state_root = state_root
         self.runtime_store = RuntimeStore(runtime_db_path or local_state / "runtime.db")
         self.campaign_store = CampaignStore(campaign_db_path or local_state / "campaign.db")
         self.spec_store = SpecConversationStore(spec_db_path or state_root / "spec.db")
@@ -177,6 +179,11 @@ class ApiState:
     def health(self) -> dict[str, Any]:
         openroad = _find_tool("openroad", ROOT.parent / "bin" / "openroad")
         yosys = _find_tool("yosys", ROOT.parent / "bin" / "yosys")
+        heartbeat_path = Path(os.environ.get(
+            "OPENROAD_PLATFORM_RUNTIME_WORKER_HEARTBEAT",
+            self.local_state_root / "runtime-worker.heartbeat.json",
+        ))
+        worker = _read_worker_heartbeat(heartbeat_path)
         payload = {
             "ok": True,
             "service": "openroad-platform",
@@ -187,6 +194,10 @@ class ApiState:
             "openroad": openroad,
             "yosys": yosys,
             "execution_ready": bool(openroad and yosys and self.orfs_root.is_dir()),
+            "runtime_worker_ready": worker["ready"],
+            "runtime_worker_status": worker["status"],
+            "runtime_worker_active_run": worker.get("active_run"),
+            "runtime_worker_last_seen": worker.get("updated_at"),
             "byok_input_enabled": self.byok_transport_secure,
         }
         payload.update(self.designs.readiness())
@@ -226,9 +237,9 @@ class ApiState:
                 },
                 {
                     "id": "edacraft-extension-pack",
-                    "name": "EDACraft Extension Pack",
-                    "description": "Six independent frontend, device, interconnect, circuit, and backend extensions.",
-                    "route": "extensions",
+                    "name": "Device & Circuit Research",
+                    "description": "TCAD device simulation, interconnect EM extraction, and SPICE-level circuit analysis.",
+                    "route": "backend",
                     "status": "available",
                 },
             ],
@@ -985,6 +996,34 @@ def _find_tool(name: str, fallback: Path) -> str | None:
     if found:
         return found
     return str(fallback) if fallback.is_file() else None
+
+
+def _read_worker_heartbeat(path: Path, *, stale_after_seconds: float = 10.0) -> dict[str, Any]:
+    offline = {"ready": False, "status": "offline", "updated_at": None,
+               "active_run": None}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        updated_at = float(payload.get("updated_at_epoch", 0))
+        pid = int(payload.get("pid", 0))
+        fresh = 0 <= time.time() - updated_at <= stale_after_seconds
+        process_alive = pid > 0
+        if process_alive:
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                process_alive = False
+            except PermissionError:
+                process_alive = True
+        status = str(payload.get("status") or "offline")
+        ready = fresh and process_alive and status in {"idle", "running"}
+        return {
+            "ready": ready,
+            "status": status if ready else "offline",
+            "updated_at": payload.get("updated_at"),
+            "active_run": payload.get("active_run") if ready else None,
+        }
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return offline
 
 
 def _sha256(path: Path) -> str:

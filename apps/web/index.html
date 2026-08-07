@@ -16,7 +16,6 @@
       <button class="tab active" data-route="overview" data-i18n="nav.overview">Overview</button>
       <button class="tab" data-route="frontend" data-i18n="nav.frontend">Frontend Design</button>
       <button class="tab" data-route="backend" data-i18n="nav.backend">Backend Design</button>
-      <button class="tab" data-route="extensions" data-i18n="nav.extensions">Extensions</button>
       <button class="tab" data-route="projects" data-i18n="nav.projects">Projects &amp; Results</button>
       <button class="tab" data-route="evolution" data-i18n="nav.evolution">Self-Evolution</button>
     </nav>
@@ -26,16 +25,16 @@
   <main>
     <section class="page active" id="page-overview">
       <section class="hero wrap">
-        <p class="eyebrow">Open-source intelligent chip design infrastructure</p>
+        <p class="eyebrow" data-i18n="overview.eyebrow">Open-source intelligent chip design infrastructure</p>
         <h1>OpenROAD Self-Evolving<br>EDA Platform</h1>
-        <p class="hero-tagline">From design intent to verified silicon evidence.</p>
+        <p class="hero-tagline" data-i18n="overview.tagline">From design intent to verified silicon evidence.</p>
         <div class="capability-list" aria-label="Core platform capabilities">
-          <div><span>01</span><p><b>Spec → RTL → GDS</b>Natural-language design with reviewable RTL and reproducible physical implementation.</p></div>
-          <div><span>02</span><p><b>EDA Copilot</b>Natural-language control, report interpretation, diagnosis, and guided repair.</p></div>
-          <div><span>03</span><p><b>Flow Optimization</b>Stage-aware experiments with AgenticPD, BO/GP, Pareto analysis, and RL advice.</p></div>
-          <div><span>04</span><p><b>Tool-Evolve</b>Optional OpenROAD source-code candidate generation and evidence-based evaluation.</p></div>
-          <div><span>05</span><p><b>Extended Design Stack</b>2D/3D IC implementation and six independently integrated EDACraft components.</p></div>
-          <div><span>06</span><p><b>Continuous Learning</b>Traceable knowledge, verified run data, recommendations, and reusable design experience.</p></div>
+          <div><span>01</span><p><b>Spec → RTL → GDS</b><span data-i18n="overview.cap1">Natural-language design with reviewable RTL and reproducible physical implementation.</span></p></div>
+          <div><span>02</span><p><b data-i18n="overview.cap2.name">EDA Copilot</b><span data-i18n="overview.cap2">Natural-language control, report interpretation, diagnosis, and guided repair.</span></p></div>
+          <div><span>03</span><p><b data-i18n="overview.cap3.name">Flow Optimization</b><span data-i18n="overview.cap3">Stage-aware experiments, bounded search, BO/GP, Pareto analysis, and RL advice.</span></p></div>
+          <div><span>04</span><p><b>Tool-Evolve</b><span data-i18n="overview.cap4">Optional OpenROAD source-code candidate generation and evidence-based evaluation.</span></p></div>
+          <div><span>05</span><p><b data-i18n="overview.cap5.name">Extended Design Stack</b><span data-i18n="overview.cap5">2D/3D IC implementation plus device TCAD, interconnect EM, and SPICE circuit simulation.</span></p></div>
+          <div><span>06</span><p><b data-i18n="overview.cap6.name">Continuous Learning</b><span data-i18n="overview.cap6">Traceable knowledge, verified run data, recommendations, and reusable design experience.</span></p></div>
         </div>
         <div class="hero-actions">
           <button class="button" id="watchDemo">Watch Demo <span>▷</span></button>
@@ -47,33 +46,41 @@
 
       <section class="showcase-section">
         <div class="wrap">
-          <div class="section-heading centered"><p class="eyebrow">Platform walkthrough</p><h2>See the complete design journey.</h2><p>Reserved for the project video and presentation deck. The final media can be added without changing the page structure.</p></div>
+          <div class="section-heading centered"><p class="eyebrow" data-i18n="overview.walkthrough">Platform walkthrough</p><h2 data-i18n="overview.walkthrough.title">See the complete design journey.</h2><p data-i18n="overview.walkthrough.help">Reserved for the project video and presentation deck. The final media can be added without changing the page structure.</p></div>
           <div class="showcase-grid">
-            <div class="media-placeholder video-placeholder"><div class="play-mark">▷</div><b>Platform Demo</b><span>Video placeholder · coming soon</span></div>
-            <div class="media-placeholder slides-placeholder"><div class="slide-preview"><i></i><i></i><i></i></div><b>Project Slides</b><span>Capabilities · workflow · architecture · results</span></div>
+            <div class="media-placeholder video-placeholder"><div class="play-mark">▷</div><b data-i18n="overview.media.video">Platform Demo</b><span data-i18n="overview.media.video.help">Video placeholder · coming soon</span></div>
+            <div class="media-placeholder slides-placeholder"><div class="slide-preview"><i></i><i></i><i></i></div><b data-i18n="overview.media.slides">Project Slides</b><span data-i18n="overview.media.slides.help">Capabilities · workflow · architecture · results</span></div>
           </div>
         </div>
       </section>
 
       <section class="wrap platform-path">
-        <div class="section-heading"><p class="eyebrow">A connected workflow</p><h2>One path from intent to learning.</h2><p>Each stage produces reviewable outputs that feed the next stage and, after verification, improve future decisions.</p></div>
+        <div class="section-heading"><p class="eyebrow" data-i18n="overview.workflow">A connected workflow</p><h2 data-i18n="overview.workflow.title">One path from intent to learning.</h2><p data-i18n="overview.workflow.help">Each stage produces reviewable outputs that feed the next stage and, after verification, improve future decisions.</p></div>
         <div class="path-diagram" aria-label="Intent to learning platform workflow">
-          <article><span>01</span><b>Design Intent</b><small>Spec, RTL, constraints</small></article><i>→</i>
-          <article><span>02</span><b>Frontend</b><small>RTL, netlist, schematic</small></article><i>→</i>
-          <article><span>03</span><b>Physical Design</b><small>2D / 3D implementation</small></article><i>→</i>
-          <article><span>04</span><b>Optimization</b><small>Campaigns and repair</small></article><i>→</i>
-          <article><span>05</span><b>Verified Learning</b><small>Evidence and advice</small></article>
+          <article><span>01</span><b data-i18n="overview.path.intent">Design Intent</b><small data-i18n="overview.path.intent.help">Spec, RTL, constraints</small></article><i>→</i>
+          <article><span>02</span><b data-i18n="overview.path.frontend">Frontend</b><small data-i18n="overview.path.frontend.help">RTL, netlist, schematic</small></article><i>→</i>
+          <article><span>03</span><b data-i18n="overview.path.physical">Physical Design</b><small data-i18n="overview.path.physical.help">2D / 3D implementation</small></article><i>→</i>
+          <article><span>04</span><b data-i18n="overview.path.optimization">Optimization</b><small data-i18n="overview.path.optimization.help">Experiments and bounded repair</small></article><i>→</i>
+          <article><span>05</span><b data-i18n="overview.path.learning">Verified Learning</b><small data-i18n="overview.path.learning.help">Evidence and advice</small></article>
         </div>
+      </section>
+
+      <section class="overview-extension-showcase">
+        <div class="wrap"><div class="section-heading"><p class="eyebrow" data-i18n="overview.optional">Optional research capabilities</p><h2 data-i18n="overview.optional.title">Specialist branches, connected to the main workflow.</h2><p data-i18n="overview.optional.help">The default path remains Spec-to-GDS. Open a specialist branch only when the design needs 3D implementation, device physics, interconnect EM, circuit simulation, or source-code optimization.</p></div><div class="overview-extension-grid"><article><small data-i18n="overview.optional.physical">Physical-design options</small><h3>3D IC · Tool-Evolve</h3><p data-i18n="overview.optional.physical.help">Two-tier physical implementation and optional OpenROAD source optimization extend the backend path.</p><button class="text-link" data-route="backend" data-i18n="overview.optional.backend.action">Open backend options →</button></article><article><small data-i18n="overview.optional.device">Device and circuit research</small><h3>TCAD · Interconnect EM · SPICE</h3><p data-i18n="overview.optional.device.help">TCADCraft, MoMCraft, and CktCraft add device physics, S-parameter extraction, and transistor-level simulation without duplicating RTL generation.</p><button class="text-link" data-open-extension="edacraft-tcadcraft" data-i18n="overview.optional.device.action">Open device tools →</button></article></div></div>
       </section>
 
       <section class="tutorial-section" id="tutorial">
         <div class="wrap">
-          <div class="section-heading"><p class="eyebrow">Recommended tutorial</p><h2>Your first reproducible design.</h2><p>Start with a built-in design, inspect the generated circuit, and then move it through physical implementation.</p></div>
-          <ol class="tutorial-list">
-            <li><span>1</span><div><b>Choose a frontend input</b><p>Use an audited example, upload Verilog/SystemVerilog, or begin a natural-language specification session.</p></div><button class="text-link" data-route="frontend">Open Frontend →</button></li>
-            <li><span>2</span><div><b>Review the circuit</b><p>Check gate count, synthesized schematic, RTL source, and gate-level netlist before implementation.</p></div></li>
-            <li><span>3</span><div><b>Configure the physical flow</b><p>Select PDK-facing constraints, clock, utilization, density, target stage, and optimization mode.</p></div><button class="text-link" data-route="backend">Open Backend →</button></li>
-            <li><span>4</span><div><b>Inspect and reuse the evidence</b><p>Review layout, QoR, reports, artifacts, optimization history, and verified learning records.</p></div><button class="text-link" data-route="projects">Browse Results →</button></li>
+          <div class="section-heading"><p class="eyebrow" data-i18n="tutorial.eyebrow">End-to-end tutorial</p><h2 data-i18n="tutorial.title">Complete every platform workflow.</h2><p data-i18n="tutorial.help">Follow the sequence once with a small design. Optional branches are marked clearly and never run automatically.</p></div>
+          <ol class="tutorial-list full-journey">
+            <li><span>1</span><div><b data-i18n="tutorial.1.title">Generate and review RTL from a specification</b><p data-i18n="tutorial.1.help">Connect a model provider, describe behavior and ports, then review the generated RTL before confirmation.</p><small class="requirement api-key" data-i18n="tutorial.key.required">Built-in rule demo needs no key · LLM generation uses your API key</small></div><button class="text-link" data-route="frontend" data-i18n="tutorial.frontend.action">Open Frontend →</button></li>
+            <li><span>2</span><div><b data-i18n="tutorial.2.title">Run verified RTL exploration</b><p data-i18n="tutorial.2.help">Use RTLScout to propose RTL edits; Verilator and Yosys independently verify and score every candidate.</p><small class="requirement" data-i18n="tutorial.key.optional">Built-in smoke needs no key · full exploration uses your API key</small></div><button class="text-link" data-route="frontend">RTLScout →</button></li>
+            <li><span>3</span><div><b data-i18n="tutorial.3.title">Try a device or circuit research branch</b><p data-i18n="tutorial.3.help">Optionally run bounded TCAD, interconnect EM, or SPICE smoke tasks. This branch complements the digital flow and does not regenerate RTL.</p><small class="requirement" data-i18n="tutorial.key.none">No API key for bounded smoke</small></div><button class="text-link" data-open-extension="edacraft-tcadcraft" data-i18n="tutorial.device.action">Open device branch →</button></li>
+            <li><span>4</span><div><b data-i18n="tutorial.4.title">Produce a baseline 2D layout</b><p data-i18n="tutorial.4.help">Select the registered RTL, use Baseline flow, and follow synthesis through final GDS.</p><small class="requirement" data-i18n="tutorial.key.none">No API key required</small></div><button class="text-link" data-route="backend" data-i18n="tutorial.backend.action">Open Backend →</button></li>
+            <li><span>5</span><div><b data-i18n="tutorial.5.title">Create a stage-aware batch experiment</b><p data-i18n="tutorial.5.help">Switch to Stage-aware Campaign, review the bounded parameter candidates, and submit only the trials you approve.</p><small class="requirement" data-i18n="tutorial.key.none">No API key required</small></div><button class="text-link" data-route="backend" data-i18n="tutorial.backend.action">Open Backend →</button></li>
+            <li><span>6</span><div><b data-i18n="tutorial.6.title">Create an agent-guided search plan</b><p data-i18n="tutorial.6.help">Use Agent-guided search for monitored experiments and bounded repair. The internal orchestration stays behind the user-facing mode.</p><small class="requirement" data-i18n="tutorial.agent.status">Plan creation available · execution requires explicit approval</small></div><button class="text-link" data-route="backend" data-i18n="tutorial.backend.action">Open Backend →</button></li>
+            <li><span>7</span><div><b data-i18n="tutorial.7.title">Inspect the pinned 3D IC workflow</b><p data-i18n="tutorial.7.help">Open the TaiWei branch for two-tier placement, cross-tier metrics, 3D views, and replay evidence.</p><small class="requirement" data-i18n="tutorial.key.none">No API key required</small></div><button class="text-link" data-open-extension="taiwei-3d">TaiWei 3D →</button></li>
+            <li><span>8</span><div><b data-i18n="tutorial.8.title">Review results and collect verified experience</b><p data-i18n="tutorial.8.help">Compare layouts and QoR, then explicitly collect successful Runtime evidence into the learning store. Public paper and benchmark metadata is already indexed with provenance.</p><small class="requirement" data-i18n="tutorial.learning.status">Learning import is explicit so failed or unverified runs never become ground truth</small></div><button class="text-link" data-route="projects" data-i18n="tutorial.results.action">Open Results →</button></li>
           </ol>
         </div>
       </section>
@@ -155,10 +162,6 @@
             <div class="rtlscout-output"><div><b>Best candidate and changes</b><p id="rtlscoutBestSummary">The best verified RTL, result JSON, summary, and log will appear here.</p></div><div id="rtlscoutArtifacts" class="dashboard-links"></div></div>
           </section>
 
-          <section class="frontend-alternatives panel">
-            <div class="module-head"><div><b>EDACraft frontend alternatives</b><span>These are separate tools, not additional RTLScout steps. Use them only when their design model matches your task.</span></div></div>
-            <div class="alternative-grid"><button data-open-extension="edacraft-rtlcraft"><span><b>RTLCraft</b><small>Python hardware DSL → SystemVerilog generation and verification.</small></span><i>Open RTLCraft →</i></button><button data-open-extension="edacraft-edacode"><span><b>EDACode</b><small>Review-only analog and mixed-signal design proposals.</small></span><i>Open EDACode →</i></button></div>
-          </section>
           </div>
         </section>
       </div>
@@ -179,7 +182,7 @@
         </section>
 
         <section class="task-panel">
-          <header class="task-panel-head result-panel-head"><span>③</span><div><b data-i18n="backend.run.title">Run RTL-to-GDS and monitor stages</b><small data-i18n="backend.run.subtitle">Runtime records progress, recovery state, metrics, and artifacts.</small></div><label><span data-i18n="backend.run.select">Runtime run</span><select id="runSelect"><option value="">Choose a Runtime run</option></select></label></header>
+          <header class="task-panel-head result-panel-head"><span>③</span><div><b data-i18n="backend.run.title">Run RTL-to-GDS and monitor stages</b><small data-i18n="backend.run.subtitle">Runtime records progress, recovery state, metrics, and artifacts.</small></div><div class="worker-indicator" id="workerIndicator"><i></i><span id="workerState">Checking worker…</span></div><label><span data-i18n="backend.run.select">Runtime run</span><select id="runSelect"><option value="">Choose a Runtime run</option></select></label></header>
           <div class="run-controls"><button class="button primary" id="submitFlow" data-i18n="backend.run.action">Start RTL-to-GDS</button><button class="button" type="button" data-route="projects" data-i18n="backend.run.compare">Compare recorded runs</button></div><p class="message" id="flowMessage" aria-live="polite"></p>
           <div class="run-heading" id="runHeading"><div><b data-i18n="backend.run.empty">No run selected</b><span data-i18n="backend.run.empty.help">Queued, active, and completed records appear here.</span></div></div>
           <div class="flow-progress"><div><span id="flowProgressBar"></span></div><b id="flowProgressText">0 / 6</b></div>
@@ -192,26 +195,12 @@
         </section>
 
         <section class="task-panel extension-task compact-extensions">
-          <header class="task-panel-head"><span>⑤</span><div><b data-i18n="backend.extensions.title">Optional workflow extensions</b><small data-i18n="backend.extensions.subtitle">Open only the specialist capability needed for this design.</small></div></header>
-          <div class="extension-rows"><button data-open-extension="flow-agent"><span><b>Flow-Agent / AgenticPD</b><small data-i18n="backend.ext.flow">Batch experiments, parameter search, monitoring, and bounded repair.</small></span><i>→</i></button><button data-open-extension="taiwei-3d"><span><b>TaiWei 3D IC</b><small data-i18n="backend.ext.3d">Two-tier implementation, HBT, cross-tier metrics, and 3D views.</small></span><i>→</i></button><button data-open-extension="edacraft-implcraft"><span><b>ImplCraft</b><small data-i18n="backend.ext.craft">Backend-neutral planning and OpenROAD-compatible implementation.</small></span><i>→</i></button><button data-open-extension="dplevolve"><span><b>DPLEvolve / Tool-Evolve</b><small data-i18n="backend.ext.evolve">Optional long-running OpenROAD source candidate optimization.</small></span><i>→</i></button></div>
+          <header class="task-panel-head"><span>⑤</span><div><b data-i18n="backend.extensions.title">Optional research branches</b><small data-i18n="backend.extensions.subtitle">Open only the specialist capability needed for this design.</small></div></header>
+          <div class="extension-group"><p data-i18n="backend.extensions.digital">Physical-design options</p><div class="extension-rows three"><button data-open-extension="taiwei-3d"><span><b>TaiWei 3D IC</b><small data-i18n="backend.ext.3d">Two-tier implementation, HBT, cross-tier metrics, and 3D views.</small></span><i>→</i></button><button data-open-extension="dplevolve"><span><b>DPLEvolve / Tool-Evolve</b><small data-i18n="backend.ext.evolve">Optional long-running OpenROAD source candidate optimization.</small></span><i>→</i></button></div></div>
+          <div class="extension-group device-group"><p data-i18n="backend.extensions.device">Device and circuit extensions</p><div class="extension-rows three"><button data-open-extension="edacraft-tcadcraft"><span><b>TCADCraft</b><small data-i18n="backend.ext.tcad">3D semiconductor device geometry and bounded physics simulation.</small></span><i>→</i></button><button data-open-extension="edacraft-momcraft"><span><b>MoMCraft</b><small data-i18n="backend.ext.mom">Interconnect electromagnetic analysis and S-parameter extraction.</small></span><i>→</i></button><button data-open-extension="edacraft-cktcraft"><span><b>CktCraft</b><small data-i18n="backend.ext.ckt">SPICE-level analog and RF circuit simulation.</small></span><i>→</i></button></div></div>
+          <div class="embedded-extension-detail" id="embeddedExtensionDetail"></div>
         </section>
       </div>
-    </section>
-
-    <section class="page" id="page-extensions">
-      <div class="page-head wrap"><div><p class="eyebrow">Extensions</p><h1>Specialist tools,<br>connected by evidence.</h1></div><p>Explore 3D IC, device, interconnect, circuit, RTL, analog-agent, backend, and source-code optimization capabilities without adding them to the default flow.</p></div>
-      <section class="workflow-section wrap">
-        <div class="section-heading"><p class="eyebrow">Extension catalog</p><h2>Choose a capability to inspect.</h2><p>Every item below is interactive. Select one to see its scope, readiness, required inputs, and available actions.</p></div>
-        <div class="extension-catalog" id="extensionCatalog"></div>
-      </section>
-      <section class="extension-detail-section" id="extensionDetailSection">
-        <div class="wrap" id="extensionDetail"><div class="empty"><span>＋</span><h3>Select an extension.</h3><p>Its workflow and live Runtime records will open here.</p></div></div>
-      </section>
-      <section class="wrap tool-dashboard" id="dplevolveDashboard">
-        <div class="step-heading"><span>Long task</span><div><h2>DPLEvolve run dashboard</h2><p>Source-code evolution is optional, user-configured, and never starts automatically.</p></div></div>
-        <div class="dashboard-bar"><div><small>Model provider</small><b>User supplied</b></div><div><small>Active round</small><b id="dplRound">—</b></div><div><small>Candidates</small><b id="dplCandidates">—</b></div><div><small>Best improvement</small><b id="dplGain">—</b></div><div><small>Elapsed</small><b id="dplElapsed">—</b></div></div>
-        <div class="panel dashboard-body"><div class="dashboard-state"><span id="dplStatus" class="status">Not started</span><h3 id="dplTitle">No DPLEvolve task is running.</h3><p id="dplSummary">Configure a model provider and explicitly create a source-audit or evolution task when the compute budget permits.</p></div><div class="candidate-table"><div class="candidate-head"><span>Candidate</span><span>Validation</span><span>QoR</span><span>Gain</span><span>Duration</span></div><div id="dplRows" class="candidate-empty">No candidate records yet.</div></div><div class="dashboard-actions"><button class="button" data-route="projects">View Existing Records</button><button class="button primary" disabled>Start Evolution · provider and budget required</button></div></div>
-      </section>
     </section>
 
     <section class="page" id="page-projects">

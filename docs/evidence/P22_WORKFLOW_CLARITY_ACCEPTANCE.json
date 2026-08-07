@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "phase": "P22-workflow-clarity",
+  "date": "2026-08-07",
+  "navigation_pages": 5,
+  "standalone_extensions_page": false,
+  "auto_select_previous_result": false,
+  "visible_craft_components": ["TCADCraft", "MoMCraft", "CktCraft"],
+  "hidden_duplicate_adapters_preserved": ["RTLCraft", "EDACode", "ImplCraft"],
+  "runtime_worker_heartbeat": true,
+  "stale_queued_records_cancelled": 6,
+  "bounded_smoke": {"component": "TCADCraft", "status": "succeeded"},
+  "tests_collected": 198,
+  "tests_failed": 0,
+  "push_performed": false
+}

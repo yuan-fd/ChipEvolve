@@ -1,6 +1,6 @@
 # Web application
 
-The dependency-free single-page application has six English views:
+The dependency-free single-page application has five bilingual views:
 
 1. **Overview**: formal product positioning, capability summary, media slots,
    connected workflow, and a first-run tutorial.
@@ -8,10 +8,8 @@ The dependency-free single-page application has six English views:
    gate statistics, synthesized schematic, RTL/netlist, and optional RTLScout.
 3. **Backend Design**: flow configuration, six-stage progress, layout, QoR,
    reports, artifacts, and specialist implementation entry points.
-4. **Extensions**: clickable TaiWei 3D, Flow-Agent, DPLEvolve, and six-component
-   EDACraft catalog with readiness, inputs, workflows, and Runtime actions.
-5. **Projects & Results**: vertical project index and complete per-project detail.
-6. **Self-Evolution**: a visual knowledge/observation-to-decision feedback loop,
+4. **Projects & Results**: vertical project index and complete per-project detail.
+5. **Self-Evolution**: a visual knowledge/observation-to-decision feedback loop,
    human-controlled recommendations, and expandable research records.
 
 The built-in example catalog includes starter circuits plus an ALU, controller,
@@ -25,8 +23,10 @@ artifact. RTLScout is organized as configure → optional provider connection �
 Runtime submission → run dashboard → verified candidate evidence. Its bundled
 offline demo is deliberately limited to the audited `simple_adder` benchmark;
 custom provider execution requires HTTPS and a worker-side secret bridge.
-RTLCraft and EDACode links open their independent extension detail rather than
-being presented as RTLScout stages.
+Only complementary Craft capabilities are user-facing: TCADCraft, MoMCraft,
+and CktCraft. RTLCraft, EDACode, and ImplCraft adapters remain available for
+compatibility and historical evidence, but are not duplicated in the primary
+RTL or physical-design interface. Specialist details open inside Backend.
 
 Frontend and Backend use a compact interactive-demo workspace: a centered
 single column, top workspace switcher, numbered panel headers, and an explicit
@@ -41,9 +41,8 @@ review URL.
 The interface uses a restrained efficiency-tool style: neutral white/light-gray
 surfaces, one blue action color, sans-serif type, compact 4/8-based spacing,
 small radii, visible hairlines, and no decorative shadows on ordinary content.
-Typography and grouping establish hierarchy before borders. Long optional
-surfaces such as the DPLEvolve dashboard stay hidden until the user selects the
-corresponding extension.
+Typography and grouping establish hierarchy before borders. Optional details
+stay collapsed until the user selects the corresponding backend branch.
 
 Serve it through `apps/api/app.py`; opening `index.html` directly does not work
 because all views read live state from `/api/*`.
@@ -53,5 +52,6 @@ cd /share/home/yuanwenjie/openroad-platform
 ./scripts/run_demo.sh
 ```
 
-The browser UI submits jobs to the durable SQLite queue. The separate worker
-runs ORFS so a web-process restart does not lose queued or completed evidence.
+The browser UI submits jobs to the durable SQLite queue. The separate Workflow
+Runtime worker executes registered plugins so a web-process restart does not
+lose queued or completed evidence.

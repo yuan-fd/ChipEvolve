@@ -19,14 +19,14 @@ def make_state(tmp_path: Path) -> ApiState:
     )
 
 
-def test_web_has_six_clear_bilingual_primary_tabs():
+def test_web_has_five_clear_bilingual_primary_tabs():
     html = (ROOT / "apps" / "web" / "index.html").read_text(encoding="utf-8")
     tabs = re.findall(
         r'<button class="tab(?: active)?" data-route="[^"]+"[^>]*>([^<]+)</button>', html
     )
     assert tabs == [
         "Overview", "Frontend Design", "Backend Design",
-        "Extensions", "Projects &amp; Results", "Self-Evolution",
+        "Projects &amp; Results", "Self-Evolution",
     ]
     assert '<html lang="en">' in html
     assert 'id="langZh"' in html and 'id="langEn"' in html
@@ -38,16 +38,16 @@ def test_web_uses_a_restrained_minimal_visual_system():
     assert "--accent: #2563eb" in css
     assert "--radius: 6px" in css
     assert "Georgia" not in css
-    assert ".tool-dashboard { display: none" in css
+    assert ".embedded-extension-detail:not(:empty)" in css
     assert "box-shadow: 0 18px" not in css
 
 
-def test_platform_read_model_matches_six_page_information_architecture(tmp_path):
+def test_platform_read_model_matches_five_page_information_architecture(tmp_path):
     state = make_state(tmp_path)
     snapshot = state.platform.snapshot()
     assert [item["label"] for item in snapshot["navigation"]] == [
         "Overview", "Frontend Design", "Backend Design",
-        "Extensions", "Projects & Results", "Self-Evolution",
+        "Projects & Results", "Self-Evolution",
     ]
     components = snapshot["extensions"]["components"]
     assert len(components) == 6

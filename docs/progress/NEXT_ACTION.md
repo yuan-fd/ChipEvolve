@@ -1,13 +1,13 @@
 # Next action after P22
 
 updated_at: 2026-08-07
-status: paused for user acceptance
+status: five-page review site ready for user acceptance
 
-P18-P22 and the requested information-architecture revision are complete. The
-next action is user review of the modern-minimal six-page website. Review the
-Overview order,
-the three Frontend input paths, the vertical Backend flow, clickable Extensions,
-per-project detail, and the visual Self-Evolution loop before a new product phase.
+P18-P22 and the workflow-clarity revision are complete. The next action is user
+review of the modern-minimal five-page website. Follow the eight-step Overview
+tutorial, verify that no historical result opens automatically, check the live
+Worker indicator, open the three device/circuit branches inside Backend, and
+inspect per-project learning collection before a new product phase.
 
 After acceptance, the recommended P23 direction is sustained real-data growth:
 
@@ -22,7 +22,7 @@ After acceptance, the recommended P23 direction is sustained real-data growth:
 4. Expand MoMCraft/CktCraft cases only with explicit cost limits. Do not treat
    current coarse smokes as sign-off validation.
 5. Add supplied slides/video to the reserved Overview media areas without
-   changing the six-tab product structure. DPLEvolve remains an optional
+   changing the five-page product structure. DPLEvolve remains an optional
    candidate generator, not a main loop.
 
 Do not push, publicly deploy, run expensive DPLEvolve, execute commercial EDA,
