@@ -1,12 +1,23 @@
 # Web application
 
-The dependency-free single-page application has three views:
+The dependency-free single-page application has six English views:
 
-1. **Project Hub**: a clean landing page and extension contract for more tools.
-2. **Circuit Studio**: natural-language generation or RTL import, source and
-   netlist tabs, SVG schematic, and structural analysis.
-3. **RTL-to-GDS Flow**: configuration, six-stage live progress, milestones,
-   artifacts, implementation metrics, and diagnosis.
+1. **Overview**: formal product positioning, capability summary, media slots,
+   connected workflow, and a first-run tutorial.
+2. **Frontend Design**: built-in examples, RTL upload, natural-language Spec,
+   gate statistics, synthesized schematic, RTL/netlist, and optional RTLScout.
+3. **Backend Design**: flow configuration, six-stage progress, layout, QoR,
+   reports, artifacts, and specialist implementation entry points.
+4. **Extensions**: clickable TaiWei 3D, Flow-Agent, DPLEvolve, and six-component
+   EDACraft catalog with readiness, inputs, workflows, and Runtime actions.
+5. **Projects & Results**: vertical project index and complete per-project detail.
+6. **Self-Evolution**: a visual knowledge/observation-to-decision feedback loop,
+   human-controlled recommendations, and expandable research records.
+
+The built-in example catalog includes starter circuits plus an ALU, controller,
+UART transmitter, and compact RISC-V teaching core. Small netlists use a full
+Graphviz connectivity view; large netlists automatically use a deterministic
+port/cell overview to keep rendering bounded.
 
 Serve it through `apps/api/app.py`; opening `index.html` directly does not work
 because all views read live state from `/api/*`.

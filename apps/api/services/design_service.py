@@ -22,6 +22,51 @@ SAFE_ID = re.compile(r"^design-[0-9]+-[a-f0-9]{8}$")
 MODULE_RE = re.compile(r"\bmodule\s+([A-Za-z_]\w*)")
 
 
+DESIGN_EXAMPLES: tuple[dict[str, str], ...] = (
+    {
+        "id": "adder8", "name": "8-bit Adder", "level": "starter",
+        "description": "Combinational 8-bit adder with carry output.",
+        "filename": "adder8.v",
+        "rtl_source": "module adder8(input [7:0] a, input [7:0] b, input cin, output [7:0] sum, output cout);\n  assign {cout, sum} = a + b + cin;\nendmodule\n",
+    },
+    {
+        "id": "decoder3to8", "name": "3-to-8 Decoder", "level": "starter",
+        "description": "Enabled one-hot decoder.", "filename": "decoder3to8.v",
+        "rtl_source": "module decoder3to8(input [2:0] a, input en, output [7:0] y);\n  assign y = en ? (8'b1 << a) : 8'b0;\nendmodule\n",
+    },
+    {
+        "id": "mux4", "name": "4-way Multiplexer", "level": "starter",
+        "description": "Parameterized-width four-input multiplexer.", "filename": "mux4.v",
+        "rtl_source": "module mux4 #(parameter W=8)(input [W-1:0] a,b,c,d, input [1:0] sel, output reg [W-1:0] y);\n  always @* case(sel) 2'd0:y=a; 2'd1:y=b; 2'd2:y=c; default:y=d; endcase\nendmodule\n",
+    },
+    {
+        "id": "counter16", "name": "16-bit Counter", "level": "starter",
+        "description": "Synchronous enabled counter with reset.", "filename": "counter16.v",
+        "rtl_source": "module counter16(input clk, input reset, input enable, output reg [15:0] count);\n  always @(posedge clk) begin if(reset) count <= 16'b0; else if(enable) count <= count + 1'b1; end\nendmodule\n",
+    },
+    {
+        "id": "alu8", "name": "8-bit ALU", "level": "advanced",
+        "description": "Arithmetic and logic unit with zero and carry flags.", "filename": "alu8.v",
+        "rtl_source": "module alu8(input [7:0] a,b, input [2:0] op, output reg [7:0] y, output zero, output reg carry);\n  reg [8:0] t; always @* begin t=9'b0; carry=1'b0; case(op) 3'd0:begin t={1'b0,a}+{1'b0,b};y=t[7:0];carry=t[8];end 3'd1:begin t={1'b0,a}-{1'b0,b};y=t[7:0];carry=t[8];end 3'd2:y=a&b; 3'd3:y=a|b; 3'd4:y=a^b; 3'd5:y=a<<b[2:0]; 3'd6:y=a>>b[2:0]; default:y=8'b0; endcase end assign zero=(y==8'b0);\nendmodule\n",
+    },
+    {
+        "id": "traffic_controller", "name": "Traffic Controller", "level": "advanced",
+        "description": "Finite-state traffic-light controller.", "filename": "traffic_controller.v",
+        "rtl_source": "module traffic_controller(input clk, input reset, input timer_done, output reg [2:0] lights);\n  reg [1:0] state,next; localparam GREEN=0,YELLOW=1,RED=2; always @(posedge clk) if(reset) state<=RED; else state<=next; always @* begin next=state; case(state) GREEN:begin lights=3'b100;if(timer_done)next=YELLOW;end YELLOW:begin lights=3'b010;if(timer_done)next=RED;end default:begin lights=3'b001;if(timer_done)next=GREEN;end endcase end\nendmodule\n",
+    },
+    {
+        "id": "uart_tx", "name": "UART Transmitter", "level": "advanced",
+        "description": "Compact 8-N-1 UART transmitter with configurable divisor.", "filename": "uart_tx.v",
+        "rtl_source": "module uart_tx #(parameter DIV=16)(input clk,reset,start,input [7:0] data,output reg tx,output reg busy);\n  reg [9:0] frame; reg [3:0] bit_no; reg [15:0] count; always @(posedge clk) begin if(reset) begin tx<=1'b1;busy<=0;count<=0;bit_no<=0;frame<=10'h3ff;end else if(start&&!busy) begin frame<={1'b1,data,1'b0};busy<=1;count<=0;bit_no<=0;tx<=1'b0;end else if(busy) begin if(count==DIV-1) begin count<=0;bit_no<=bit_no+1'b1;frame<={1'b1,frame[9:1]};tx<=frame[1];if(bit_no==9)begin busy<=0;tx<=1'b1;end end else count<=count+1'b1;end end\nendmodule\n",
+    },
+    {
+        "id": "mini_riscv", "name": "Mini RISC-V Core", "level": "advanced",
+        "description": "Small RV32I-style single-cycle teaching core datapath.", "filename": "mini_riscv.v",
+        "rtl_source": "module mini_riscv(input clk,reset,input [31:0] instr,input [31:0] rdata,output reg [31:0] pc,output [31:0] addr,wdata,output we);\n  reg [31:0] regs[0:7]; wire [2:0] rs1=instr[17:15],rs2=instr[22:20],rd=instr[9:7]; wire [6:0] opcode=instr[6:0]; wire [31:0] imm={{20{instr[31]}},instr[31:20]}; wire [31:0] lhs=regs[rs1],rhs=regs[rs2]; assign addr=lhs+imm;assign wdata=rhs;assign we=(opcode==7'b0100011); integer i; always @(posedge clk) begin if(reset)begin pc<=0;for(i=0;i<8;i=i+1)regs[i]<=0;end else begin pc<=pc+4;if(opcode==7'b0010011&&rd!=0)regs[rd]<=lhs+imm;else if(opcode==7'b0110011&&rd!=0)regs[rd]<=lhs+rhs;else if(opcode==7'b0000011&&rd!=0)regs[rd]<=rdata;regs[0]<=0;end end\nendmodule\n",
+    },
+)
+
+
 class DesignService:
     """Owns generated/imported design artifacts behind a stable API."""
 
@@ -48,6 +93,11 @@ class DesignService:
             "legacy_adapter_root": str(self.legacy_root),
             "yosys_ready": self.yosys_bin.is_file() and os.access(self.yosys_bin, os.X_OK),
         }
+
+    @staticmethod
+    def examples() -> list[dict[str, str]]:
+        """Return audited synthesizable examples used by the web workspace."""
+        return [dict(item) for item in DESIGN_EXAMPLES]
 
     def list(self, limit: int = 30) -> list[dict[str, Any]]:
         manifests = []
@@ -240,11 +290,18 @@ class DesignService:
     @staticmethod
     def _render_schematic(netlist_path: Path) -> str:
         text = netlist_path.read_text(encoding="utf-8", errors="replace")
+        overview = parse_ports_and_gates(text)
+        # Graphviz produces a useful connected gate diagram for small and medium
+        # netlists.  Large teaching cores can contain hundreds of simple cells;
+        # use the deterministic type/port overview there so the UI remains
+        # responsive while still visualizing synthesized netlist data.
+        if int(overview.get("instances", 0)) > 120:
+            return generate_svg(overview)
         try:
             return generate_schematic_svg(text)
         except Exception:
             # Keep the deterministic overview available if Graphviz is absent.
-            return generate_svg(parse_ports_and_gates(text))
+            return generate_svg(overview)
 
     def _directory(self, design_id: str) -> Path:
         if not SAFE_ID.fullmatch(design_id):

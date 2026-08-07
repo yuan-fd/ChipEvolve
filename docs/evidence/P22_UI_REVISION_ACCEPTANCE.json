@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "phase": "P22-ui-revision",
+  "date": "2026-08-07",
+  "status": "accepted_for_user_review",
+  "navigation": [
+    "Overview",
+    "Frontend Design",
+    "Backend Design",
+    "Extensions",
+    "Projects & Results",
+    "Self-Evolution"
+  ],
+  "frontend_examples": [
+    "adder8",
+    "decoder3to8",
+    "mux4",
+    "counter16",
+    "alu8",
+    "traffic_controller",
+    "uart_tx",
+    "mini_riscv"
+  ],
+  "extensions": [
+    "flow-agent",
+    "taiwei-3d",
+    "dplevolve",
+    "edacraft-rtlcraft",
+    "edacraft-edacode",
+    "edacraft-tcadcraft",
+    "edacraft-momcraft",
+    "edacraft-cktcraft",
+    "edacraft-implcraft"
+  ],
+  "verification": {
+    "pytest_passed": 190,
+    "pytest_failed": 0,
+    "node_syntax": "passed",
+    "python_compile": "passed",
+    "live_http": "passed",
+    "visual_review": ["overview", "frontend"]
+  },
+  "expensive_dplevolve_executed": false,
+  "commercial_eda_executed": false,
+  "public_deployment": false,
+  "user_plan_files_modified": false
+}

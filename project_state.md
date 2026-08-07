@@ -59,6 +59,9 @@ last_updated: 2026-08-06
 - P21 用户接受/修改/拒绝后可创建幂等单候选 Campaign；再次确认才提交 Runtime；终态实测可校验后回灌 tenant/store 和 study。
 - P22 五页站增加论文、置信度、OOD 与二次提交控件；9 个 SQLite 库完成 online backup、SHA/integrity 校验和新目录恢复。
 - P18-P22 全量回归：187 passed、2 个可选 pya tests skipped、0 failed；Node/Python/JSON/diff/凭据模式/固定源码检查通过。
+- 2026-08-07 UI 整改将网站升级为六个英文 Tab：Overview 按定位/能力/媒体/流程/教程组织，新增独立 Extensions；Frontend、Backend、Projects 全部改为纵向任务路径，Self-Evolution 改为知识与观测→GP/BO/RL→人工决策→Runtime→验证反馈的主流程图。
+- Frontend 新增 8 个可综合示例（含 ALU、控制器、UART、mini RISC-V），复杂网表自动使用有界的综合结构概览，避免 Graphviz 大图阻塞；DPLEvolve 保持可选、用户配置和禁止自动启动。
+- UI 整改回归：190 passed、Node syntax 与 Python compile 通过；用户 `plan/` 未修改、未提交。
 
 ## 架构定版
 

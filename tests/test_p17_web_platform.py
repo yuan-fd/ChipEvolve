@@ -19,23 +19,23 @@ def make_state(tmp_path: Path) -> ApiState:
     )
 
 
-def test_web_has_exactly_five_english_primary_tabs():
+def test_web_has_six_clear_english_primary_tabs():
     html = (ROOT / "apps" / "web" / "index.html").read_text(encoding="utf-8")
     tabs = re.findall(r'<button class="tab(?: active)?" data-route="[^"]+">([^<]+)</button>', html)
     assert tabs == [
         "Overview", "Frontend Design", "Backend Design",
-        "Projects &amp; Results", "Self-Evolution",
+        "Extensions", "Projects &amp; Results", "Self-Evolution",
     ]
     assert '<html lang="en">' in html
     assert "IC Craft" not in html
 
 
-def test_platform_read_model_matches_five_page_information_architecture(tmp_path):
+def test_platform_read_model_matches_six_page_information_architecture(tmp_path):
     state = make_state(tmp_path)
     snapshot = state.platform.snapshot()
     assert [item["label"] for item in snapshot["navigation"]] == [
         "Overview", "Frontend Design", "Backend Design",
-        "Projects & Results", "Self-Evolution",
+        "Extensions", "Projects & Results", "Self-Evolution",
     ]
     components = snapshot["extensions"]["components"]
     assert len(components) == 6

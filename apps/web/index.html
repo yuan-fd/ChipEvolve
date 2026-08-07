@@ -3,20 +3,20 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="An evidence-first, self-evolving OpenROAD design platform.">
-  <title>OpenROAD Evolving Platform</title>
+  <meta name="description" content="OpenROAD Self-Evolving EDA Platform — natural-language design, reproducible physical implementation, optimization, and verified learning.">
+  <title>OpenROAD Self-Evolving EDA Platform</title>
   <link rel="stylesheet" href="/assets/app.css">
 </head>
 <body>
   <header class="site-header">
-    <a class="wordmark" href="#overview" data-route="overview" aria-label="OpenROAD Evolving Platform home">
-      <span class="mark">O</span>
-      <span>OpenROAD <i>Evolving Platform</i></span>
+    <a class="wordmark" href="#overview" data-route="overview" aria-label="OpenROAD Self-Evolving EDA Platform home">
+      <span class="mark">O</span><span>OpenROAD <i>Self-Evolving EDA Platform</i></span>
     </a>
     <nav class="tabs" aria-label="Primary navigation">
       <button class="tab active" data-route="overview">Overview</button>
       <button class="tab" data-route="frontend">Frontend Design</button>
       <button class="tab" data-route="backend">Backend Design</button>
+      <button class="tab" data-route="extensions">Extensions</button>
       <button class="tab" data-route="projects">Projects &amp; Results</button>
       <button class="tab" data-route="evolution">Self-Evolution</button>
     </nav>
@@ -25,157 +25,181 @@
 
   <main>
     <section class="page active" id="page-overview">
-      <div class="hero wrap">
-        <p class="eyebrow">Evidence-first silicon automation</p>
-        <h1>From intent to layout,<br>with every decision accounted for.</h1>
-        <p class="hero-copy">A unified control plane for natural-language design, reproducible RTL-to-GDS workflows, stage-aware optimization, and evidence-backed learning.</p>
-        <div class="hero-actions">
-          <button class="button primary" data-route="frontend">Start a design <span>→</span></button>
-          <button class="button" data-route="projects">Browse results</button>
+      <section class="hero wrap">
+        <p class="eyebrow">Open-source intelligent chip design infrastructure</p>
+        <h1>OpenROAD Self-Evolving<br>EDA Platform</h1>
+        <p class="hero-tagline">From design intent to verified silicon evidence.</p>
+        <div class="capability-list" aria-label="Core platform capabilities">
+          <div><span>01</span><p><b>Spec → RTL → GDS</b>Natural-language design with reviewable RTL and reproducible physical implementation.</p></div>
+          <div><span>02</span><p><b>EDA Copilot</b>Natural-language control, report interpretation, diagnosis, and guided repair.</p></div>
+          <div><span>03</span><p><b>Flow Optimization</b>Stage-aware experiments with AgenticPD, BO/GP, Pareto analysis, and RL advice.</p></div>
+          <div><span>04</span><p><b>Tool-Evolve</b>Optional OpenROAD source-code candidate generation and evidence-based evaluation.</p></div>
+          <div><span>05</span><p><b>Extended Design Stack</b>2D/3D IC implementation and six independently integrated EDACraft components.</p></div>
+          <div><span>06</span><p><b>Continuous Learning</b>Traceable knowledge, verified run data, recommendations, and reusable design experience.</p></div>
         </div>
-      </div>
+        <div class="hero-actions">
+          <button class="button" id="watchDemo">Watch Demo <span>▷</span></button>
+          <button class="button" data-scroll="tutorial">Tutorial <span>↓</span></button>
+          <button class="button primary" data-route="frontend">Quick Start <span>→</span></button>
+        </div>
+        <p class="demo-notice" id="demoNotice" aria-live="polite"></p>
+      </section>
 
-      <div class="stat-band">
-        <div><b id="countDesigns">—</b><span>Registered designs</span></div>
-        <div><b id="countRuns">—</b><span>Runtime runs</span></div>
-        <div><b id="countCampaigns">—</b><span>Campaigns</span></div>
-        <div><b id="countKnowledge">—</b><span>Knowledge sources</span></div>
-      </div>
-
-      <section class="wrap section-space">
-        <div class="section-title"><p class="eyebrow">One durable path</p><h2>A platform, not a pile of scripts.</h2><p>The browser expresses intent. Workflow Runtime owns execution and terminal state. Every tool returns versioned evidence.</p></div>
-        <div class="architecture" aria-label="Platform architecture">
-          <article><span>01</span><h3>Intent</h3><p>Natural language, RTL, constraints, objectives</p></article>
-          <i>→</i>
-          <article><span>02</span><h3>Control plane</h3><p>Contracts, Runtime, Campaigns, policy gates</p></article>
-          <i>→</i>
-          <article><span>03</span><h3>Execution</h3><p>Isolated plugins and fixed toolchains</p></article>
-          <i>→</i>
-          <article><span>04</span><h3>Evidence</h3><p>Metrics, artifacts, hashes, replay context</p></article>
-          <i>→</i>
-          <article><span>05</span><h3>Learning</h3><p>RAG, BO/GP, Pareto, RL advice</p></article>
+      <section class="showcase-section">
+        <div class="wrap">
+          <div class="section-heading centered"><p class="eyebrow">Platform walkthrough</p><h2>See the complete design journey.</h2><p>Reserved for the project video and presentation deck. The final media can be added without changing the page structure.</p></div>
+          <div class="showcase-grid">
+            <div class="media-placeholder video-placeholder"><div class="play-mark">▷</div><b>Platform Demo</b><span>Video placeholder · coming soon</span></div>
+            <div class="media-placeholder slides-placeholder"><div class="slide-preview"><i></i><i></i><i></i></div><b>Project Slides</b><span>Capabilities · workflow · architecture · results</span></div>
+          </div>
         </div>
       </section>
 
-      <section class="soft-section">
+      <section class="wrap platform-path">
+        <div class="section-heading"><p class="eyebrow">A connected workflow</p><h2>One path from intent to learning.</h2><p>Each stage produces reviewable outputs that feed the next stage and, after verification, improve future decisions.</p></div>
+        <div class="path-diagram" aria-label="Intent to learning platform workflow">
+          <article><span>01</span><b>Design Intent</b><small>Spec, RTL, constraints</small></article><i>→</i>
+          <article><span>02</span><b>Frontend</b><small>RTL, netlist, schematic</small></article><i>→</i>
+          <article><span>03</span><b>Physical Design</b><small>2D / 3D implementation</small></article><i>→</i>
+          <article><span>04</span><b>Optimization</b><small>Campaigns and repair</small></article><i>→</i>
+          <article><span>05</span><b>Verified Learning</b><small>Evidence and advice</small></article>
+        </div>
+      </section>
+
+      <section class="tutorial-section" id="tutorial">
         <div class="wrap">
-          <div class="section-title split"><div><p class="eyebrow">Optional ecosystem</p><h2>EDACraft, integrated by layer.</h2></div><p>Six independent components share the same Runtime contract. They do not become hidden dependencies of the core flow.</p></div>
-          <div class="extension-grid" id="overviewExtensions"></div>
-          <p class="fine-print">DPLEvolve, TaiWei 3D, and the EDACraft Extension Pack are optional capabilities. The core self-evolution loop remains usable without them.</p>
+          <div class="section-heading"><p class="eyebrow">Recommended tutorial</p><h2>Your first reproducible design.</h2><p>Start with a built-in design, inspect the generated circuit, and then move it through physical implementation.</p></div>
+          <ol class="tutorial-list">
+            <li><span>1</span><div><b>Choose a frontend input</b><p>Use an audited example, upload Verilog/SystemVerilog, or begin a natural-language specification session.</p></div><button class="text-link" data-route="frontend">Open Frontend →</button></li>
+            <li><span>2</span><div><b>Review the circuit</b><p>Check gate count, synthesized schematic, RTL source, and gate-level netlist before implementation.</p></div></li>
+            <li><span>3</span><div><b>Configure the physical flow</b><p>Select PDK-facing constraints, clock, utilization, density, target stage, and optimization mode.</p></div><button class="text-link" data-route="backend">Open Backend →</button></li>
+            <li><span>4</span><div><b>Inspect and reuse the evidence</b><p>Review layout, QoR, reports, artifacts, optimization history, and verified learning records.</p></div><button class="text-link" data-route="projects">Browse Results →</button></li>
+          </ol>
         </div>
       </section>
     </section>
 
     <section class="page" id="page-frontend">
-      <div class="page-head wrap">
-        <div><p class="eyebrow">Frontend design</p><h1>Describe the circuit.<br>Inspect what was built.</h1></div>
-        <p>Natural-language sessions, BYOK model configuration, RTL import, Yosys netlists, and Graphviz-backed schematics live in one reviewable workspace.</p>
-      </div>
-      <div class="workspace wrap">
-        <aside class="panel composer">
-          <div class="panel-label"><span>Design intent</span><small>Nothing runs before confirmation</small></div>
-          <label>Existing design<select id="frontendDesign"><option value="">Create or select a design</option></select></label>
-          <label>Natural-language specification<textarea id="specPrompt" rows="7" placeholder="Build a parameterized synchronous FIFO with ready/valid handshakes, active-high reset, and an 8-bit data path."></textarea></label>
-          <button class="button primary full" id="createSpec">Create review session <span>→</span></button>
-          <div class="message" id="specMessage"></div>
-          <details class="inline-details">
-            <summary>Import Verilog / SystemVerilog</summary>
-            <label>Filename<input id="rtlFilename" value="design.v"></label>
-            <label>RTL source<textarea id="rtlSource" rows="8" placeholder="module design(input a, output y); assign y = ~a; endmodule"></textarea></label>
-            <button class="button full" id="importRtl">Import and synthesize</button>
-          </details>
-          <details class="inline-details">
-            <summary>Model provider · BYOK</summary>
-            <label>OpenAI-compatible endpoint<input id="providerUrl" value="https://api.openai.com/v1"></label>
-            <label>Model<input id="providerModel" placeholder="Model identifier"></label>
-            <label>API key<input id="providerKey" type="password" autocomplete="off" placeholder="Held in memory only"></label>
-            <button class="button full" id="saveProvider">Save session profile</button>
-            <p class="fine-print">Keys are memory-only, revocable, and accepted only over a secure transport.</p>
-          </details>
-        </aside>
-        <section class="panel canvas-panel">
-          <div class="panel-label"><span>Design evidence</span><select id="frontendView"><option value="schematic">Schematic</option><option value="rtl">RTL source</option><option value="netlist">Gate netlist</option><option value="analysis">Analysis</option></select></div>
-          <div class="design-meta" id="designMeta"><b>No design selected</b><span>Import RTL or choose an existing project.</span></div>
-          <div class="visual-canvas" id="frontendCanvas"><div class="empty"><span>◇</span><h3>A reviewable circuit will appear here.</h3><p>Schematics are rendered from the synthesized netlist, not hand-drawn.</p></div></div>
-        </section>
-      </div>
-      <div class="wrap extension-callout">
-        <div><p class="eyebrow">EDACraft frontend extensions</p><h2>White-box RTL and analog-agent surfaces.</h2></div>
-        <div id="frontendExtensions" class="mini-extension-grid"></div>
-      </div>
-    </section>
+      <div class="page-head wrap"><div><p class="eyebrow">Frontend design</p><h1>From an idea to<br>a reviewable circuit.</h1></div><p>Choose a starting point, synthesize the design, and inspect the real RTL, netlist, schematic, and gate statistics in one vertical workspace.</p></div>
+      <section class="workflow-section wrap">
+        <div class="step-heading"><span>01</span><div><h2>Design input</h2><p>Three ways to begin. All paths converge on the same registered design record.</p></div></div>
+        <div class="panel input-panel">
+          <div class="choice-tabs" role="tablist" aria-label="Design input method">
+            <button class="active" data-input-mode="example">Choose Example</button>
+            <button data-input-mode="upload">Upload RTL</button>
+            <button data-input-mode="spec">Natural-language Spec</button>
+          </div>
+          <div class="input-mode active" id="input-example">
+            <div class="input-copy"><b>Audited design library</b><p>Start quickly with synthesizable examples ranging from basic logic to a UART and a compact RISC-V teaching core.</p></div>
+            <div class="form-stack"><label>Example design<select id="exampleSelect"><option value="">Loading examples…</option></select></label><p class="selection-note" id="exampleDescription"></p><button class="button primary" id="useExample">Synthesize Example <span>→</span></button></div>
+          </div>
+          <div class="input-mode" id="input-upload">
+            <div class="input-copy"><b>Verilog / SystemVerilog</b><p>Paste a design or load a local source file. The browser previews it before synthesis.</p></div>
+            <div class="form-stack"><label>Local RTL file<input id="rtlFile" type="file" accept=".v,.sv,text/plain"></label><label>Filename<input id="rtlFilename" value="design.v"></label><label>RTL source<textarea id="rtlSource" rows="10" placeholder="module design(input a, output y); assign y = ~a; endmodule"></textarea></label><button class="button primary" id="importRtl">Import and Synthesize <span>→</span></button></div>
+          </div>
+          <div class="input-mode" id="input-spec">
+            <div class="input-copy"><b>Natural-language specification</b><p>Describe the interface, behavior, timing, and reset policy. The resulting session remains reviewable before execution.</p></div>
+            <div class="form-stack"><label>Specification<textarea id="specPrompt" rows="9" placeholder="Build a parameterized synchronous FIFO with ready/valid handshakes, active-high reset, and an 8-bit data path."></textarea></label><button class="button primary" id="createSpec">Create Spec Session <span>→</span></button><small>Model-backed generation uses the provider profile configured in the RTLScout section below.</small></div>
+          </div>
+          <p class="message" id="specMessage" aria-live="polite"></p>
+        </div>
+      </section>
 
-    <section class="page" id="page-backend">
-      <div class="page-head wrap">
-        <div><p class="eyebrow">Backend design</p><h1>Run the flow.<br>Keep the evidence.</h1></div>
-        <p>OpenROAD/ORFS remains the executable core. Flow-Agent monitors stages, campaigns explore parameters, and recovery stays policy-bounded.</p>
-      </div>
-      <div class="workspace backend-workspace wrap">
-        <aside class="panel composer">
-          <div class="panel-label"><span>Implementation request</span><small>Submitted to Runtime</small></div>
-          <label>Design<select id="backendDesign"><option value="">Select a registered design</option></select></label>
-          <div class="two-fields"><label>Clock port<input id="flowClock" value="clk"></label><label>Period · ns<input id="flowPeriod" type="number" value="10" min="0.01" step="0.1"></label></div>
-          <div class="two-fields"><label>Core utilization · %<input id="flowUtil" type="number" value="30" min="1" max="99"></label><label>Place density<input id="flowDensity" type="number" value="0.55" min="0.01" max="1" step="0.01"></label></div>
-          <label>Target stage<select id="flowTarget"><option value="finish">Finish · GDS</option><option value="route">Routing</option><option value="cts">Clock tree</option><option value="place">Placement</option><option value="floorplan">Floorplan</option><option value="synth">Synthesis</option></select></label>
-          <button class="button primary full" id="submitFlow">Submit RTL-to-GDS <span>→</span></button>
-          <div class="message" id="flowMessage"></div>
-          <div class="truth-note"><b>State authority</b><p>The web server submits a durable task. It does not own the EDA process or invent completion state.</p></div>
-        </aside>
-        <section class="panel run-panel">
-          <div class="panel-label"><span>Flow observation</span><select id="runSelect"><option value="">Choose a Runtime run</option></select></div>
-          <div class="run-heading" id="runHeading"><div><b>No run selected</b><span>Completed and active Runtime records appear here.</span></div></div>
-          <div class="stage-rail" id="stageRail"></div>
-          <div class="result-evidence" id="backendEvidence"><div class="empty"><span>□</span><h3>Physical evidence, not screenshots.</h3><p>KLayout-generated views, GDS, DEF, ODB, reports, and hashes are displayed when registered.</p></div></div>
-        </section>
-      </div>
-      <section class="wrap backend-modes">
-        <div class="section-title split"><div><p class="eyebrow">Backend modes</p><h2>One core, optional specialist extensions.</h2></div><p>Toolchains remain isolated. A missing optional extension cannot silently change the 2D OpenROAD environment.</p></div>
-        <div class="mode-grid">
-          <article><span class="pill core">Core</span><h3>OpenROAD / ORFS</h3><p>Six-stage digital physical implementation, Campaigns, 2D GDS, QoR, cancellation, and recovery.</p></article>
-          <article><span class="pill optional">Optional</span><h3>TaiWei 3D</h3><p>Pinned 3D gcd flow with upper/bottom tiers, HBT and cross-tier metrics, views, and replay evidence.</p></article>
-          <article><span class="pill optional">Optional</span><h3>ImplCraft</h3><p>The preserved P11 adapter generates commercial-tool scripts in dry-run mode. It does not claim live commercial EDA.</p></article>
+      <section class="workflow-section wrap">
+        <div class="step-heading"><span>02</span><div><h2>Design results</h2><p>Inspect outputs produced from the registered design rather than illustrative mockups.</p></div><label class="compact-select">Registered design<select id="frontendDesign"><option value="">Select a design</option></select></label></div>
+        <div class="design-summary" id="designMeta"><div><b>No design selected</b><span>Choose an example, upload RTL, or select an existing design.</span></div><div class="metric"><strong>—</strong><small>Gate instances</small></div><div class="metric"><strong>—</strong><small>Ports</small></div></div>
+        <div class="panel result-viewer">
+          <div class="viewer-tabs"><button class="active" data-design-view="schematic">Circuit Schematic</button><button data-design-view="rtl">Verilog Source</button><button data-design-view="netlist">Gate Netlist</button><div class="viewer-downloads"><a id="downloadRtl" href="#">Download RTL</a><a id="downloadNetlist" href="#">Download Netlist</a></div></div>
+          <div class="visual-canvas" id="frontendCanvas"><div class="empty"><span>◇</span><h3>Your synthesized circuit will appear here.</h3><p>Schematics are generated from the gate-level netlist with established graph tools.</p></div></div>
+        </div>
+      </section>
+
+      <section class="feature-section">
+        <div class="wrap">
+          <div class="step-heading"><span>03</span><div><h2>RTLScout optimization <em>Optional</em></h2><p>Use your own model provider to evolve RTL candidates and compare verified PPA results.</p></div></div>
+          <div class="rtlscout-flow"><article><b>Baseline RTL</b><small>Validate interface and behavior</small></article><i>→</i><article><b>Candidate Strategy</b><small>LLM-guided edits and selection</small></article><i>→</i><article><b>Verification</b><small>Compile, simulate, synthesize</small></article><i>→</i><article><b>PPA Ranking</b><small>Best score and improvement</small></article></div>
+          <div class="optimizer-layout">
+            <div class="provider-panel panel"><h3>Model provider</h3><p>Required for model-backed RTLScout runs. Credentials remain session-only and secure transport is required.</p><div class="provider-fields"><label>OpenAI-compatible endpoint<input id="providerUrl" value="https://api.openai.com/v1"></label><label>Model<input id="providerModel" placeholder="Model identifier"></label><label>API key<input id="providerKey" type="password" autocomplete="off" placeholder="Session-only API key"></label></div><button class="button" id="saveProvider">Save Session Profile</button></div>
+            <div class="optimizer-preview"><div><small>Evolution strategy</small><b>Awaiting an RTLScout campaign</b></div><div><small>Best PPA result</small><b>—</b></div><div><small>Optimization gain</small><b>—</b></div><button class="button" disabled>Run RTLScout · configure provider first</button></div>
+          </div>
+          <button class="extension-jump" data-open-extension="edacraft-rtlcraft"><span><small>Continue with an extension</small><b>Explore RTLCraft and EDACode workflows</b></span><i>Open EDACraft →</i></button>
         </div>
       </section>
     </section>
 
+    <section class="page" id="page-backend">
+      <div class="page-head wrap"><div><p class="eyebrow">Backend design</p><h1>Physical design,<br>stage by stage.</h1></div><p>Configure implementation, follow six physical-design stages, then inspect layout, QoR, diagnostics, and downloadable evidence.</p></div>
+      <section class="workflow-section wrap">
+        <div class="step-heading"><span>01</span><div><h2>Implementation setup</h2><p>Select the design, constraints, target stage, and optimization behavior.</p></div></div>
+        <div class="panel backend-form">
+          <div class="form-grid"><label>Registered design<select id="backendDesign"><option value="">Select a registered design</option></select></label><label>PDK / platform<select id="flowPdk"><option>SKY130HD · OpenROAD</option><option disabled>ASAP7 · requires installed platform</option></select></label><label>Clock port<input id="flowClock" value="clk"></label><label>Clock period · ns<input id="flowPeriod" type="number" value="10" min="0.01" step="0.1"></label><label>Core utilization · %<input id="flowUtil" type="number" value="30" min="1" max="99"></label><label>Place density<input id="flowDensity" type="number" value="0.55" min="0.01" max="1" step="0.01"></label><label>Target stage<select id="flowTarget"><option value="finish">Finish · GDS</option><option value="route">Routing</option><option value="cts">Clock tree</option><option value="place">Placement</option><option value="floorplan">Floorplan</option><option value="synth">Synthesis</option></select></label><label>Optimization mode<select id="flowMode"><option>Baseline flow</option><option>Stage-aware Campaign</option><option>Agent-guided search</option></select></label></div>
+          <div class="submit-row"><p>Execution is recorded as a recoverable Runtime task with isolated artifacts and stage status.</p><button class="button primary" id="submitFlow">Start RTL-to-GDS <span>→</span></button></div><p class="message" id="flowMessage" aria-live="polite"></p>
+        </div>
+      </section>
+      <section class="workflow-section wrap">
+        <div class="step-heading"><span>02</span><div><h2>Flow progress</h2><p>Follow each implementation stage and its measured status.</p></div><label class="compact-select">Runtime run<select id="runSelect"><option value="">Choose a Runtime run</option></select></label></div>
+        <div class="run-heading" id="runHeading"><div><b>No run selected</b><span>Queued, active, and completed records appear here.</span></div></div>
+        <div class="stage-rail" id="stageRail"></div>
+      </section>
+      <section class="workflow-section wrap">
+        <div class="step-heading"><span>03</span><div><h2>Layout and implementation evidence</h2><p>Review generated 2D/3D views, QoR reports, diagnostics, hashes, and implementation artifacts.</p></div></div>
+        <div class="panel result-evidence" id="backendEvidence"><div class="empty"><span>□</span><h3>Run evidence will appear here.</h3><p>Layout views are generated by the toolchain; GDS, DEF, ODB, timing, power, area, DRC, and logs remain downloadable.</p></div></div>
+      </section>
+      <section class="feature-section backend-features"><div class="wrap"><div class="section-heading"><p class="eyebrow">Optional implementation capabilities</p><h2>Extend the physical-design workflow.</h2><p>Each module opens its own workspace and exposes current availability, required inputs, and recorded results.</p></div><div class="clickable-grid"><button data-open-extension="flow-agent"><span>Flow optimization</span><b>AgenticPD &amp; stage-aware Campaigns</b><p>Parameter search, status monitoring, diagnosis, and policy-bounded repair.</p><i>Open →</i></button><button data-open-extension="taiwei-3d"><span>3D physical design</span><b>TaiWei 3D IC</b><p>Upper/bottom tiers, HBT, cross-tier metrics, layout views, and replay evidence.</p><i>Open →</i></button><button data-open-extension="edacraft-implcraft"><span>Backend extension</span><b>ImplCraft</b><p>Preserved script-generation workflow and OpenROAD-compatible integration path.</p><i>Open →</i></button><button data-open-extension="dplevolve"><span>Code-level optimization</span><b>DPLEvolve / Tool-Evolve</b><p>User-initiated long-running OpenROAD source candidate generation and evaluation.</p><i>Open Dashboard →</i></button></div></div></section>
+    </section>
+
+    <section class="page" id="page-extensions">
+      <div class="page-head wrap"><div><p class="eyebrow">Extensions</p><h1>Specialist tools,<br>connected by evidence.</h1></div><p>Explore 3D IC, device, interconnect, circuit, RTL, analog-agent, backend, and source-code optimization capabilities without adding them to the default flow.</p></div>
+      <section class="workflow-section wrap">
+        <div class="section-heading"><p class="eyebrow">Extension catalog</p><h2>Choose a capability to inspect.</h2><p>Every item below is interactive. Select one to see its scope, readiness, required inputs, and available actions.</p></div>
+        <div class="extension-catalog" id="extensionCatalog"></div>
+      </section>
+      <section class="extension-detail-section" id="extensionDetailSection">
+        <div class="wrap" id="extensionDetail"><div class="empty"><span>＋</span><h3>Select an extension.</h3><p>Its workflow and live Runtime records will open here.</p></div></div>
+      </section>
+      <section class="wrap tool-dashboard" id="dplevolveDashboard">
+        <div class="step-heading"><span>Long task</span><div><h2>DPLEvolve run dashboard</h2><p>Source-code evolution is optional, user-configured, and never starts automatically.</p></div></div>
+        <div class="dashboard-bar"><div><small>Model provider</small><b>User supplied</b></div><div><small>Active round</small><b id="dplRound">—</b></div><div><small>Candidates</small><b id="dplCandidates">—</b></div><div><small>Best improvement</small><b id="dplGain">—</b></div><div><small>Elapsed</small><b id="dplElapsed">—</b></div></div>
+        <div class="panel dashboard-body"><div class="dashboard-state"><span id="dplStatus" class="status">Not started</span><h3 id="dplTitle">No DPLEvolve task is running.</h3><p id="dplSummary">Configure a model provider and explicitly create a source-audit or evolution task when the compute budget permits.</p></div><div class="candidate-table"><div class="candidate-head"><span>Candidate</span><span>Validation</span><span>QoR</span><span>Gain</span><span>Duration</span></div><div id="dplRows" class="candidate-empty">No candidate records yet.</div></div><div class="dashboard-actions"><button class="button" data-route="projects">View Existing Records</button><button class="button primary" disabled>Start Evolution · provider and budget required</button></div></div>
+      </section>
+    </section>
+
     <section class="page" id="page-projects">
-      <div class="page-head wrap compact-head">
-        <div><p class="eyebrow">Projects &amp; results</p><h1>Every project leaves<br>a navigable record.</h1></div>
-        <p>RTL, physical design, 3D, TCAD, EM, RF/analog, and code-evolution records share one evidence-oriented index.</p>
-      </div>
-      <div class="wrap result-toolbar"><div class="segmented" id="resultFilters"><button class="active" data-filter="all">All</button><button data-filter="design">Designs</button><button data-filter="runtime_run">Runtime runs</button></div><button class="button small" id="refreshResults">Refresh</button></div>
-      <div class="wrap results-layout">
+      <div class="page-head wrap"><div><p class="eyebrow">Projects &amp; results</p><h1>A clear record<br>for every design.</h1></div><p>Browse projects in a vertical index. Open one record to review its complete frontend, physical-design, optimization, extension, and replay evidence.</p></div>
+      <section class="workflow-section wrap">
+        <div class="result-toolbar"><div class="segmented" id="resultFilters"><button class="active" data-filter="all">All records</button><button data-filter="design">Designs</button><button data-filter="runtime_run">Runtime runs</button></div><button class="button small" id="refreshResults">Refresh</button></div>
         <div class="result-list" id="resultList"><div class="empty"><span>○</span><h3>Loading project records…</h3></div></div>
-        <aside class="panel detail-panel" id="resultDetail"><div class="empty"><span>↗</span><h3>Select a project.</h3><p>Its visualization, artifacts, versions, hashes, and replay data will open here.</p></div></aside>
-      </div>
+      </section>
+      <section class="project-detail-section" id="projectDetailSection"><div class="wrap"><button class="text-link back-to-results" id="closeResultDetail">← Back to project list</button><div id="resultDetail"><div class="empty"><span>↗</span><h3>Select a project.</h3><p>Its circuit, stages, layout, QoR, artifacts, versions, hashes, and replay context will open here.</p></div></div></div></section>
     </section>
 
     <section class="page" id="page-evolution">
-      <div class="page-head wrap">
-        <div><p class="eyebrow">Self-evolution</p><h1>Learning that can<br>show its work.</h1></div>
-        <p>Public knowledge informs retrieval. Only verified Runtime outcomes become observations. Recommendations stay visible and controllable.</p>
-      </div>
-      <div class="stat-band evolution-stats">
-        <div><b id="evoSources">—</b><span>Public sources</span></div>
-        <div><b id="evoBenchmarks">—</b><span>Benchmarks</span></div>
-        <div><b id="evoObservations">—</b><span>Observed samples</span></div>
-        <div><b id="evoStudies">—</b><span>BO / GP studies</span></div>
-        <div><b id="evoRecommendations">—</b><span>User-facing advice</span></div>
-      </div>
-      <section class="wrap section-space">
-        <div class="learning-loop" id="learningLoop"></div>
+      <div class="page-head wrap"><div><p class="eyebrow">Self-evolution</p><h1>Learning from<br>verified design experience.</h1></div><p>The platform combines traceable knowledge with observed Runtime results, proposes better decisions, keeps people in control, and measures the outcome of every accepted action.</p></div>
+      <section class="evolution-hero wrap">
+        <div class="section-heading"><p class="eyebrow">Learning workflow</p><h2>How experience becomes a better next run.</h2></div>
+        <div class="evolution-flow" id="learningLoop">
+          <div class="flow-source"><article><small>Knowledge</small><b>Research &amp; RAG</b><p>Audited papers, methods, and benchmarks</p></article><article><small>Experience</small><b>Runtime observations</b><p>Verified metrics, artifacts, and failure evidence</p></article></div>
+          <div class="flow-merge">→</div>
+          <article class="flow-model"><small>Models</small><b>GP · BO · RL shadow policy</b><p>Prediction, acquisition, and policy advice with confidence</p></article><div class="flow-merge">→</div>
+          <article class="flow-human"><small>Decision</small><b>Human review</b><p>Approve, reject, or refine a recommendation</p></article><div class="flow-merge">→</div>
+          <article class="flow-runtime"><small>Action</small><b>Campaign &amp; Runtime</b><p>Execute, observe, verify, and return evidence</p></article>
+        </div>
+        <div class="evolution-metrics"><div><b id="evoSources">—</b><span>Knowledge sources</span></div><div><b id="evoBenchmarks">—</b><span>Benchmarks</span></div><div><b id="evoObservations">—</b><span>Observed samples</span></div><div><b id="evoStudies">—</b><span>BO / GP studies</span></div><div><b id="evoRecommendations">—</b><span>Recommendations</span></div></div>
       </section>
-      <div class="wrap evolution-grid">
-        <section class="panel evolution-panel"><div class="panel-label"><span>Knowledge &amp; benchmarks</span><small>External provenance</small></div><div id="knowledgeList" class="data-list"></div></section>
-        <section class="panel evolution-panel"><div class="panel-label"><span>BO / Gaussian Process studies</span><small>Prediction ≠ observation</small></div><div id="studyList" class="data-list"></div></section>
-        <section class="panel evolution-panel wide"><div class="panel-label"><span>Research foundations</span><small>Paper → implementation traceability</small></div><div id="researchMethodList" class="data-list"></div></section>
-        <section class="panel evolution-panel wide"><div class="panel-label"><span>RL and optimizer recommendations</span><small>Human decision gate</small></div><div id="recommendationList" class="data-list"></div><p id="evolutionActionMessage" class="message"></p></section>
-      </div>
-      <div class="wrap safety-banner"><div><span>Policy</span><b>RL learns beside the flow before it acts inside the flow.</b></div><p>Low-confidence and out-of-distribution proposals remain advice. Execution requires context match, calibration, budget, opt-in, and Runtime submission.</p></div>
+      <section class="evolution-content">
+        <div class="wrap">
+          <div class="section-heading"><p class="eyebrow">Current learning record</p><h2>Recommendations remain inspectable and controllable.</h2></div>
+          <div id="recommendationList" class="recommendation-list"></div><p id="evolutionActionMessage" class="message"></p>
+          <div class="supporting-records">
+            <details><summary><span>Knowledge &amp; benchmarks</span><small>Public provenance</small></summary><div id="knowledgeList" class="data-list"></div></details>
+            <details><summary><span>BO / Gaussian Process studies</span><small>Measured and predicted values</small></summary><div id="studyList" class="data-list"></div></details>
+            <details><summary><span>Research foundations</span><small>Paper-to-implementation traceability</small></summary><div id="researchMethodList" class="data-list"></div></details>
+          </div>
+        </div>
+      </section>
     </section>
   </main>
-
-  <footer><span>OpenROAD Evolving Platform</span><span>Local research workspace · evidence before claims</span></footer>
+  <footer><span>OpenROAD Self-Evolving EDA Platform</span><span>Local research workspace · verified evidence</span></footer>
   <script src="/assets/app.js"></script>
 </body>
 </html>

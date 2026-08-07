@@ -241,3 +241,29 @@ def test_design_import_creates_netlist_schematic_and_analysis(tmp_path):
     assert detail["analysis"]["instance_count"] > 0
     assert "module xor_gate" in detail["rtl_source"]
     assert "<svg" in state.designs.schematic(design["id"])
+
+
+def test_design_example_catalog_spans_starter_and_advanced_designs(tmp_path):
+    yosys = which("yosys")
+    state = ApiState(
+        tmp_path / "platform.db", tmp_path / "uploads", tmp_path / "orfs",
+        design_root=tmp_path / "designs", legacy_root=tmp_path / "legacy",
+        yosys_bin=Path(yosys) if yosys else tmp_path / "missing-yosys",
+        runtime_db_path=tmp_path / "runtime.db",
+        campaign_db_path=tmp_path / "campaign.db",
+    )
+    examples = state.designs.examples()
+    assert {item["id"] for item in examples} >= {
+        "adder8", "decoder3to8", "mux4", "counter16",
+        "alu8", "traffic_controller", "uart_tx", "mini_riscv",
+    }
+    assert {item["level"] for item in examples} == {"starter", "advanced"}
+    assert all("module " in item["rtl_source"] for item in examples)
+    if yosys:
+        complex_examples = [item for item in examples if item["id"] in {"uart_tx", "mini_riscv"}]
+        registered = [state.designs.import_rtl(
+            filename=item["filename"], source=item["rtl_source"],
+            description=item["description"],
+        ) for item in complex_examples]
+        assert len(registered) == 2
+        assert all(item["analysis"]["instance_count"] > 0 for item in registered)

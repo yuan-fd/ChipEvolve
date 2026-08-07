@@ -1,4 +1,4 @@
-"""Read models for the five-page platform UI.
+"""Read models for the six-page platform UI.
 
 This service intentionally performs no scheduling. It projects authoritative
 stores into a stable, presentation-neutral API shape.
@@ -15,6 +15,7 @@ NAVIGATION = (
     {"id": "overview", "label": "Overview"},
     {"id": "frontend", "label": "Frontend Design"},
     {"id": "backend", "label": "Backend Design"},
+    {"id": "extensions", "label": "Extensions"},
     {"id": "projects", "label": "Projects & Results"},
     {"id": "evolution", "label": "Self-Evolution"},
 )
@@ -39,13 +40,15 @@ class PlatformReadModel:
         return {
             "schema_version": 1,
             "product": {
-                "name": "OpenROAD Evolving Platform",
-                "statement": "From natural-language intent to reproducible silicon evidence.",
+                "name": "OpenROAD Self-Evolving EDA Platform",
+                "statement": "From design intent to verified silicon evidence.",
                 "core": [
-                    "Natural-language specification and RTL generation",
+                    "Natural-language Spec-to-RTL-to-GDS design",
+                    "Natural-language interaction with EDA workflows",
                     "Runtime-governed RTL-to-GDS implementation",
-                    "Stage-aware campaigns, diagnosis, and bounded repair",
+                    "Stage-aware Flow-Agent campaigns, diagnosis, and repair",
                     "Evidence-backed learning with human-controlled recommendations",
+                    "Optional 3D IC, EDACraft, and source-code evolution",
                 ],
             },
             "navigation": list(NAVIGATION),
@@ -56,6 +59,18 @@ class PlatformReadModel:
                 "learning_plane": "Observed runs and public knowledge remain provenance-separated",
             },
             "extensions": self.extension_catalog,
+            "extension_families": [
+                {
+                    "id": "taiwei-3d", "name": "TaiWei 3D IC",
+                    "summary": "Pinned two-tier physical implementation with HBT and cross-tier evidence.",
+                    "status": "available", "execution": "Workflow Runtime",
+                },
+                {
+                    "id": "dplevolve", "name": "DPLEvolve / Tool-Evolve",
+                    "summary": "Optional OpenROAD source-code candidate generation and audited evaluation.",
+                    "status": "available_on_demand", "execution": "User-configured long task",
+                },
+            ],
             "counts": {
                 "designs": results["counts"]["designs"],
                 "runtime_runs": results["counts"]["runtime_runs"],

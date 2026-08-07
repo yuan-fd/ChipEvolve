@@ -209,7 +209,7 @@ class ApiState:
                     "id": "edacraft-extension-pack",
                     "name": "EDACraft Extension Pack",
                     "description": "Six independent frontend, device, interconnect, circuit, and backend extensions.",
-                    "route": "overview",
+                    "route": "extensions",
                     "status": "available",
                 },
             ],
@@ -964,6 +964,8 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                     self._json(state.projects())
                 elif path == "/api/designs":
                     self._json({"designs": state.designs.list()})
+                elif path == "/api/designs/examples":
+                    self._json({"examples": state.designs.examples()})
                 elif re.fullmatch(r"/api/designs/[^/]+/schematic\.svg", path):
                     design_id = unquote(path.split("/")[3])
                     self._text(state.designs.schematic(design_id), "image/svg+xml; charset=utf-8")
