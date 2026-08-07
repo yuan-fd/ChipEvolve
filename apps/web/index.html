@@ -116,13 +116,56 @@
 
       <section class="feature-section">
         <div class="wrap">
-          <div class="step-heading"><span>03</span><div><h2>RTLScout optimization <em>Optional</em></h2><p>Use your own model provider to evolve RTL candidates and compare verified PPA results.</p></div></div>
-          <div class="rtlscout-flow"><article><b>Baseline RTL</b><small>Validate interface and behavior</small></article><i>→</i><article><b>Candidate Strategy</b><small>LLM-guided edits and selection</small></article><i>→</i><article><b>Verification</b><small>Compile, simulate, synthesize</small></article><i>→</i><article><b>PPA Ranking</b><small>Best score and improvement</small></article></div>
-          <div class="optimizer-layout">
-            <div class="provider-panel panel"><h3>Model provider</h3><p>Required for model-backed RTLScout runs. Credentials remain session-only and secure transport is required.</p><div class="provider-fields"><label>OpenAI-compatible endpoint<input id="providerUrl" value="https://api.openai.com/v1"></label><label>Model<input id="providerModel" placeholder="Model identifier"></label><label>API key<input id="providerKey" type="password" autocomplete="off" placeholder="Session-only API key"></label></div><button class="button" id="saveProvider">Save Session Profile</button></div>
-            <div class="optimizer-preview"><div><small>Evolution strategy</small><b>Awaiting an RTLScout campaign</b></div><div><small>Best PPA result</small><b>—</b></div><div><small>Optimization gain</small><b>—</b></div><button class="button" disabled>Run RTLScout · configure provider first</button></div>
+          <div class="step-heading"><span>03</span><div><h2>RTLScout optimization <em>Optional</em></h2><p>Generate and improve benchmark RTL with correctness as a hard gate, then rank only verified candidates by cost.</p></div></div>
+
+          <section class="rtlscout-explainer panel">
+            <div class="module-head"><div><b>How RTLScout works</b><span>The agent may edit RTL, but it cannot declare success. Verilator and Yosys produce the recorded result.</span></div><small>Agent loop</small></div>
+            <div class="agent-flow" aria-label="RTLScout optimization workflow">
+              <article><small>Input</small><b>Specification + objective</b><span>Benchmark context, cost metric, tool rules</span></article><i>→</i>
+              <article><small>Agent</small><b>LLM proposes an edit</b><span>Create, inspect, replace, or apply a diff</span></article><i>→</i>
+              <div class="evaluation-group"><small>Verified evaluation</small><div><article><b>Compile</b><span>Python DSL → Verilog when needed</span></article><i>→</i><article><b>Verilator</b><span>Lint and simulation</span></article><i>→</i><article><b>Yosys</b><span>Cost and structure</span></article></div></div><i>→</i>
+              <article><small>Selection</small><b>Keep the best legal RTL</b><span>Correct first, then lower cost</span></article>
+            </div>
+            <div class="feedback-loop"><span>Evaluation evidence returns to the agent</span><i>↺</i><span>Repeat until done or the step budget is reached</span></div>
+          </section>
+
+          <div class="rtlscout-setup">
+            <section class="panel experiment-panel">
+              <div class="module-head"><div><b>1. Configure the experiment</b><span>Choose what RTLScout should optimize and how much work it may perform.</span></div></div>
+              <div class="experiment-fields">
+                <label>Run mode<select id="rtlscoutMode"><option value="offline_demo">Offline verified demo · no API key</option><option value="byok">Custom provider · HTTPS required</option></select></label>
+                <label>Benchmark<select id="rtlscoutBenchmark"><option value="simple_adder">simple_adder</option></select></label>
+                <label>Cost objective<select id="rtlscoutCost"><option value="transistors">Transistor count · Yosys + ABC</option><option value="yosys_cells">Cell count · Yosys</option><option value="yosys_wires">Wire count · Yosys</option></select></label>
+                <label>Maximum agent steps<input id="rtlscoutSteps" type="number" min="1" max="8" value="3"></label>
+              </div>
+              <p class="inline-note" id="rtlscoutModeNote">The offline demo runs the real agent loop, Verilator checks, and Yosys scoring with a deterministic fake model.</p>
+            </section>
+
+            <section class="panel provider-panel">
+              <div class="module-head"><div><b>2. Connect a model provider</b><span>This only validates and stores a session profile. It does not start RTLScout.</span></div><small id="providerState">Not connected</small></div>
+              <div class="provider-fields"><label>OpenAI-compatible endpoint<input id="providerUrl" value="https://api.openai.com/v1"></label><label>Model<input id="providerModel" placeholder="Model identifier"></label><label>API key<input id="providerKey" type="password" autocomplete="off" placeholder="Held in memory only"></label></div>
+              <div class="provider-action"><button class="button provider-connect" id="saveProvider">Connect Provider</button><p id="providerHint">The offline demo does not need a provider. On a secure deployment, the key is held in server memory and never written to the project database.</p></div>
+            </section>
           </div>
-          <button class="extension-jump" data-open-extension="edacraft-rtlcraft"><span><small>Continue with an extension</small><b>Explore RTLCraft and EDACode workflows</b></span><i>Open EDACraft →</i></button>
+
+          <section class="panel rtlscout-launch">
+            <div><small>3. Start optimization</small><b id="rtlscoutLaunchSummary">Offline demo · simple_adder · minimize transistors · 3 steps</b><span>Submitting creates a recoverable Runtime record; execution and status remain visible below.</span></div>
+            <button class="button primary" id="runRtlscout">Run Offline Demo <span>→</span></button>
+          </section>
+          <p class="message rtlscout-message" id="rtlscoutMessage" aria-live="polite"></p>
+
+          <section class="panel rtlscout-dashboard" id="rtlscoutDashboard">
+            <div class="module-head dashboard-head"><div><b>RTLScout run dashboard</b><span id="rtlscoutRunLabel">No run selected</span></div><span class="status" id="rtlscoutStatus">Idle</span></div>
+            <div class="rtlscout-metrics"><div><small>Current step</small><b id="rtlscoutCurrentStep">—</b></div><div><small>Evaluated candidates</small><b id="rtlscoutCandidates">—</b></div><div><small>Legal candidates</small><b id="rtlscoutLegal">—</b></div><div><small>Best cost</small><b id="rtlscoutBestCost">—</b></div><div><small>Improvement</small><b id="rtlscoutImprovement">—</b></div><div><small>Runtime</small><b id="rtlscoutRuntime">—</b></div></div>
+            <div class="rtlscout-progress" id="rtlscoutProgress"><div><i></i><b>Prompt</b><small>waiting</small></div><div><i></i><b>Generate</b><small>waiting</small></div><div><i></i><b>Compile</b><small>waiting</small></div><div><i></i><b>Verify</b><small>waiting</small></div><div><i></i><b>Score</b><small>waiting</small></div><div><i></i><b>Select best</b><small>waiting</small></div></div>
+            <div class="candidate-dashboard"><div class="candidate-title"><b>Candidate history</b><span>Rows appear only after Runtime registers verified RTLScout evaluation evidence.</span></div><div class="rtlscout-table"><div class="rtlscout-table-head"><span>Iteration</span><span>Candidate</span><span>Lint</span><span>Simulation</span><span>Legal</span><span>Cost</span><span>Delta</span></div><div id="rtlscoutCandidateRows" class="candidate-empty">Start a run to see candidate-level status and cost changes.</div></div></div>
+            <div class="rtlscout-output"><div><b>Best candidate and changes</b><p id="rtlscoutBestSummary">The best verified RTL, result JSON, summary, and log will appear here.</p></div><div id="rtlscoutArtifacts" class="dashboard-links"></div></div>
+          </section>
+
+          <section class="frontend-alternatives panel">
+            <div class="module-head"><div><b>EDACraft frontend alternatives</b><span>These are separate tools, not additional RTLScout steps. Use them only when their design model matches your task.</span></div></div>
+            <div class="alternative-grid"><button data-open-extension="edacraft-rtlcraft"><span><b>RTLCraft</b><small>Python hardware DSL → SystemVerilog generation and verification.</small></span><i>Open RTLCraft →</i></button><button data-open-extension="edacraft-edacode"><span><b>EDACode</b><small>Review-only analog and mixed-signal design proposals.</small></span><i>Open EDACode →</i></button></div>
+          </section>
         </div>
       </section>
     </section>

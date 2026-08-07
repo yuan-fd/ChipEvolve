@@ -42,9 +42,10 @@ from openroad_platform_analysis import (  # noqa: E402
 )
 from openroad_platform_execution import (  # noqa: E402
     PluginRegistry, ToolchainConfig, build_craft_flow_plan, build_orfs_task,
+    build_rtlscout_task,
     build_edacraft_task, craft_capability_matrix, craft_plan_to_task,
     edacraft_catalog, edacraft_component, edacraft_plugin_manifest,
-    implcraft_plugin_manifest, orfs_plugin_manifest,
+    implcraft_plugin_manifest, orfs_plugin_manifest, rtlscout_plugin_manifest,
 )
 from openroad_platform_scheduler import (  # noqa: E402
     ALLOWED_MODELS, CampaignStore, CodexCliSpecProvider, JobStore,
@@ -127,6 +128,24 @@ class ApiState:
             or ROOT.parent / "bin" / "klayout",
         )
         manifests = [orfs_plugin_manifest(toolchain)]
+        self.rtlscout_readiness = {
+            "ready": False,
+            "reason": "Pinned RTLScout source or isolated toolchain is unavailable",
+        }
+        rtlscout_source = ROOT / ".external-src" / "rtlscout"
+        rtlscout_python = ROOT / ".tools" / "venvs" / "rtlscout312" / "bin" / "python"
+        rtlscout_verilator = ROOT / ".tools" / "verilator-5.040" / "bin" / "verilator"
+        try:
+            manifests.append(rtlscout_plugin_manifest(
+                rtlscout_source, rtlscout_python,
+                verilator_bin=rtlscout_verilator, yosys_bin=toolchain.yosys_bin,
+            ))
+            self.rtlscout_readiness = {
+                "ready": True,
+                "reason": "Pinned source and isolated RTLScout toolchain are available",
+            }
+        except (FileNotFoundError, ValueError) as exc:
+            self.rtlscout_readiness["reason"] = str(exc)
         edacraft_source = ROOT / ".external-src" / "edacraft"
         if edacraft_source.is_dir():
             for slug in ("rtlcraft", "edacode", "tcadcraft", "momcraft", "cktcraft"):
@@ -230,6 +249,63 @@ class ApiState:
             "component": component.to_dict(),
             "execution_started": False,
             "notice": "Submitted to Workflow Runtime; a worker owns execution.",
+        }
+
+    def rtlscout_status(self) -> dict[str, Any]:
+        benchmark_root = ROOT / ".external-src" / "rtlscout" / "benchmarks"
+        benchmarks = []
+        if benchmark_root.is_dir():
+            for path in sorted(benchmark_root.iterdir()):
+                if path.is_dir() and (path / "metadata.json").is_file():
+                    benchmarks.append(path.name)
+        return {
+            **self.rtlscout_readiness,
+            "offline_demo": {
+                "benchmark": "simple_adder",
+                "benchmarks": ["simple_adder"],
+                "model": "fake:simple_adder_pass",
+                "api_key_required": False,
+                "real_verilator_yosys": True,
+                "cost_metrics": ["transistors", "yosys_cells", "yosys_wires"],
+            },
+            "benchmarks": benchmarks,
+            "byok": {
+                "input_enabled": self.byok_transport_secure,
+                "supported_upstream_providers": ["anthropic", "deepinfra", "openrouter"],
+                "note": "Connecting a provider stores profile metadata and an in-memory key; it does not start a run.",
+            },
+        }
+
+    def submit_rtlscout(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if not self.rtlscout_readiness["ready"]:
+            raise ValueError(str(self.rtlscout_readiness["reason"]))
+        mode = str(payload.get("mode") or "offline_demo")
+        if mode != "offline_demo":
+            raise ValueError(
+                "BYOK RTLScout execution requires the secure worker secret bridge; "
+                "use the bounded offline demo in this local HTTP console"
+            )
+        benchmark = str(payload.get("benchmark") or "simple_adder")
+        if benchmark != "simple_adder":
+            raise ValueError("The bounded offline demo only allows the simple_adder benchmark")
+        cost_metric = str(payload.get("cost_metric") or "transistors")
+        if cost_metric not in {"transistors", "yosys_cells", "yosys_wires"}:
+            raise ValueError("The bounded offline demo only allows fast Yosys cost metrics")
+        task = build_rtlscout_task(
+            project_id="openroad-platform",
+            design_id=f"rtlscout-{benchmark}",
+            benchmark=benchmark,
+            model="fake:simple_adder_pass",
+            max_steps=max(1, min(int(payload.get("max_steps", 3)), 8)),
+            cost_metric=cost_metric,
+            timeout_seconds=max(60, min(int(payload.get("timeout_seconds", 1800)), 3600)),
+            labels={"source": "web", "mode": "offline-verified-demo"},
+        )
+        run = self.runtime.submit(task, capability="agent.rtl.optimize")
+        return {
+            "run": self.get_runtime_run(run.run_id),
+            "execution_started": False,
+            "notice": "Queued in Workflow Runtime; a separate worker owns execution.",
         }
 
     def list_runs(self, limit: int = 50) -> list[dict[str, Any]]:
@@ -960,6 +1036,8 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                     self._json(state.platform.evolution())
                 elif path == "/api/extensions/edacraft":
                     self._json(edacraft_catalog())
+                elif path == "/api/extensions/rtlscout":
+                    self._json(state.rtlscout_status())
                 elif path == "/api/projects":
                     self._json(state.projects())
                 elif path == "/api/designs":
@@ -1062,6 +1140,9 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                 if match:
                     self._json(state.submit_edacraft_smoke(
                         unquote(match.group(1))), HTTPStatus.CREATED)
+                    return
+                if path == "/api/extensions/rtlscout/runs":
+                    self._json(state.submit_rtlscout(self._read_json()), HTTPStatus.CREATED)
                     return
                 match = re.fullmatch(r"/api/optimization/studies/([^/]+)/recommend", path)
                 if match:

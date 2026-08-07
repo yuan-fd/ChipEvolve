@@ -6,6 +6,8 @@ const state = {
   platform: null, designs: [], examples: [], runs: [], results: [],
   selectedDesign: null, selectedRun: null, designView: "schematic",
   resultFilter: "all", extensions: [], selectedExtension: null,
+  pendingExtension: null, rtlscoutStatus: null, providerProfile: null,
+  rtlscoutPoll: null,
 };
 const stages = ["synth", "floorplan", "place", "cts", "route", "finish"];
 
@@ -101,10 +103,34 @@ async function loadPlatform() {
     $("#healthDot").className = health.ok ? "ok" : "bad";
     $("#healthText").textContent = health.execution_ready ? "Execution ready" : "Console ready";
     renderExtensions();
+    if (state.pendingExtension) {
+      const pending = state.pendingExtension;
+      state.pendingExtension = null;
+      selectExtension(pending);
+    }
   } catch (error) {
     $("#healthDot").className = "bad";
     $("#healthText").textContent = "API unavailable";
     $("#extensionCatalog").innerHTML = `<div class="empty-row">${esc(error.message)}</div>`;
+  }
+}
+
+async function loadRtlscoutStatus() {
+  try {
+    const status = await api("/api/extensions/rtlscout");
+    state.rtlscoutStatus = status;
+    const benchmarks = status.offline_demo?.benchmarks || [status.offline_demo?.benchmark || "simple_adder"];
+    $("#rtlscoutBenchmark").innerHTML = benchmarks.map(name => `<option value="${esc(name)}">${esc(name)}</option>`).join("");
+    $("#runRtlscout").disabled = !status.ready;
+    if (!status.byok?.input_enabled) {
+      $("#providerState").textContent = "HTTPS worker required";
+      $("#providerHint").textContent = "The offline demo needs no API key. Custom-provider profiles are accepted only through HTTPS; keys remain memory-only and never enter the project database.";
+    }
+    if (!status.ready) message("#rtlscoutMessage", `RTLScout is unavailable: ${status.reason}`, true);
+    updateRtlscoutControls();
+  } catch (error) {
+    $("#runRtlscout").disabled = true;
+    message("#rtlscoutMessage", `RTLScout status unavailable: ${error.message}`, true);
   }
 }
 
@@ -182,8 +208,30 @@ async function renderDesignView() {
     canvas.innerHTML = `<img src="/api/designs/${encodeURIComponent(design.id)}/schematic.svg" alt="Synthesized circuit schematic">`;
   } else {
     const text = await api(`/api/designs/${encodeURIComponent(design.id)}/source?kind=${state.designView}`);
-    canvas.innerHTML = `<pre>${esc(text)}</pre>`;
+    const lines = formatCodeForDisplay(text);
+    canvas.innerHTML = `<div class="code-viewer" aria-label="${state.designView === "rtl" ? "Verilog source" : "Gate netlist"}"><ol class="code-lines">${lines.map(line => `<li><code>${esc(line) || "&nbsp;"}</code></li>`).join("")}</ol></div>`;
   }
+}
+
+function formatCodeForDisplay(source) {
+  const normalized = String(source || "").replace(/\r\n?/g, "\n").trimEnd();
+  let lines = normalized.split("\n");
+  if (lines.length <= 3 || lines.some(line => line.length > 180)) {
+    lines = normalized
+      .replace(/;\s*(?=(?:assign|always|wire|reg|logic|input|output|inout|module|endmodule|[A-Za-z_$]))/g, ";\n")
+      .replace(/\s+(endmodule|endcase|endgenerate|endfunction|endtask)\b/g, "\n$1")
+      .replace(/\s+(begin|case\s*\([^)]*\)|generate)\s*/g, " $1\n")
+      .replace(/\s+end\s+(?=(?:else\b|endmodule\b|endcase\b|$))/g, "\nend ")
+      .split("\n");
+  }
+  let indent = 0;
+  return lines.flatMap(raw => raw.split(/(?<=;)\s+(?=\S)/)).map(raw => {
+    const line = raw.trim();
+    if (/^(end\b|endcase\b|endmodule\b|endgenerate\b|endfunction\b|endtask\b)/.test(line)) indent = Math.max(0, indent - 1);
+    const rendered = `${"  ".repeat(indent)}${line}`;
+    if (/\bbegin\s*$/.test(line) || /^case\b/.test(line) || /^generate\b/.test(line)) indent += 1;
+    return rendered;
+  });
 }
 
 async function importRtl() {
@@ -221,13 +269,59 @@ async function createSpec() {
 
 async function saveProvider() {
   const key = $("#providerKey").value;
-  if (!key) return message("#specMessage", "Enter an API key for this browser session.", true);
+  if (!key) return message("#rtlscoutMessage", "Enter an API key before connecting the provider.", true);
   try {
     const result = await post("/api/providers", {owner_id: "local-user", session_id: `web-${Date.now()}`, profile_id: `web-provider-${Date.now()}`, base_url: $("#providerUrl").value, model: $("#providerModel").value, api_key: key});
     $("#providerKey").value = "";
-    message("#specMessage", `Provider ${result.profile_id} saved; the key was not persisted.`);
+    state.providerProfile = result;
+    $("#providerState").textContent = `Connected · ${result.model || $("#providerModel").value || "custom model"}`;
+    message("#rtlscoutMessage", "Provider connected for this server session. Connecting does not start an optimization run.");
   } catch (error) {
-    message("#specMessage", error.message, true);
+    $("#providerState").textContent = "Connection failed";
+    message("#rtlscoutMessage", error.message, true);
+  }
+}
+
+function updateRtlscoutControls() {
+  const mode = $("#rtlscoutMode").value;
+  const benchmark = $("#rtlscoutBenchmark").value || "simple_adder";
+  const cost = $("#rtlscoutCost").value;
+  const steps = Math.max(1, Math.min(Number($("#rtlscoutSteps").value) || 3, 8));
+  const byok = mode === "byok";
+  if (!state.providerProfile) {
+    $("#providerState").textContent = byok
+      ? (state.rtlscoutStatus?.byok?.input_enabled ? "Not connected" : "HTTPS worker required")
+      : "Not required for offline demo";
+  }
+  $("#rtlscoutModeNote").textContent = byok
+    ? "Custom-provider execution is disabled on this HTTP review site. It requires HTTPS and the Runtime worker secret bridge."
+    : "The offline demo uses the official deterministic model while real Verilator and Yosys verify and score every generated candidate.";
+  $("#rtlscoutLaunchSummary").textContent = `${byok ? "Custom provider" : "Offline verified demo"} · ${benchmark} · minimize ${cost.replaceAll("_", " ")} · ${steps} steps`;
+  $("#runRtlscout").textContent = byok ? "Secure Worker Required" : "Run Offline Demo →";
+  $("#runRtlscout").disabled = byok || state.rtlscoutStatus?.ready === false;
+}
+
+async function submitRtlscout() {
+  const mode = $("#rtlscoutMode").value;
+  if (mode === "byok") return message("#rtlscoutMessage", "BYOK execution is intentionally blocked on HTTP. Connect through HTTPS with a configured Runtime worker.", true);
+  const button = $("#runRtlscout");
+  button.disabled = true;
+  message("#rtlscoutMessage", "Submitting the verified RTLScout experiment to Workflow Runtime…");
+  try {
+    const result = await post("/api/extensions/rtlscout/runs", {
+      mode,
+      benchmark: $("#rtlscoutBenchmark").value,
+      cost_metric: $("#rtlscoutCost").value,
+      max_steps: Number($("#rtlscoutSteps").value),
+    });
+    const runId = result.run?.run?.run_id;
+    message("#rtlscoutMessage", `Run ${runId?.slice(0, 12) || "record"} is queued. The dashboard will follow Runtime evidence.`);
+    await loadRuns(runId);
+    $("#rtlscoutDashboard").scrollIntoView({behavior: "smooth", block: "start"});
+  } catch (error) {
+    message("#rtlscoutMessage", error.message, true);
+  } finally {
+    updateRtlscoutControls();
   }
 }
 
@@ -241,8 +335,101 @@ async function loadRuns(preferred = null) {
       await selectRun(id);
     } else renderStageRail(new Map());
     renderDplevolveDashboard();
+    await renderRtlscoutDashboard();
   } catch (error) {
     message("#flowMessage", error.message, true);
+  }
+}
+
+function setRtlscoutProgress(status) {
+  const nodes = $$("#rtlscoutProgress > div");
+  const complete = status === "succeeded";
+  nodes.forEach(node => {
+    node.className = complete ? "done" : "";
+    $("small", node).textContent = complete ? "complete" : status === "running" ? "awaiting evidence" : status === "failed" ? "not completed" : "waiting";
+  });
+}
+
+function displayBoolean(value) {
+  if (value === true) return '<span class="pass">Pass</span>';
+  if (value === false) return '<span class="fail">Fail</span>';
+  return "—";
+}
+
+function attemptArtifacts(detail) {
+  const attempts = (detail.stages || []).flatMap(stage => stage.attempts || []);
+  return attempts.at(-1)?.artifacts || [];
+}
+
+async function renderRtlscoutDashboard() {
+  const latest = state.runs.find(run => run.plugin_id === "rtlscout");
+  if (!latest) {
+    setRtlscoutProgress("queued");
+    return;
+  }
+  let detail;
+  try {
+    detail = await api(`/api/runtime/runs/${encodeURIComponent(latest.run_id)}`);
+  } catch (error) {
+    message("#rtlscoutMessage", `Cannot load RTLScout run: ${error.message}`, true);
+    return;
+  }
+  const run = detail.run;
+  const status = run.status;
+  $("#rtlscoutRunLabel").textContent = `${run.task_spec?.inputs?.benchmark || run.task_spec?.design_id || "experiment"} · ${run.run_id}`;
+  $("#rtlscoutStatus").textContent = status;
+  $("#rtlscoutStatus").className = `status ${status}`;
+  const started = run.started_at ? new Date(run.started_at).getTime() : null;
+  const ended = run.ended_at ? new Date(run.ended_at).getTime() : Date.now();
+  $("#rtlscoutRuntime").textContent = started ? `${Math.max(0, (ended - started) / 1000).toFixed(1)} s` : "Waiting";
+  $("#rtlscoutCurrentStep").textContent = status === "queued" ? "Waiting for worker" : status === "running" ? "Agent evaluation" : status === "succeeded" ? "Complete" : "Stopped";
+  setRtlscoutProgress(status);
+
+  const artifacts = attemptArtifacts(detail);
+  $("#rtlscoutArtifacts").innerHTML = artifacts.map(artifact => `<a href="${esc(artifact.url)}" target="_blank" rel="noopener">${esc(artifact.kind)}</a>`).join("");
+  const resultArtifact = artifacts.find(artifact => artifact.kind === "rtlscout_result");
+  if (resultArtifact && status === "succeeded") {
+    try {
+      const result = await api(resultArtifact.url);
+      const evaluations = Array.isArray(result.all_evals) ? result.all_evals : [];
+      const legal = evaluations.filter(item => item.passed === true);
+      const firstCost = evaluations.find(item => item.passed === true && Number.isFinite(Number(item.cost_value)))?.cost_value;
+      const bestCost = result.best_cost;
+      const improvement = Number.isFinite(Number(firstCost)) && Number.isFinite(Number(bestCost)) && Number(firstCost) !== 0
+        ? `${(((Number(firstCost) - Number(bestCost)) / Math.abs(Number(firstCost))) * 100).toFixed(1)}%` : "—";
+      $("#rtlscoutCurrentStep").textContent = `${result.num_steps ?? evaluations.length} / ${run.task_spec?.parameters?.max_steps ?? "—"}`;
+      $("#rtlscoutCandidates").textContent = String(evaluations.length);
+      $("#rtlscoutLegal").textContent = String(legal.length);
+      $("#rtlscoutBestCost").textContent = bestCost === null || bestCost === undefined ? "—" : `${bestCost} ${result.cost_metric || ""}`;
+      $("#rtlscoutImprovement").textContent = improvement;
+      if (Number.isFinite(Number(result.duration_s))) $("#rtlscoutRuntime").textContent = `${Number(result.duration_s).toFixed(1)} s`;
+      $("#rtlscoutCandidateRows").className = evaluations.length ? "" : "candidate-empty";
+      $("#rtlscoutCandidateRows").innerHTML = evaluations.length ? evaluations.map((item, index) => {
+        const correctness = item.correctness || {};
+        const cost = item.cost_value;
+        const delta = Number.isFinite(Number(firstCost)) && Number.isFinite(Number(cost)) ? `${Number(cost) - Number(firstCost) > 0 ? "+" : ""}${(Number(cost) - Number(firstCost)).toFixed(1)}` : "—";
+        return `<div class="rtlscout-row"><span>${esc(item.eval_index ?? index + 1)}</span><span>${esc(item.name || item.candidate || `eval-${item.eval_index ?? index + 1}`)}</span><span>${displayBoolean(item.lint_ok ?? correctness.lint_ok)}</span><span>${displayBoolean(item.sim_ok ?? correctness.sim_ok)}</span><span>${displayBoolean(item.passed)}</span><span>${esc(cost ?? "—")}</span><span>${esc(delta)}</span></div>`;
+      }).join("") : "Run completed without candidate-level records in the upstream result.";
+      $("#rtlscoutBestSummary").textContent = result.passed === true
+        ? `Best verified candidate: ${bestCost ?? "recorded without a scalar cost"} ${result.cost_metric || ""}. Download the registered RTL and result evidence at right.`
+        : "RTLScout did not register a fully verified candidate.";
+    } catch (error) {
+      $("#rtlscoutBestSummary").textContent = `The run succeeded, but its result artifact could not be read: ${error.message}`;
+    }
+  } else {
+    $("#rtlscoutCandidates").textContent = "—";
+    $("#rtlscoutLegal").textContent = "—";
+    $("#rtlscoutBestCost").textContent = "—";
+    $("#rtlscoutImprovement").textContent = "—";
+    $("#rtlscoutCandidateRows").className = "candidate-empty";
+    $("#rtlscoutCandidateRows").textContent = status === "failed" ? "The run stopped before verified candidate evidence was registered." : "Waiting for candidate evidence from the Runtime worker.";
+    const attempts = (detail.stages || []).flatMap(stage => stage.attempts || []);
+    const failure = attempts.at(-1)?.failure;
+    $("#rtlscoutBestSummary").textContent = failure?.message || (status === "queued" ? "The durable task is queued; start a separate Runtime worker to execute it." : "Verified artifacts will appear after the run completes.");
+  }
+  if (state.rtlscoutPoll) clearTimeout(state.rtlscoutPoll);
+  if (["queued", "running", "cancel_requested"].includes(status)) {
+    state.rtlscoutPoll = setTimeout(() => loadRuns(latest.run_id), 4000);
   }
 }
 
@@ -304,8 +491,15 @@ function renderExtensions() {
 }
 
 function openExtension(id) {
+  state.pendingExtension = id;
   route("extensions");
-  selectExtension(id);
+  if (state.extensions.length) {
+    state.pendingExtension = null;
+    selectExtension(id);
+  } else {
+    $("#extensionDetail").innerHTML = '<div class="empty"><span>⋯</span><h3>Opening extension…</h3><p>Loading its purpose, supported input, workflow, and available actions.</p></div>';
+    $("#extensionDetailSection").scrollIntoView({behavior: "smooth", block: "start"});
+  }
 }
 
 function selectExtension(id) {
@@ -473,6 +667,11 @@ $("#backendDesign").addEventListener("change", event => selectDesign(event.targe
 $("#importRtl").addEventListener("click", importRtl);
 $("#createSpec").addEventListener("click", createSpec);
 $("#saveProvider").addEventListener("click", saveProvider);
+$("#rtlscoutMode").addEventListener("change", updateRtlscoutControls);
+$("#rtlscoutBenchmark").addEventListener("change", updateRtlscoutControls);
+$("#rtlscoutCost").addEventListener("change", updateRtlscoutControls);
+$("#rtlscoutSteps").addEventListener("input", updateRtlscoutControls);
+$("#runRtlscout").addEventListener("click", submitRtlscout);
 $("#runSelect").addEventListener("change", event => selectRun(event.target.value));
 $("#submitFlow").addEventListener("click", submitFlow);
 $("#refreshResults").addEventListener("click", loadResults);
@@ -480,4 +679,4 @@ $("#closeResultDetail").addEventListener("click", () => { $("#projectDetailSecti
 $$('#resultFilters button').forEach(button => button.addEventListener("click", () => { $$('#resultFilters button').forEach(item => item.classList.remove("active")); button.classList.add("active"); state.resultFilter = button.dataset.filter; renderResults(); }));
 
 route(location.hash.slice(1) || "overview");
-Promise.all([loadPlatform(), loadExamples(), loadDesigns(), loadRuns()]);
+Promise.all([loadPlatform(), loadRtlscoutStatus(), loadExamples(), loadDesigns(), loadRuns()]);

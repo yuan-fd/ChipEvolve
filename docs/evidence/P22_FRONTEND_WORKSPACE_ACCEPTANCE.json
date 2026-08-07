@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "phase": "P22-frontend-clarity",
+  "captured_at": "2026-08-07",
+  "accepted": true,
+  "ui": {
+    "code_view": "white-dark-line-numbered-wrapped",
+    "rtlscout_order": ["configure", "connect-provider", "submit", "monitor", "inspect-evidence"],
+    "dashboard_source": ["workflow-runtime", "rtlscout_result.json"],
+    "edacraft_navigation": "deferred-catalog-safe"
+  },
+  "offline_demo": {
+    "benchmark": "simple_adder",
+    "model": "fake:simple_adder_pass",
+    "real_verilator_yosys": true,
+    "max_steps": 8,
+    "run_triggered_during_revision": false
+  },
+  "verification": {
+    "pytest_passed": 193,
+    "pytest_failed": 0,
+    "node_syntax": "passed",
+    "python_compile": "passed",
+    "diff_check": "passed"
+  }
+}

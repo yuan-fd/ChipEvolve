@@ -64,6 +64,9 @@ last_updated: 2026-08-06
 - UI 整改回归：190 passed、Node syntax 与 Python compile 通过；用户 `plan/` 未修改、未提交。
 - 2026-08-07 视觉层进一步切换为现代简约效率工具风格：白/浅灰中性色、单一蓝色强调、无衬线层级、小圆角与细分割线；删除杂志式衬线、大色块、普通卡片阴影和过量留白，DPLEvolve 长面板仅在用户主动选择扩展后显示。
 - 现代简约 UI 回归：191 passed；六页 1440px 与 Frontend 390px 视口完成视觉检查。
+- 2026-08-07 Frontend 清晰化整改：Verilog/网表改为白底黑字、行号、换行与仅展示层格式化；RTLScout 固定为配置→Provider→Runtime 提交→仪表盘→证据的业务顺序，Dashboard 只读取真实 run 与 `all_evals`。
+- RTLScout Web 离线演示只允许官方 `simple_adder`、deterministic fake model、真实 Verilator/Yosys 和快速 Yosys 指标；本轮未实际启动。BYOK 在外部 HTTP 验收站保持关闭。
+- RTLCraft/EDACode 明确为独立前端替代工具，点击可等待 catalog 后自动打开 Extensions 对应详情。全量回归 193 passed。
 
 ## 架构定版
 

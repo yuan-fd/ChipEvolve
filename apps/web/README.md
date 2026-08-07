@@ -19,6 +19,15 @@ UART transmitter, and compact RISC-V teaching core. Small netlists use a full
 Graphviz connectivity view; large netlists automatically use a deterministic
 port/cell overview to keep rendering bounded.
 
+Verilog and gate-netlist tabs use a white, line-numbered, wrapped code reader.
+Formatting of minified HDL is display-only; downloads preserve the registered
+artifact. RTLScout is organized as configure → optional provider connection →
+Runtime submission → run dashboard → verified candidate evidence. Its bundled
+offline demo is deliberately limited to the audited `simple_adder` benchmark;
+custom provider execution requires HTTPS and a worker-side secret bridge.
+RTLCraft and EDACode links open their independent extension detail rather than
+being presented as RTLScout stages.
+
 ## Visual system
 
 The interface uses a restrained efficiency-tool style: neutral white/light-gray

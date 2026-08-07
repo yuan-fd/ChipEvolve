@@ -1,7 +1,7 @@
 # Current status
 
 updated_at: 2026-08-07
-phase: P0-P22 completed; modern-minimal six-page UI awaiting user acceptance
+phase: P0-P22 completed; frontend workspace clarity revision awaiting user acceptance
 
 - Workflow Runtime remains the only authority for process launch, attempts,
   events, artifacts, recovery, and terminal state. Web, LLM, BO/GP, RL, RAG,
@@ -40,10 +40,20 @@ phase: P0-P22 completed; modern-minimal six-page UI awaiting user acceptance
   surfaces, one blue action color, sans-serif hierarchy, compact spacing, small
   radii, visible hairlines, and no decorative card shadows. Optional long-task
   dashboards appear only after the matching extension is selected.
+- Frontend RTL and netlist outputs now use a white, dark-text, line-numbered,
+  wrapped viewer. Browser-only formatting expands minified HDL without changing
+  the registered or downloaded source.
+- RTLScout now has an explicit configure/connect/submit/monitor/evidence path,
+  an evidence-backed run dashboard, and an audited bounded offline demo. The
+  provider button only connects a memory-only session profile; it cannot start
+  execution, and BYOK remains disabled on the external HTTP review service.
+- RTLCraft and EDACode are shown as independent frontend alternatives. Their
+  links reliably open the selected Extensions detail even if the catalog was
+  still loading when clicked.
 - P22 added a four-flow demo manifest and non-destructive SQLite backup/restore.
   Nine live state databases were backed up, hash-checked, integrity-checked, and
   restored into a new `/tmp` directory without overwriting source state.
-- UI-revision regression: 191 passed, 0 failed. Node
+- Frontend-clarity regression: 193 passed, 0 failed. Node
   syntax, Python compile, 41 JSON files, diff whitespace, tracked credential
   patterns, fixed EDACraft commit, and source cleanliness checks passed.
 - No push, public deployment, credential read, expensive DPLEvolve run, or
@@ -53,4 +63,5 @@ phase: P0-P22 completed; modern-minimal six-page UI awaiting user acceptance
 Evidence: `P18_EDACRAFT_REAL_ACCEPTANCE.*` and
 `P19_P22_PLATFORM_ACCEPTANCE.*` under `docs/evidence/`; the information-
 architecture and modern-minimal visual revisions are recorded in
-`P22_UI_REVISION_ACCEPTANCE.*` and `P22_MINIMAL_UI_ACCEPTANCE.*`.
+`P22_UI_REVISION_ACCEPTANCE.*`, `P22_MINIMAL_UI_ACCEPTANCE.*`, and
+`P22_FRONTEND_WORKSPACE_ACCEPTANCE.*`.
