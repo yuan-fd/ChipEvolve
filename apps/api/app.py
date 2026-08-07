@@ -773,6 +773,12 @@ class ApiState:
     def create_stage_campaign(self, payload: dict[str, Any]) -> dict[str, Any]:
         design_id = str(payload.get("design_id") or "").strip()
         design = self.designs.get(design_id)
+        objective = str(payload.get("objective") or "balanced")
+        flow_mode = str(payload.get("flow_mode") or "campaign")
+        if objective not in {"balanced", "timing", "area", "power"}:
+            raise ValueError("objective is not allowlisted")
+        if flow_mode not in {"campaign", "agent"}:
+            raise ValueError("stage-aware campaign flow_mode must be campaign or agent")
         base = build_orfs_task(
             self.designs.rtl_path(design_id), project_id="openroad-platform",
             design_id=design_id, top=design["module"],
@@ -781,6 +787,8 @@ class ApiState:
             core_utilization_pct=_number(payload, "core_utilization_pct", 10.0),
             place_density=_number(payload, "place_density", 0.45),
             stage_timeout_seconds=int(_number(payload, "stage_timeout_seconds", 3600)),
+            labels={"source": "web-campaign", "objective": objective,
+                    "flow_mode": flow_mode},
         )
         grid = payload.get("parameter_grid") or {}
         if not isinstance(grid, dict):
@@ -920,6 +928,12 @@ class ApiState:
     def submit_runtime_design_run(self, payload: dict[str, Any]) -> dict[str, Any]:
         design_id = str(payload.get("design_id") or "").strip()
         design = self.designs.get(design_id)
+        objective = str(payload.get("objective") or "balanced")
+        flow_mode = str(payload.get("flow_mode") or "baseline")
+        if objective not in {"balanced", "timing", "area", "power"}:
+            raise ValueError("objective is not allowlisted")
+        if flow_mode != "baseline":
+            raise ValueError("single Runtime submission requires baseline flow_mode")
         task = build_orfs_task(
             self.designs.rtl_path(design_id), project_id="openroad-platform",
             design_id=design_id,
@@ -930,7 +944,10 @@ class ApiState:
             place_density=_number(payload, "place_density", 0.45),
             target_stage=str(payload.get("target_stage") or "finish"),
             stage_timeout_seconds=int(_number(payload, "stage_timeout_seconds", 3600)),
-            labels={"source": "web-runtime", "design_id": design_id},
+            labels={
+                "source": "web-runtime", "design_id": design_id,
+                "objective": objective, "flow_mode": flow_mode,
+            },
         )
         run = self.runtime.submit(task, capability="eda.rtl_to_gds")
         return self.get_runtime_run(run.run_id)

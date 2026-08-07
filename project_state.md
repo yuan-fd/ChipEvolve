@@ -67,6 +67,9 @@ last_updated: 2026-08-06
 - 2026-08-07 Frontend 清晰化整改：Verilog/网表改为白底黑字、行号、换行与仅展示层格式化；RTLScout 固定为配置→Provider→Runtime 提交→仪表盘→证据的业务顺序，Dashboard 只读取真实 run 与 `all_evals`。
 - RTLScout Web 离线演示只允许官方 `simple_adder`、deterministic fake model、真实 Verilator/Yosys 和快速 Yosys 指标；本轮未实际启动。BYOK 在外部 HTTP 验收站保持关闭。
 - RTLCraft/EDACode 明确为独立前端替代工具，点击可等待 catalog 后自动打开 Extensions 对应详情。全量回归 193 passed。
+- 2026-08-07 按用户提供的 ICCAD Interactive Demo 参考图重做前后端主干：窄版单列、顶部工作区切换、编号灰色面板、输入→配置→运行→状态→结果纵向展开；原有 RTLScout、Flow-Agent、TaiWei 3D、ImplCraft、DPLEvolve 作为主干后的扩展保留。
+- 后端业务模式明确区分：Baseline 提交单个 Runtime；Campaign/Agent 只创建 3 个有界且未绑定执行的候选计划，等待审查，不由 Web 自动运行。任务记录 objective 与 flow_mode。
+- 顶栏增加持久化 `中文 / EN` 切换，并支持 `?lang=zh|en` 验收链接；全量回归 196 passed。
 
 ## 架构定版
 

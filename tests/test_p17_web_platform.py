@@ -19,14 +19,17 @@ def make_state(tmp_path: Path) -> ApiState:
     )
 
 
-def test_web_has_six_clear_english_primary_tabs():
+def test_web_has_six_clear_bilingual_primary_tabs():
     html = (ROOT / "apps" / "web" / "index.html").read_text(encoding="utf-8")
-    tabs = re.findall(r'<button class="tab(?: active)?" data-route="[^"]+">([^<]+)</button>', html)
+    tabs = re.findall(
+        r'<button class="tab(?: active)?" data-route="[^"]+"[^>]*>([^<]+)</button>', html
+    )
     assert tabs == [
         "Overview", "Frontend Design", "Backend Design",
         "Extensions", "Projects &amp; Results", "Self-Evolution",
     ]
     assert '<html lang="en">' in html
+    assert 'id="langZh"' in html and 'id="langEn"' in html
     assert "IC Craft" not in html
 
 

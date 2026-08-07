@@ -7,9 +7,116 @@ const state = {
   selectedDesign: null, selectedRun: null, designView: "schematic",
   resultFilter: "all", extensions: [], selectedExtension: null,
   pendingExtension: null, rtlscoutStatus: null, providerProfile: null,
-  rtlscoutPoll: null,
+  rtlscoutPoll: null, locale: "en",
 };
 const stages = ["synth", "floorplan", "place", "cts", "route", "finish"];
+const ZH = {
+  "nav.overview": "平台概览", "nav.frontend": "前端设计", "nav.backend": "后端实现",
+  "nav.extensions": "功能扩展", "nav.projects": "项目与结果", "nav.evolution": "自演化",
+  "switch.frontend": "前端设计", "switch.backend": "后端实现", "switch.results": "运行结果",
+  "frontend.kicker": "交互式设计工作区", "frontend.title": "前端设计",
+  "frontend.subtitle": "按清晰顺序创建或导入 RTL、完成综合并查看电路结果。",
+  "frontend.source.title": "创建或上传 RTL", "frontend.source.subtitle": "选择一种输入方式，最终都会生成统一的设计记录。",
+  "frontend.upload.title": "上传 Verilog / SystemVerilog", "frontend.upload.help": "加载本地 .v 或 .sv 文件，确认内容后进行综合。",
+  "frontend.upload.file": "RTL 源文件", "frontend.upload.review": "查看或粘贴源码", "common.filename": "文件名",
+  "frontend.rtl.source": "RTL 源码", "frontend.upload.action": "导入并综合",
+  "frontend.spec.title": "根据自然语言生成 RTL", "frontend.spec.help": "描述功能和接口，在物理实现前先审查生成结果。",
+  "frontend.spec.label": "自然语言规格", "frontend.spec.placeholder": "设计一个带使能和高电平复位的四位同步计数器。",
+  "frontend.spec.action": "创建规格会话", "frontend.spec.note": "模型生成需要连接用户自己的 Provider。",
+  "frontend.examples.title": "选择经过审计的 RTL 示例", "frontend.examples.subtitle": "包含基础逻辑、ALU、控制器、UART 和教学用 RISC-V。",
+  "frontend.examples.selected": "当前示例", "frontend.examples.action": "综合该示例",
+  "frontend.results.title": "综合结果", "frontend.results.subtitle": "查看门级统计、电路图、Verilog 源码和综合网表。",
+  "common.design": "已登记设计", "frontend.view.schematic": "电路图", "frontend.view.rtl": "Verilog 源码",
+  "frontend.view.netlist": "门级网表", "frontend.download.rtl": "下载 RTL", "frontend.download.netlist": "下载网表",
+  "frontend.empty.title": "综合后的电路将在这里显示。", "frontend.empty.help": "从上方选择设计以读取真实登记结果。",
+  "common.optional": "可选", "rtlscout.subtitle": "在正确性硬门槛下优化 benchmark RTL。",
+  "backend.kicker": "交互式物理实现工作区", "backend.title": "后端实现",
+  "backend.subtitle": "配置 RTL-to-GDS，跟踪每个物理设计阶段并检查版图和 QoR 证据。",
+  "backend.design.title": "选择已登记的 RTL 设计", "backend.design.subtitle": "前端产生的设计可以直接进入物理设计流程。",
+  "backend.config.title": "配置物理实现", "backend.config.subtitle": "设置时钟、布局约束、目标阶段和优化策略。",
+  "backend.clock": "时钟端口", "backend.period": "时钟周期 · ns", "backend.platform": "PDK / 工艺平台",
+  "backend.util": "核心利用率 · %", "backend.density": "布局密度", "backend.target": "目标阶段",
+  "backend.objective": "优化目标", "backend.objective.balanced": "综合平衡", "backend.objective.timing": "时序优先",
+  "backend.objective.area": "面积优先", "backend.objective.power": "功耗优先", "backend.mode": "流程模式",
+  "backend.run.title": "运行 RTL-to-GDS 并监控阶段", "backend.run.subtitle": "Runtime 记录进度、恢复状态、指标和产物。",
+  "backend.run.select": "Runtime 任务", "backend.run.action": "开始 RTL-to-GDS", "backend.run.compare": "比较历史任务",
+  "backend.run.empty": "尚未选择任务", "backend.run.empty.help": "排队、运行和已完成的记录会显示在这里。",
+  "backend.evidence.title": "版图、QoR 与实现证据", "backend.evidence.subtitle": "查看版图、时序、面积、功耗、DRC、报告和下载产物。",
+  "backend.evidence.empty": "运行证据将在这里显示。", "backend.evidence.empty.help": "选择已完成的 Runtime 任务以读取版图和报告。",
+  "backend.extensions.title": "可选流程扩展", "backend.extensions.subtitle": "只打开当前设计真正需要的专业能力。",
+  "backend.ext.flow": "批量实验、参数搜索、状态监控和有界纠错。", "backend.ext.3d": "双层实现、HBT、跨层指标与 3D 视图。",
+  "backend.ext.craft": "后端中立规划与 OpenROAD 兼容实现。", "backend.ext.evolve": "可选的 OpenROAD 源码候选优化长任务。"
+};
+const LOOSE_ZH = {
+  "Open-source intelligent chip design infrastructure": "开源智能芯片设计基础设施",
+  "OpenROAD Self-Evolving EDA Platform": "OpenROAD 自演化 EDA 平台",
+  "From design intent to verified silicon evidence.": "从设计意图到可验证的芯片证据。",
+  "Watch Demo": "观看演示", "Tutorial": "使用教程", "Quick Start": "快速开始",
+  "Platform walkthrough": "平台展示", "See the complete design journey.": "查看完整芯片设计过程。",
+  "A connected workflow": "统一工作流", "One path from intent to learning.": "从设计意图到持续学习的一条主线。",
+  "Recommended tutorial": "推荐教程", "Your first reproducible design.": "完成第一个可复现设计。",
+  "Choose a frontend input": "选择前端输入", "Review the circuit": "检查电路", "Configure the physical flow": "配置物理设计流程", "Inspect and reuse the evidence": "检查并复用证据",
+  "Extensions": "功能扩展", "Specialist tools,": "专业工具，", "connected by evidence.": "由统一证据连接。",
+  "Extension catalog": "扩展目录", "Choose a capability to inspect.": "选择需要查看的能力。", "Select an extension.": "请选择一个扩展。",
+  "Projects & results": "项目与结果", "A clear record": "清晰记录", "for every design.": "每一个设计。",
+  "All records": "全部记录", "Designs": "设计", "Runtime runs": "Runtime 任务", "Refresh": "刷新",
+  "Self-evolution": "自演化", "Learning from": "从可验证的", "verified design experience.": "设计经验中学习。",
+  "Learning workflow": "学习流程", "How experience becomes a better next run.": "如何把经验转化为更好的下一次运行。",
+  "Knowledge": "知识", "Research & RAG": "论文与 RAG", "Experience": "经验", "Runtime observations": "Runtime 观测",
+  "Models": "模型", "Decision": "决策", "Human review": "人工审查", "Action": "执行", "Campaign & Runtime": "Campaign 与 Runtime",
+  "Current learning record": "当前学习记录", "Recommendations remain inspectable and controllable.": "所有建议都保持可检查、可控制。",
+  "How RTLScout works": "RTLScout 如何工作", "Agent loop": "智能体循环",
+  "The agent may edit RTL, but it cannot declare success. Verilator and Yosys produce the recorded result.": "智能体可以修改 RTL，但不能自行宣布成功；最终结果由 Verilator 和 Yosys 验证。",
+  "Input": "输入", "Specification + objective": "规格与优化目标", "Benchmark context, cost metric, tool rules": "Benchmark 上下文、成本指标和工具规则",
+  "Agent": "智能体", "LLM proposes an edit": "LLM 提出修改", "Create, inspect, replace, or apply a diff": "创建、检查、替换或应用差异",
+  "Verified evaluation": "可验证评估", "Compile": "编译", "Python DSL → Verilog when needed": "必要时将 Python DSL 转为 Verilog",
+  "Lint and simulation": "Lint 与仿真", "Cost and structure": "成本与结构", "Selection": "选择",
+  "Keep the best legal RTL": "保留最优合法 RTL", "Correct first, then lower cost": "先保证正确，再降低成本",
+  "Evaluation evidence returns to the agent": "评估证据返回智能体", "Repeat until done or the step budget is reached": "重复执行，直到完成或达到步数预算",
+  "1. Configure the experiment": "1. 配置实验", "Choose what RTLScout should optimize and how much work it may perform.": "选择优化对象、成本指标和最大工作量。",
+  "Run mode": "运行模式", "Benchmark": "Benchmark", "Cost objective": "成本目标", "Maximum agent steps": "智能体最大步数",
+  "2. Connect a model provider": "2. 连接模型 Provider", "This only validates and stores a session profile. It does not start RTLScout.": "这里只验证并保存会话配置，不会启动 RTLScout。",
+  "Connect Provider": "连接 Provider", "3. Start optimization": "3. 开始优化", "RTLScout run dashboard": "RTLScout 运行仪表盘",
+  "Current step": "当前步骤", "Evaluated candidates": "已评估候选", "Legal candidates": "合法候选", "Best cost": "最优成本",
+  "Improvement": "优化幅度", "Runtime": "运行时间", "Candidate history": "候选历史", "Best candidate and changes": "最优候选与改动",
+  "EDACraft frontend alternatives": "EDACraft 前端替代工具", "Open RTLCraft →": "打开 RTLCraft →", "Open EDACode →": "打开 EDACode →",
+  "Baseline flow": "基线流程", "Stage-aware Campaign": "阶段感知批量实验", "Agent-guided search": "Agent 引导搜索",
+  "Finish · GDS": "完成 · GDS", "Routing": "布线", "Clock tree": "时钟树", "Placement": "布局", "Floorplan": "布局规划", "Synthesis": "逻辑综合",
+  "Execution ready": "执行就绪", "Console ready": "控制台就绪", "API unavailable": "API 不可用", "Connecting": "连接中",
+  "Platform API status": "平台 API 状态"
+};
+const originalText = new WeakMap();
+const originalPlaceholders = new WeakMap();
+
+function ui(english, chinese) { return state.locale === "zh" ? chinese : english; }
+
+function applyLocale(locale) {
+  state.locale = locale === "zh" ? "zh" : "en";
+  document.documentElement.lang = state.locale === "zh" ? "zh-CN" : "en";
+  try { localStorage.setItem("openroad-platform-locale", state.locale); } catch (_) { /* storage may be disabled */ }
+  $$('[data-locale]').forEach(button => button.classList.toggle("active", button.dataset.locale === state.locale));
+  $$('[data-i18n]').forEach(element => {
+    if (!originalText.has(element)) originalText.set(element, element.textContent);
+    element.textContent = state.locale === "zh" ? (ZH[element.dataset.i18n] || originalText.get(element)) : originalText.get(element);
+  });
+  $$('[data-i18n-placeholder]').forEach(element => {
+    if (!originalPlaceholders.has(element)) originalPlaceholders.set(element, element.placeholder);
+    element.placeholder = state.locale === "zh" ? (ZH[element.dataset.i18nPlaceholder] || originalPlaceholders.get(element)) : originalPlaceholders.get(element);
+  });
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!node.parentElement || node.parentElement.closest("[data-i18n], script, style")) continue;
+    if (!originalText.has(node)) originalText.set(node, node.nodeValue);
+    const original = originalText.get(node);
+    const trimmed = original.trim();
+    const translated = LOOSE_ZH[trimmed];
+    node.nodeValue = state.locale === "zh" && translated ? original.replace(trimmed, translated) : original;
+  }
+  renderExampleChips();
+  renderDesignChips();
+  if ($("#rtlscoutMode")) updateRtlscoutControls();
+  if (state.selectedRun) selectRun(state.selectedRun.run.run_id);
+}
 
 function esc(value) {
   return String(value ?? "").replace(/[&<>'"]/g, character => ({
@@ -101,7 +208,7 @@ async function loadPlatform() {
     state.platform = platform;
     state.extensions = buildExtensions(platform);
     $("#healthDot").className = health.ok ? "ok" : "bad";
-    $("#healthText").textContent = health.execution_ready ? "Execution ready" : "Console ready";
+    $("#healthText").textContent = health.execution_ready ? ui("Execution ready", "执行就绪") : ui("Console ready", "控制台就绪");
     renderExtensions();
     if (state.pendingExtension) {
       const pending = state.pendingExtension;
@@ -110,7 +217,7 @@ async function loadPlatform() {
     }
   } catch (error) {
     $("#healthDot").className = "bad";
-    $("#healthText").textContent = "API unavailable";
+    $("#healthText").textContent = ui("API unavailable", "API 不可用");
     $("#extensionCatalog").innerHTML = `<div class="empty-row">${esc(error.message)}</div>`;
   }
 }
@@ -123,14 +230,14 @@ async function loadRtlscoutStatus() {
     $("#rtlscoutBenchmark").innerHTML = benchmarks.map(name => `<option value="${esc(name)}">${esc(name)}</option>`).join("");
     $("#runRtlscout").disabled = !status.ready;
     if (!status.byok?.input_enabled) {
-      $("#providerState").textContent = "HTTPS worker required";
-      $("#providerHint").textContent = "The offline demo needs no API key. Custom-provider profiles are accepted only through HTTPS; keys remain memory-only and never enter the project database.";
+      $("#providerState").textContent = ui("HTTPS worker required", "需要 HTTPS Worker");
+      $("#providerHint").textContent = ui("The offline demo needs no API key. Custom-provider profiles are accepted only through HTTPS; keys remain memory-only and never enter the project database.", "离线演示不需要 API Key。自定义 Provider 仅通过 HTTPS 接收，密钥只保存在内存中，不写入项目数据库。");
     }
-    if (!status.ready) message("#rtlscoutMessage", `RTLScout is unavailable: ${status.reason}`, true);
+    if (!status.ready) message("#rtlscoutMessage", `${ui("RTLScout is unavailable", "RTLScout 当前不可用")}: ${status.reason}`, true);
     updateRtlscoutControls();
   } catch (error) {
     $("#runRtlscout").disabled = true;
-    message("#rtlscoutMessage", `RTLScout status unavailable: ${error.message}`, true);
+    message("#rtlscoutMessage", `${ui("RTLScout status unavailable", "无法读取 RTLScout 状态")}: ${error.message}`, true);
   }
 }
 
@@ -139,15 +246,29 @@ async function loadExamples() {
     state.examples = (await api("/api/designs/examples")).examples || [];
     $("#exampleSelect").innerHTML = state.examples.map(example => `<option value="${esc(example.id)}">${esc(example.level === "advanced" ? "Advanced" : "Starter")} · ${esc(example.name)}</option>`).join("");
     updateExampleDescription();
+    renderExampleChips();
   } catch (error) {
     $("#exampleSelect").innerHTML = '<option value="">Examples unavailable</option>';
     message("#specMessage", error.message, true);
   }
 }
 
+function renderExampleChips() {
+  const root = $("#exampleChips");
+  if (!root) return;
+  const selected = $("#exampleSelect")?.value;
+  root.innerHTML = state.examples.map(example => `<button type="button" class="${example.id === selected ? "active" : ""}" data-example-id="${esc(example.id)}">▶ ${esc(example.name)} · ${esc(example.level === "advanced" ? ui("advanced", "进阶") : ui("starter", "基础"))}</button>`).join("");
+  $$('[data-example-id]', root).forEach(button => button.addEventListener("click", () => {
+    $("#exampleSelect").value = button.dataset.exampleId;
+    updateExampleDescription();
+    renderExampleChips();
+  }));
+}
+
 function updateExampleDescription() {
   const example = state.examples.find(item => item.id === $("#exampleSelect").value);
   $("#exampleDescription").textContent = example?.description || "";
+  renderExampleChips();
 }
 
 async function useExample() {
@@ -171,9 +292,10 @@ async function useExample() {
 async function loadDesigns(preferred = null) {
   try {
     state.designs = (await api("/api/designs")).designs || [];
-    const options = '<option value="">Select a registered design</option>' + state.designs.map(design => `<option value="${esc(design.id)}">${esc(design.module)} · ${esc(design.id.slice(-8))}</option>`).join("");
+    const options = `<option value="">${ui("Select a registered design", "选择已登记设计")}</option>` + state.designs.map(design => `<option value="${esc(design.id)}">${esc(design.module)} · ${esc(design.id.slice(-8))}</option>`).join("");
     $("#frontendDesign").innerHTML = options;
     $("#backendDesign").innerHTML = options;
+    renderDesignChips();
     const id = preferred || state.selectedDesign?.id || state.designs[0]?.id;
     if (id) {
       $("#frontendDesign").value = id;
@@ -185,15 +307,24 @@ async function loadDesigns(preferred = null) {
   }
 }
 
+function renderDesignChips() {
+  const root = $("#backendDesignChips");
+  if (!root) return;
+  const selected = $("#backendDesign")?.value || state.selectedDesign?.id;
+  root.innerHTML = state.designs.length ? state.designs.map(design => `<button type="button" class="${design.id === selected ? "active" : ""}" data-backend-design="${esc(design.id)}">▶ ${esc(design.module)} · ${esc(design.id.slice(-6))}</button>`).join("") : `<div class="empty-row">${ui("No frontend designs are registered yet.", "尚未登记前端设计。")}</div>`;
+  $$('[data-backend-design]', root).forEach(button => button.addEventListener("click", () => selectDesign(button.dataset.backendDesign)));
+}
+
 async function selectDesign(id) {
   if (!id) return;
   const design = await api(`/api/designs/${encodeURIComponent(id)}`);
   state.selectedDesign = design;
   $("#frontendDesign").value = id;
   $("#backendDesign").value = id;
+  renderDesignChips();
   const analysis = design.analysis || {};
   const ports = (analysis.inputs || []).length + (analysis.outputs || []).length;
-  $("#designMeta").innerHTML = `<div><b>${esc(design.module)}</b><span>${esc(design.description)} · ${esc(design.origin)}</span></div><div class="metric"><strong>${esc(analysis.instance_count ?? "—")}</strong><small>Gate instances</small></div><div class="metric"><strong>${esc(ports)}</strong><small>Ports</small></div>`;
+  $("#designMeta").innerHTML = `<div><b>${esc(design.module)}</b><span>${esc(design.description)} · ${esc(design.origin)}</span></div><div class="metric"><strong>${esc(analysis.instance_count ?? "—")}</strong><small>${ui("Gate instances", "门级实例")}</small></div><div class="metric"><strong>${esc(ports)}</strong><small>${ui("Ports", "端口")}</small></div>`;
   $("#downloadRtl").href = `/api/designs/${encodeURIComponent(id)}/source?kind=rtl`;
   $("#downloadNetlist").href = `/api/designs/${encodeURIComponent(id)}/source?kind=netlist`;
   await renderDesignView();
@@ -274,8 +405,8 @@ async function saveProvider() {
     const result = await post("/api/providers", {owner_id: "local-user", session_id: `web-${Date.now()}`, profile_id: `web-provider-${Date.now()}`, base_url: $("#providerUrl").value, model: $("#providerModel").value, api_key: key});
     $("#providerKey").value = "";
     state.providerProfile = result;
-    $("#providerState").textContent = `Connected · ${result.model || $("#providerModel").value || "custom model"}`;
-    message("#rtlscoutMessage", "Provider connected for this server session. Connecting does not start an optimization run.");
+    $("#providerState").textContent = `${ui("Connected", "已连接")} · ${result.model || $("#providerModel").value || ui("custom model", "自定义模型")}`;
+    message("#rtlscoutMessage", ui("Provider connected for this server session. Connecting does not start an optimization run.", "Provider 已连接到当前服务会话；连接操作不会启动优化。"));
   } catch (error) {
     $("#providerState").textContent = "Connection failed";
     message("#rtlscoutMessage", error.message, true);
@@ -290,14 +421,14 @@ function updateRtlscoutControls() {
   const byok = mode === "byok";
   if (!state.providerProfile) {
     $("#providerState").textContent = byok
-      ? (state.rtlscoutStatus?.byok?.input_enabled ? "Not connected" : "HTTPS worker required")
-      : "Not required for offline demo";
+      ? (state.rtlscoutStatus?.byok?.input_enabled ? ui("Not connected", "尚未连接") : ui("HTTPS worker required", "需要 HTTPS Worker"))
+      : ui("Not required for offline demo", "离线演示无需 Provider");
   }
   $("#rtlscoutModeNote").textContent = byok
-    ? "Custom-provider execution is disabled on this HTTP review site. It requires HTTPS and the Runtime worker secret bridge."
-    : "The offline demo uses the official deterministic model while real Verilator and Yosys verify and score every generated candidate.";
-  $("#rtlscoutLaunchSummary").textContent = `${byok ? "Custom provider" : "Offline verified demo"} · ${benchmark} · minimize ${cost.replaceAll("_", " ")} · ${steps} steps`;
-  $("#runRtlscout").textContent = byok ? "Secure Worker Required" : "Run Offline Demo →";
+    ? ui("Custom-provider execution is disabled on this HTTP review site. It requires HTTPS and the Runtime worker secret bridge.", "当前 HTTP 验收站禁用自定义 Provider 执行，需要 HTTPS 与 Runtime Worker 密钥桥接。")
+    : ui("The offline demo uses the official deterministic model while real Verilator and Yosys verify and score every generated candidate.", "离线演示使用官方确定性模型，真实 Verilator 与 Yosys 负责验证和评分。") ;
+  $("#rtlscoutLaunchSummary").textContent = state.locale === "zh" ? `${byok ? "自定义 Provider" : "离线验证演示"} · ${benchmark} · 最小化 ${cost.replaceAll("_", " ")} · ${steps} 步` : `${byok ? "Custom provider" : "Offline verified demo"} · ${benchmark} · minimize ${cost.replaceAll("_", " ")} · ${steps} steps`;
+  $("#runRtlscout").textContent = byok ? ui("Secure Worker Required", "需要安全 Worker") : ui("Run Offline Demo →", "运行离线演示 →");
   $("#runRtlscout").disabled = byok || state.rtlscoutStatus?.ready === false;
 }
 
@@ -328,8 +459,11 @@ async function submitRtlscout() {
 async function loadRuns(preferred = null) {
   try {
     state.runs = (await api("/api/runtime/runs")).runs || [];
-    $("#runSelect").innerHTML = '<option value="">Choose a Runtime run</option>' + state.runs.map(run => `<option value="${esc(run.run_id)}">${esc(run.design_id)} · ${esc(run.plugin_id)} · ${esc(run.status)}</option>`).join("");
-    const id = preferred || state.selectedRun?.run?.run_id || state.runs[0]?.run_id;
+    const physicalRuns = state.runs.filter(run => ["orfs", "taiwei-pin-3d", "implcraft"].includes(run.plugin_id));
+    $("#runSelect").innerHTML = `<option value="">${ui("Choose a Runtime run", "选择 Runtime 任务")}</option>` + physicalRuns.map(run => `<option value="${esc(run.run_id)}">${esc(run.design_id)} · ${esc(run.plugin_id)} · ${esc(run.status)}</option>`).join("");
+    const preferredPhysical = physicalRuns.find(run => run.run_id === preferred)?.run_id;
+    const selectedPhysical = physicalRuns.find(run => run.run_id === state.selectedRun?.run?.run_id)?.run_id;
+    const id = preferredPhysical || selectedPhysical || physicalRuns[0]?.run_id;
     if (id) {
       $("#runSelect").value = id;
       await selectRun(id);
@@ -434,10 +568,23 @@ async function renderRtlscoutDashboard() {
 }
 
 function renderStageRail(values) {
+  const descriptions = {
+    synth: ui("Synthesize RTL and produce the gate netlist", "综合 RTL 并生成门级网表"),
+    floorplan: ui("Create die/core geometry, rows, tracks, and power plan", "生成芯片与核心区、标准单元行、布线轨道和电源规划"),
+    place: ui("Place cells and optimize congestion and timing", "完成单元布局并优化拥塞与时序"),
+    cts: ui("Build and optimize the clock distribution tree", "构建并优化时钟分布树"),
+    route: ui("Perform global and detailed routing", "完成全局布线和详细布线"),
+    finish: ui("Write final reports, DEF, netlist, and GDS", "输出最终报告、DEF、网表和 GDS"),
+  };
+  const succeeded = stages.filter(name => values.get(name)?.status === "succeeded").length;
+  $("#flowProgressBar").style.width = `${(succeeded / stages.length) * 100}%`;
+  $("#flowProgressText").textContent = `${succeeded} / ${stages.length}`;
   $("#stageRail").innerHTML = stages.map((name, index) => {
     const value = values.get(name);
     const css = value?.status === "succeeded" ? "done" : value?.status === "failed" ? "failed" : "";
-    return `<div class="stage ${css}"><i></i><b>0${index + 1} · ${name}</b><small>${esc(value?.status || "waiting")}${value?.seconds ? ` · ${Number(value.seconds).toFixed(1)}s` : ""}</small></div>`;
+    const status = value?.status || "waiting";
+    const statusLabel = {waiting: ui("waiting", "等待"), running: ui("running", "运行中"), succeeded: ui("complete", "完成"), failed: ui("failed", "失败")}[status] || status;
+    return `<div class="stage ${css}"><i></i><b>0${index + 1} · ${name}</b><span class="stage-description">${esc(descriptions[name])}</span><small>${esc(statusLabel)}${value?.seconds ? ` · ${Number(value.seconds).toFixed(1)}s` : ""}</small></div>`;
   }).join("");
 }
 
@@ -447,7 +594,7 @@ async function selectRun(id) {
   state.selectedRun = detail;
   const run = detail.run;
   const task = run.task_spec || {};
-  $("#runHeading").innerHTML = `<div><b>${esc(task.design_id)} · ${esc(task.plugin_id)}</b><span>${esc(run.run_id)} · ${esc(task.parameters?.target_stage || "extension task")}</span></div><span class="status ${esc(run.status)}">${esc(run.status)}</span>`;
+  $("#runHeading").innerHTML = `<div><b>${esc(task.design_id)} · ${esc(task.plugin_id)}</b><span>${esc(run.run_id)} · ${esc(task.parameters?.target_stage || ui("extension task", "扩展任务"))}</span></div><span class="status ${esc(run.status)}">${esc(run.status)}</span>`;
   const values = new Map();
   (detail.events || []).forEach(event => {
     const name = event.payload?.tool_stage;
@@ -458,29 +605,59 @@ async function selectRun(id) {
   const attempts = (detail.stages || []).flatMap(stage => stage.attempts || []);
   const attempt = attempts.at(-1);
   if (!attempt) {
-    $("#backendEvidence").innerHTML = '<div class="empty"><span>⋯</span><h3>Waiting for a Runtime worker.</h3><p>The queued task and its recovery state are already recorded.</p></div>';
+    $("#backendEvidence").innerHTML = `<div class="empty"><span>⋯</span><h3>${ui("Waiting for a Runtime worker.", "正在等待 Runtime Worker。")}</h3><p>${ui("The queued task and its recovery state are already recorded.", "任务与恢复状态已登记，执行进程由独立 Worker 接管。")}</p></div>`;
     return;
   }
   const artifacts = attempt.artifacts || [];
+  const metrics = attempt.metrics || [];
   const views = artifacts.filter(artifact => ["layout_view", "three_d_view"].includes(artifact.kind));
-  $("#backendEvidence").innerHTML = `<div class="layout-gallery">${views.map(view => `<figure class="layout-figure"><img src="${esc(view.url)}" alt="Registered layout view"><figcaption>${esc(view.store_key)} · SHA-256 ${esc((view.sha256 || "").slice(0, 12))}…</figcaption></figure>`).join("")}</div><div class="artifact-grid">${artifacts.map(artifact => `<a class="artifact-link" href="${esc(artifact.url)}" target="_blank" rel="noopener"><b>${esc(artifact.kind)}</b><span>${esc(artifact.store_key)} · ${esc((artifact.sha256 || "").slice(0, 10))}…</span></a>`).join("")}</div>${attempt.failure ? `<div class="message error">${esc(attempt.failure.message || attempt.failure.category)}</div>` : ""}`;
+  const visual = views.length ? `<div class="layout-gallery">${views.map(view => `<figure class="layout-figure"><img src="${esc(view.url)}" alt="Registered layout view"><figcaption>${esc(view.store_key)} · SHA-256 ${esc((view.sha256 || "").slice(0, 12))}…</figcaption></figure>`).join("")}</div>` : `<div class="empty"><span>□</span><h3>${ui("No registered layout preview in this attempt.", "该次尝试尚未登记版图预览。")}</h3><p>${ui("Artifacts and reports remain listed below.", "产物与报告仍会在下方列出。")}</p></div>`;
+  const metricCards = metrics.length ? `<div class="qor-grid">${metrics.slice(0, 15).map(metric => `<div class="qor-card"><b>${esc(metric.value)}${metric.unit ? ` ${esc(metric.unit)}` : ""}</b><small>${esc(metric.name)}</small></div>`).join("")}</div>` : "";
+  $("#backendEvidence").innerHTML = `${visual}${metricCards}<div class="artifact-grid">${artifacts.map(artifact => `<a class="artifact-link" href="${esc(artifact.url)}" target="_blank" rel="noopener"><b>${esc(artifact.kind)}</b><span>${esc(artifact.store_key)} · ${esc((artifact.sha256 || "").slice(0, 10))}…</span></a>`).join("")}</div>${attempt.failure ? `<div class="message error">${esc(attempt.failure.message || attempt.failure.category)}</div>` : ""}`;
 }
 
 async function submitFlow() {
   const id = $("#backendDesign").value;
-  if (!id) return message("#flowMessage", "Select a registered design first.", true);
+  if (!id) return message("#flowMessage", ui("Select a registered design first.", "请先选择已登记设计。"), true);
   const button = $("#submitFlow");
   button.disabled = true;
-  message("#flowMessage", "Submitting a recoverable Runtime task…");
+  const mode = $("#flowMode").value;
+  const objective = $('input[name="flowObjective"]:checked')?.value || "balanced";
+  message("#flowMessage", mode === "baseline" ? ui("Submitting a recoverable Runtime task…", "正在提交可恢复的 Runtime 任务……") : ui("Creating a bounded campaign plan for review…", "正在创建有界批量实验计划，等待审查……"));
   try {
-    const detail = await post("/api/runtime/runs/from-design", {design_id: id, clock: $("#flowClock").value.trim() || null, clock_period_ns: Number($("#flowPeriod").value), core_utilization_pct: Number($("#flowUtil").value), place_density: Number($("#flowDensity").value), target_stage: $("#flowTarget").value});
-    message("#flowMessage", `Run ${detail.run.run_id.slice(0, 12)} is queued.`);
-    await loadRuns(detail.run.run_id);
+    const base = {design_id: id, clock: $("#flowClock").value.trim() || null, clock_period_ns: Number($("#flowPeriod").value), core_utilization_pct: Number($("#flowUtil").value), place_density: Number($("#flowDensity").value), target_stage: $("#flowTarget").value, objective, flow_mode: mode};
+    if (mode === "baseline") {
+      const detail = await post("/api/runtime/runs/from-design", base);
+      message("#flowMessage", ui(`Run ${detail.run.run_id.slice(0, 12)} is queued.`, `任务 ${detail.run.run_id.slice(0, 12)} 已进入队列。`));
+      await loadRuns(detail.run.run_id);
+    } else {
+      const util = Number($("#flowUtil").value);
+      const density = Number($("#flowDensity").value);
+      const period = Number($("#flowPeriod").value);
+      const objectiveMetric = {timing: "finish__timing__setup__ws", area: "finish__design__instance__area", power: "finish__power__total", balanced: "finish__design__instance__area"}[objective];
+      const parameterGrid = objective === "timing"
+        ? {clock_period_ns: [Math.max(.01, period * .9), period, period * 1.1]}
+        : objective === "area" ? {core_utilization_pct: [Math.max(1, util - 5), util, Math.min(99, util + 5)]}
+          : objective === "power" ? {place_density: [Math.max(.01, density - .05), density, Math.min(1, density + .05)]}
+            : {core_utilization_pct: [Math.max(1, util - 5), util, Math.min(99, util + 5)]};
+      const campaign = await post("/api/campaigns/stage-aware", {...base, name: `${mode}-${objective}-${id}`, parameter_grid: parameterGrid, max_parallel: 1, objective_metric: objectiveMetric, direction: objective === "timing" ? "max" : "min", top_k: 2, max_repairs: mode === "agent" ? 2 : 0, max_total_runs: 6});
+      message("#flowMessage", ui(`Campaign ${campaign.campaign_id} created with ${campaign.members.length} candidates. It has not been submitted for execution.`, `批量实验 ${campaign.campaign_id} 已创建，共 ${campaign.members.length} 个候选；尚未提交执行。`));
+    }
   } catch (error) {
     message("#flowMessage", error.message, true);
   } finally {
     button.disabled = false;
+    updateFlowMode();
   }
+}
+
+function updateFlowMode() {
+  const mode = $("#flowMode").value;
+  const baseline = mode === "baseline";
+  $("#submitFlow").textContent = baseline ? ui("Start RTL-to-GDS", "开始 RTL-to-GDS") : ui("Create Campaign Plan", "创建批量实验计划");
+  $("#flowModeNote").textContent = baseline
+    ? ui("Baseline submits one Runtime run using the values above.", "基线模式会按照上方参数提交一个 Runtime 任务。")
+    : ui("Campaign modes create three bounded candidates for review; they do not execute automatically.", "批量模式会创建三个有界候选供审查，不会自动执行。")
 }
 
 function renderExtensions() {
@@ -674,9 +851,15 @@ $("#rtlscoutSteps").addEventListener("input", updateRtlscoutControls);
 $("#runRtlscout").addEventListener("click", submitRtlscout);
 $("#runSelect").addEventListener("change", event => selectRun(event.target.value));
 $("#submitFlow").addEventListener("click", submitFlow);
+$("#flowMode").addEventListener("change", updateFlowMode);
+$$('[data-locale]').forEach(button => button.addEventListener("click", () => { applyLocale(button.dataset.locale); updateFlowMode(); if (!state.selectedRun) renderStageRail(new Map()); }));
 $("#refreshResults").addEventListener("click", loadResults);
 $("#closeResultDetail").addEventListener("click", () => { $("#projectDetailSection").classList.remove("open"); $("#resultList").scrollIntoView({behavior: "smooth"}); });
 $$('#resultFilters button').forEach(button => button.addEventListener("click", () => { $$('#resultFilters button').forEach(item => item.classList.remove("active")); button.classList.add("active"); state.resultFilter = button.dataset.filter; renderResults(); }));
 
+let initialLocale = "en";
+try { initialLocale = new URLSearchParams(location.search).get("lang") || localStorage.getItem("openroad-platform-locale") || "en"; } catch (_) { /* storage may be disabled */ }
+applyLocale(initialLocale);
+updateFlowMode();
 route(location.hash.slice(1) || "overview");
 Promise.all([loadPlatform(), loadRtlscoutStatus(), loadExamples(), loadDesigns(), loadRuns()]);

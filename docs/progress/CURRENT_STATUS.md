@@ -1,7 +1,7 @@
 # Current status
 
 updated_at: 2026-08-07
-phase: P0-P22 completed; frontend workspace clarity revision awaiting user acceptance
+phase: P0-P22 completed; reference-workspace bilingual revision awaiting user acceptance
 
 - Workflow Runtime remains the only authority for process launch, attempts,
   events, artifacts, recovery, and terminal state. Web, LLM, BO/GP, RL, RAG,
@@ -50,10 +50,20 @@ phase: P0-P22 completed; frontend workspace clarity revision awaiting user accep
 - RTLCraft and EDACode are shown as independent frontend alternatives. Their
   links reliably open the selected Extensions detail even if the catalog was
   still loading when clicked.
+- Frontend and Backend now use the user-supplied interactive-demo pages as the
+  structural reference: one narrow vertical workspace, numbered gray panels,
+  visible input choices, controls next to actions, vertical stage status, and
+  evidence directly below the producing flow.
+- Backend business semantics are explicit: Baseline queues one Runtime run;
+  Campaign and Agent modes create three bounded unbound candidates for review.
+  They never execute automatically from the Web process.
+- A persistent `中文 / EN` header switch translates the primary site and the
+  complete Frontend/Backend workspaces. Technical identifiers remain stable;
+  review links may use `?lang=zh` or `?lang=en`.
 - P22 added a four-flow demo manifest and non-destructive SQLite backup/restore.
   Nine live state databases were backed up, hash-checked, integrity-checked, and
   restored into a new `/tmp` directory without overwriting source state.
-- Frontend-clarity regression: 193 passed, 0 failed. Node
+- Reference-workspace regression: 196 passed, 0 failed. Node
   syntax, Python compile, 41 JSON files, diff whitespace, tracked credential
   patterns, fixed EDACraft commit, and source cleanliness checks passed.
 - No push, public deployment, credential read, expensive DPLEvolve run, or
@@ -64,4 +74,5 @@ Evidence: `P18_EDACRAFT_REAL_ACCEPTANCE.*` and
 `P19_P22_PLATFORM_ACCEPTANCE.*` under `docs/evidence/`; the information-
 architecture and modern-minimal visual revisions are recorded in
 `P22_UI_REVISION_ACCEPTANCE.*`, `P22_MINIMAL_UI_ACCEPTANCE.*`, and
-`P22_FRONTEND_WORKSPACE_ACCEPTANCE.*`.
+`P22_FRONTEND_WORKSPACE_ACCEPTANCE.*`. The latest structural and language
+revision is recorded in `P22_REFERENCE_WORKSPACE_BILINGUAL_ACCEPTANCE.*`.

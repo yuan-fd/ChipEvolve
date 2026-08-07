@@ -28,6 +28,14 @@ custom provider execution requires HTTPS and a worker-side secret bridge.
 RTLCraft and EDACode links open their independent extension detail rather than
 being presented as RTLScout stages.
 
+Frontend and Backend use a compact interactive-demo workspace: a centered
+single column, top workspace switcher, numbered panel headers, and an explicit
+input → configuration → action → status → evidence sequence. Backend baseline
+mode queues one Runtime run; Stage-aware Campaign and Agent-guided modes create
+bounded review plans without automatic execution. The header `中文 / EN` switch
+persists locally, and `?lang=zh` / `?lang=en` can select a language for a shared
+review URL.
+
 ## Visual system
 
 The interface uses a restrained efficiency-tool style: neutral white/light-gray

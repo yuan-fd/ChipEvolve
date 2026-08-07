@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "phase": "P22-reference-workspace-bilingual",
+  "captured_at": "2026-08-07",
+  "accepted": true,
+  "interface": {
+    "reference": "user-supplied-iccad-interactive-demo-screenshots",
+    "layout": "narrow-numbered-vertical-task-panels",
+    "frontend_order": ["input", "examples", "synthesis-results", "rtlscout-extension"],
+    "backend_order": ["design", "configuration", "runtime", "evidence", "extensions"],
+    "mobile_review_px": 390
+  },
+  "language": {
+    "modes": ["zh-CN", "en"],
+    "persistent": true,
+    "query_override": true
+  },
+  "execution_semantics": {
+    "baseline": "one-runtime-run",
+    "campaign": "three-unbound-review-candidates",
+    "agent": "three-unbound-review-candidates-with-repair-policy",
+    "automatic_campaign_execution": false
+  },
+  "verification": {
+    "pytest_passed": 196,
+    "pytest_failed": 0,
+    "node_syntax": "passed",
+    "python_compile": "passed"
+  }
+}

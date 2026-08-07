@@ -13,14 +13,14 @@
       <span class="mark">O</span><span>OpenROAD <i>Self-Evolving EDA Platform</i></span>
     </a>
     <nav class="tabs" aria-label="Primary navigation">
-      <button class="tab active" data-route="overview">Overview</button>
-      <button class="tab" data-route="frontend">Frontend Design</button>
-      <button class="tab" data-route="backend">Backend Design</button>
-      <button class="tab" data-route="extensions">Extensions</button>
-      <button class="tab" data-route="projects">Projects &amp; Results</button>
-      <button class="tab" data-route="evolution">Self-Evolution</button>
+      <button class="tab active" data-route="overview" data-i18n="nav.overview">Overview</button>
+      <button class="tab" data-route="frontend" data-i18n="nav.frontend">Frontend Design</button>
+      <button class="tab" data-route="backend" data-i18n="nav.backend">Backend Design</button>
+      <button class="tab" data-route="extensions" data-i18n="nav.extensions">Extensions</button>
+      <button class="tab" data-route="projects" data-i18n="nav.projects">Projects &amp; Results</button>
+      <button class="tab" data-route="evolution" data-i18n="nav.evolution">Self-Evolution</button>
     </nav>
-    <div class="health" title="Platform API status"><span id="healthDot"></span><b id="healthText">Connecting</b></div>
+    <div class="header-controls"><div class="language-switch" role="group" aria-label="Language"><button id="langZh" data-locale="zh">中文</button><button id="langEn" data-locale="en" class="active">EN</button></div><div class="health" title="Platform API status"><span id="healthDot"></span><b id="healthText">Connecting</b></div></div>
   </header>
 
   <main>
@@ -79,44 +79,37 @@
       </section>
     </section>
 
-    <section class="page" id="page-frontend">
-      <div class="page-head wrap"><div><p class="eyebrow">Frontend design</p><h1>From an idea to<br>a reviewable circuit.</h1></div><p>Choose a starting point, synthesize the design, and inspect the real RTL, netlist, schematic, and gate statistics in one vertical workspace.</p></div>
-      <section class="workflow-section wrap">
-        <div class="step-heading"><span>01</span><div><h2>Design input</h2><p>Three ways to begin. All paths converge on the same registered design record.</p></div></div>
-        <div class="panel input-panel">
-          <div class="choice-tabs" role="tablist" aria-label="Design input method">
-            <button class="active" data-input-mode="example">Choose Example</button>
-            <button data-input-mode="upload">Upload RTL</button>
-            <button data-input-mode="spec">Natural-language Spec</button>
-          </div>
-          <div class="input-mode active" id="input-example">
-            <div class="input-copy"><b>Audited design library</b><p>Start quickly with synthesizable examples ranging from basic logic to a UART and a compact RISC-V teaching core.</p></div>
-            <div class="form-stack"><label>Example design<select id="exampleSelect"><option value="">Loading examples…</option></select></label><p class="selection-note" id="exampleDescription"></p><button class="button primary" id="useExample">Synthesize Example <span>→</span></button></div>
-          </div>
-          <div class="input-mode" id="input-upload">
-            <div class="input-copy"><b>Verilog / SystemVerilog</b><p>Paste a design or load a local source file. The browser previews it before synthesis.</p></div>
-            <div class="form-stack"><label>Local RTL file<input id="rtlFile" type="file" accept=".v,.sv,text/plain"></label><label>Filename<input id="rtlFilename" value="design.v"></label><label>RTL source<textarea id="rtlSource" rows="10" placeholder="module design(input a, output y); assign y = ~a; endmodule"></textarea></label><button class="button primary" id="importRtl">Import and Synthesize <span>→</span></button></div>
-          </div>
-          <div class="input-mode" id="input-spec">
-            <div class="input-copy"><b>Natural-language specification</b><p>Describe the interface, behavior, timing, and reset policy. The resulting session remains reviewable before execution.</p></div>
-            <div class="form-stack"><label>Specification<textarea id="specPrompt" rows="9" placeholder="Build a parameterized synchronous FIFO with ready/valid handshakes, active-high reset, and an 8-bit data path."></textarea></label><button class="button primary" id="createSpec">Create Spec Session <span>→</span></button><small>Model-backed generation uses the provider profile configured in the RTLScout section below.</small></div>
+    <section class="page workspace-page" id="page-frontend">
+      <div class="workspace-head workspace-wrap"><p class="workspace-kicker" data-i18n="frontend.kicker">Interactive design workspace</p><h1 data-i18n="frontend.title">Frontend Design</h1><p data-i18n="frontend.subtitle">Create or import RTL, synthesize it, and inspect the circuit in one clear sequence.</p></div>
+      <nav class="workspace-switcher workspace-wrap" aria-label="Design workspace"><button class="active" data-route="frontend"><span>●</span><b data-i18n="switch.frontend">Frontend Design</b></button><button data-route="backend"><span>▥</span><b data-i18n="switch.backend">Backend Implementation</b></button><button data-route="projects"><span>▣</span><b data-i18n="switch.results">Run Results</b></button></nav>
+
+      <div class="workspace-stack workspace-wrap">
+        <section class="task-panel">
+          <header class="task-panel-head"><span>①</span><div><b data-i18n="frontend.source.title">Create or upload RTL</b><small data-i18n="frontend.source.subtitle">Choose one input path. Both create the same registered design record.</small></div></header>
+          <div class="source-grid">
+            <article class="source-card"><div><b data-i18n="frontend.upload.title">Upload Verilog / SystemVerilog</b><small data-i18n="frontend.upload.help">Load a local .v or .sv file, review it, then synthesize.</small></div><label class="file-drop"><span data-i18n="frontend.upload.file">RTL source file</span><input id="rtlFile" type="file" accept=".v,.sv,text/plain"></label><details><summary data-i18n="frontend.upload.review">Review or paste source</summary><div class="source-editor"><label><span data-i18n="common.filename">Filename</span><input id="rtlFilename" value="design.v"></label><label><span data-i18n="frontend.rtl.source">RTL source</span><textarea id="rtlSource" rows="9" placeholder="module design(input a, output y); assign y = ~a; endmodule"></textarea></label></div></details><button class="button primary" id="importRtl" data-i18n="frontend.upload.action">Import and synthesize</button></article>
+            <article class="source-card"><div><b data-i18n="frontend.spec.title">Generate RTL from a specification</b><small data-i18n="frontend.spec.help">Describe behavior and interfaces. Review is required before physical implementation.</small></div><label><span data-i18n="frontend.spec.label">Natural-language specification</span><textarea id="specPrompt" rows="7" data-i18n-placeholder="frontend.spec.placeholder" placeholder="Build a four-bit synchronous counter with enable and active-high reset."></textarea></label><button class="button outline-blue" id="createSpec" data-i18n="frontend.spec.action">Create specification session</button><small class="card-footnote" data-i18n="frontend.spec.note">Model-backed generation uses a user-connected provider.</small></article>
           </div>
           <p class="message" id="specMessage" aria-live="polite"></p>
-        </div>
-      </section>
+        </section>
 
-      <section class="workflow-section wrap">
-        <div class="step-heading"><span>02</span><div><h2>Design results</h2><p>Inspect outputs produced from the registered design rather than illustrative mockups.</p></div><label class="compact-select">Registered design<select id="frontendDesign"><option value="">Select a design</option></select></label></div>
-        <div class="design-summary" id="designMeta"><div><b>No design selected</b><span>Choose an example, upload RTL, or select an existing design.</span></div><div class="metric"><strong>—</strong><small>Gate instances</small></div><div class="metric"><strong>—</strong><small>Ports</small></div></div>
-        <div class="panel result-viewer">
-          <div class="viewer-tabs"><button class="active" data-design-view="schematic">Circuit Schematic</button><button data-design-view="rtl">Verilog Source</button><button data-design-view="netlist">Gate Netlist</button><div class="viewer-downloads"><a id="downloadRtl" href="#">Download RTL</a><a id="downloadNetlist" href="#">Download Netlist</a></div></div>
-          <div class="visual-canvas" id="frontendCanvas"><div class="empty"><span>◇</span><h3>Your synthesized circuit will appear here.</h3><p>Schematics are generated from the gate-level netlist with established graph tools.</p></div></div>
-        </div>
-      </section>
+        <section class="task-panel">
+          <header class="task-panel-head"><span>②</span><div><b data-i18n="frontend.examples.title">Choose an audited RTL example</b><small data-i18n="frontend.examples.subtitle">Start with simple logic or a larger ALU, controller, UART, or teaching RISC-V core.</small></div></header>
+          <div class="task-panel-body"><div class="example-chips" id="exampleChips"></div><div class="example-toolbar"><label><span data-i18n="frontend.examples.selected">Selected example</span><select id="exampleSelect"><option value="">Loading examples…</option></select></label><button class="button primary" id="useExample" data-i18n="frontend.examples.action">Synthesize example</button></div><p class="selection-note" id="exampleDescription"></p></div>
+        </section>
 
-      <section class="feature-section">
-        <div class="wrap">
-          <div class="step-heading"><span>03</span><div><h2>RTLScout optimization <em>Optional</em></h2><p>Generate and improve benchmark RTL with correctness as a hard gate, then rank only verified candidates by cost.</p></div></div>
+        <section class="task-panel">
+          <header class="task-panel-head result-panel-head"><span>③</span><div><b data-i18n="frontend.results.title">Synthesis results</b><small data-i18n="frontend.results.subtitle">Gate statistics, circuit schematic, Verilog source, and synthesized netlist.</small></div><label><span data-i18n="common.design">Registered design</span><select id="frontendDesign"><option value="">Select a design</option></select></label></header>
+          <div class="design-summary" id="designMeta"><div><b>No design selected</b><span>Choose an example, upload RTL, or select an existing design.</span></div><div class="metric"><strong>—</strong><small>Gate instances</small></div><div class="metric"><strong>—</strong><small>Ports</small></div></div>
+          <div class="result-viewer">
+            <div class="viewer-tabs"><button class="active" data-design-view="schematic" data-i18n="frontend.view.schematic">Circuit schematic</button><button data-design-view="rtl" data-i18n="frontend.view.rtl">Verilog source</button><button data-design-view="netlist" data-i18n="frontend.view.netlist">Gate netlist</button><div class="viewer-downloads"><a id="downloadRtl" href="#" data-i18n="frontend.download.rtl">Download RTL</a><a id="downloadNetlist" href="#" data-i18n="frontend.download.netlist">Download netlist</a></div></div>
+            <div class="visual-canvas" id="frontendCanvas"><div class="empty"><span>◇</span><h3 data-i18n="frontend.empty.title">Your synthesized circuit will appear here.</h3><p data-i18n="frontend.empty.help">Choose a design above to load its registered outputs.</p></div></div>
+          </div>
+        </section>
+
+        <section class="task-panel extension-task">
+          <header class="task-panel-head"><span>④</span><div><b>RTLScout <i data-i18n="common.optional">Optional</i></b><small data-i18n="rtlscout.subtitle">Optimize benchmark RTL while correctness remains a hard verification gate.</small></div></header>
+          <div class="extension-task-body">
 
           <section class="rtlscout-explainer panel">
             <div class="module-head"><div><b>How RTLScout works</b><span>The agent may edit RTL, but it cannot declare success. Verilator and Yosys produce the recorded result.</span></div><small>Agent loop</small></div>
@@ -166,29 +159,43 @@
             <div class="module-head"><div><b>EDACraft frontend alternatives</b><span>These are separate tools, not additional RTLScout steps. Use them only when their design model matches your task.</span></div></div>
             <div class="alternative-grid"><button data-open-extension="edacraft-rtlcraft"><span><b>RTLCraft</b><small>Python hardware DSL → SystemVerilog generation and verification.</small></span><i>Open RTLCraft →</i></button><button data-open-extension="edacraft-edacode"><span><b>EDACode</b><small>Review-only analog and mixed-signal design proposals.</small></span><i>Open EDACode →</i></button></div>
           </section>
-        </div>
-      </section>
+          </div>
+        </section>
+      </div>
     </section>
 
-    <section class="page" id="page-backend">
-      <div class="page-head wrap"><div><p class="eyebrow">Backend design</p><h1>Physical design,<br>stage by stage.</h1></div><p>Configure implementation, follow six physical-design stages, then inspect layout, QoR, diagnostics, and downloadable evidence.</p></div>
-      <section class="workflow-section wrap">
-        <div class="step-heading"><span>01</span><div><h2>Implementation setup</h2><p>Select the design, constraints, target stage, and optimization behavior.</p></div></div>
-        <div class="panel backend-form">
-          <div class="form-grid"><label>Registered design<select id="backendDesign"><option value="">Select a registered design</option></select></label><label>PDK / platform<select id="flowPdk"><option>SKY130HD · OpenROAD</option><option disabled>ASAP7 · requires installed platform</option></select></label><label>Clock port<input id="flowClock" value="clk"></label><label>Clock period · ns<input id="flowPeriod" type="number" value="10" min="0.01" step="0.1"></label><label>Core utilization · %<input id="flowUtil" type="number" value="30" min="1" max="99"></label><label>Place density<input id="flowDensity" type="number" value="0.55" min="0.01" max="1" step="0.01"></label><label>Target stage<select id="flowTarget"><option value="finish">Finish · GDS</option><option value="route">Routing</option><option value="cts">Clock tree</option><option value="place">Placement</option><option value="floorplan">Floorplan</option><option value="synth">Synthesis</option></select></label><label>Optimization mode<select id="flowMode"><option>Baseline flow</option><option>Stage-aware Campaign</option><option>Agent-guided search</option></select></label></div>
-          <div class="submit-row"><p>Execution is recorded as a recoverable Runtime task with isolated artifacts and stage status.</p><button class="button primary" id="submitFlow">Start RTL-to-GDS <span>→</span></button></div><p class="message" id="flowMessage" aria-live="polite"></p>
-        </div>
-      </section>
-      <section class="workflow-section wrap">
-        <div class="step-heading"><span>02</span><div><h2>Flow progress</h2><p>Follow each implementation stage and its measured status.</p></div><label class="compact-select">Runtime run<select id="runSelect"><option value="">Choose a Runtime run</option></select></label></div>
-        <div class="run-heading" id="runHeading"><div><b>No run selected</b><span>Queued, active, and completed records appear here.</span></div></div>
-        <div class="stage-rail" id="stageRail"></div>
-      </section>
-      <section class="workflow-section wrap">
-        <div class="step-heading"><span>03</span><div><h2>Layout and implementation evidence</h2><p>Review generated 2D/3D views, QoR reports, diagnostics, hashes, and implementation artifacts.</p></div></div>
-        <div class="panel result-evidence" id="backendEvidence"><div class="empty"><span>□</span><h3>Run evidence will appear here.</h3><p>Layout views are generated by the toolchain; GDS, DEF, ODB, timing, power, area, DRC, and logs remain downloadable.</p></div></div>
-      </section>
-      <section class="feature-section backend-features"><div class="wrap"><div class="section-heading"><p class="eyebrow">Optional implementation capabilities</p><h2>Extend the physical-design workflow.</h2><p>Each module opens its own workspace and exposes current availability, required inputs, and recorded results.</p></div><div class="clickable-grid"><button data-open-extension="flow-agent"><span>Flow optimization</span><b>AgenticPD &amp; stage-aware Campaigns</b><p>Parameter search, status monitoring, diagnosis, and policy-bounded repair.</p><i>Open →</i></button><button data-open-extension="taiwei-3d"><span>3D physical design</span><b>TaiWei 3D IC</b><p>Upper/bottom tiers, HBT, cross-tier metrics, layout views, and replay evidence.</p><i>Open →</i></button><button data-open-extension="edacraft-implcraft"><span>Backend extension</span><b>ImplCraft</b><p>Preserved script-generation workflow and OpenROAD-compatible integration path.</p><i>Open →</i></button><button data-open-extension="dplevolve"><span>Code-level optimization</span><b>DPLEvolve / Tool-Evolve</b><p>User-initiated long-running OpenROAD source candidate generation and evaluation.</p><i>Open Dashboard →</i></button></div></div></section>
+    <section class="page workspace-page" id="page-backend">
+      <div class="workspace-head workspace-wrap"><p class="workspace-kicker" data-i18n="backend.kicker">Interactive implementation workspace</p><h1 data-i18n="backend.title">Backend Implementation</h1><p data-i18n="backend.subtitle">Configure RTL-to-GDS, follow each physical-design stage, and inspect layout and QoR evidence.</p></div>
+      <nav class="workspace-switcher workspace-wrap" aria-label="Design workspace"><button data-route="frontend"><span>●</span><b data-i18n="switch.frontend">Frontend Design</b></button><button class="active" data-route="backend"><span>▥</span><b data-i18n="switch.backend">Backend Implementation</b></button><button data-route="projects"><span>▣</span><b data-i18n="switch.results">Run Results</b></button></nav>
+      <div class="workspace-stack workspace-wrap">
+        <section class="task-panel">
+          <header class="task-panel-head"><span>①</span><div><b data-i18n="backend.design.title">Choose a registered RTL design</b><small data-i18n="backend.design.subtitle">Frontend designs are immediately available to the physical-design flow.</small></div></header>
+          <div class="task-panel-body"><div class="design-chips" id="backendDesignChips"></div><label class="wide-select"><span data-i18n="common.design">Registered design</span><select id="backendDesign"><option value="">Select a registered design</option></select></label></div>
+        </section>
+
+        <section class="task-panel">
+          <header class="task-panel-head"><span>②</span><div><b data-i18n="backend.config.title">Configure implementation</b><small data-i18n="backend.config.subtitle">Clock, floorplan, target stage, and optimization policy.</small></div></header>
+          <div class="task-panel-body"><div class="backend-config-grid"><label><span data-i18n="backend.clock">Clock port</span><input id="flowClock" value="clk"></label><label><span data-i18n="backend.period">Clock period · ns</span><input id="flowPeriod" type="number" value="10" min="0.01" step="0.1"></label><label><span data-i18n="backend.platform">PDK / platform</span><select id="flowPdk"><option>Nangate45 · OpenROAD</option><option disabled>ASAP7 · requires installed platform</option></select></label><label><span data-i18n="backend.util">Core utilization · %</span><input id="flowUtil" type="number" value="30" min="1" max="99"></label><label><span data-i18n="backend.density">Placement density</span><input id="flowDensity" type="number" value="0.55" min="0.01" max="1" step="0.01"></label><label><span data-i18n="backend.target">Target stage</span><select id="flowTarget"><option value="finish">Finish · GDS</option><option value="route">Routing</option><option value="cts">Clock tree</option><option value="place">Placement</option><option value="floorplan">Floorplan</option><option value="synth">Synthesis</option></select></label></div><fieldset class="objective-options"><legend data-i18n="backend.objective">Optimization objective</legend><label><input type="radio" name="flowObjective" value="balanced" checked><span data-i18n="backend.objective.balanced">Balanced</span></label><label><input type="radio" name="flowObjective" value="timing"><span data-i18n="backend.objective.timing">Timing first</span></label><label><input type="radio" name="flowObjective" value="area"><span data-i18n="backend.objective.area">Area first</span></label><label><input type="radio" name="flowObjective" value="power"><span data-i18n="backend.objective.power">Power first</span></label></fieldset><label class="flow-mode"><span data-i18n="backend.mode">Flow mode</span><select id="flowMode"><option value="baseline">Baseline flow</option><option value="campaign">Stage-aware Campaign</option><option value="agent">Agent-guided search</option></select></label><p class="field-note" id="flowModeNote">Baseline submits one run. Campaign modes create a bounded experiment plan for review and do not execute it automatically.</p></div>
+        </section>
+
+        <section class="task-panel">
+          <header class="task-panel-head result-panel-head"><span>③</span><div><b data-i18n="backend.run.title">Run RTL-to-GDS and monitor stages</b><small data-i18n="backend.run.subtitle">Runtime records progress, recovery state, metrics, and artifacts.</small></div><label><span data-i18n="backend.run.select">Runtime run</span><select id="runSelect"><option value="">Choose a Runtime run</option></select></label></header>
+          <div class="run-controls"><button class="button primary" id="submitFlow" data-i18n="backend.run.action">Start RTL-to-GDS</button><button class="button" type="button" data-route="projects" data-i18n="backend.run.compare">Compare recorded runs</button></div><p class="message" id="flowMessage" aria-live="polite"></p>
+          <div class="run-heading" id="runHeading"><div><b data-i18n="backend.run.empty">No run selected</b><span data-i18n="backend.run.empty.help">Queued, active, and completed records appear here.</span></div></div>
+          <div class="flow-progress"><div><span id="flowProgressBar"></span></div><b id="flowProgressText">0 / 6</b></div>
+          <div class="stage-rail" id="stageRail"></div>
+        </section>
+
+        <section class="task-panel">
+          <header class="task-panel-head"><span>④</span><div><b data-i18n="backend.evidence.title">Layout, QoR, and implementation evidence</b><small data-i18n="backend.evidence.subtitle">Inspect generated views, timing, area, power, DRC, reports, and downloadable artifacts.</small></div></header>
+          <div class="result-evidence" id="backendEvidence"><div class="empty"><span>□</span><h3 data-i18n="backend.evidence.empty">Run evidence will appear here.</h3><p data-i18n="backend.evidence.empty.help">Choose a completed Runtime run to load its registered layout and reports.</p></div></div>
+        </section>
+
+        <section class="task-panel extension-task compact-extensions">
+          <header class="task-panel-head"><span>⑤</span><div><b data-i18n="backend.extensions.title">Optional workflow extensions</b><small data-i18n="backend.extensions.subtitle">Open only the specialist capability needed for this design.</small></div></header>
+          <div class="extension-rows"><button data-open-extension="flow-agent"><span><b>Flow-Agent / AgenticPD</b><small data-i18n="backend.ext.flow">Batch experiments, parameter search, monitoring, and bounded repair.</small></span><i>→</i></button><button data-open-extension="taiwei-3d"><span><b>TaiWei 3D IC</b><small data-i18n="backend.ext.3d">Two-tier implementation, HBT, cross-tier metrics, and 3D views.</small></span><i>→</i></button><button data-open-extension="edacraft-implcraft"><span><b>ImplCraft</b><small data-i18n="backend.ext.craft">Backend-neutral planning and OpenROAD-compatible implementation.</small></span><i>→</i></button><button data-open-extension="dplevolve"><span><b>DPLEvolve / Tool-Evolve</b><small data-i18n="backend.ext.evolve">Optional long-running OpenROAD source candidate optimization.</small></span><i>→</i></button></div>
+        </section>
+      </div>
     </section>
 
     <section class="page" id="page-extensions">
