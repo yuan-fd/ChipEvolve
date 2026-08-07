@@ -523,6 +523,52 @@ html[lang="zh-CN"] .workspace-head h1::after { content: " — 交互演示"; }
 .task-panel .result-evidence { min-height: 260px; padding: 12px; }
 .task-panel .layout-gallery { grid-template-columns: 1fr; }
 .task-panel .layout-figure img { max-height: 600px; }
+.qor-report, .timing-panel, .engineering-report, .evidence-block { margin-bottom: 12px; border: 1px solid var(--line); border-radius: 5px; background: white; overflow: hidden; }
+.qor-report-head { min-height: 82px; padding: 15px; display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; border-bottom: 1px solid var(--line); }
+.qor-report-head small { color: var(--accent); font-size: 8px; font-weight: 650; text-transform: uppercase; }
+.qor-report-head h3 { margin: 3px 0; color: var(--heading); font-size: 16px; font-weight: 650; }
+.qor-report-head p { margin: 0; color: var(--muted); font-size: 9px; }
+.verdict { padding: 4px 8px; border-radius: 10px; background: var(--surface-subtle); color: var(--muted); font-size: 8px; font-weight: 650; text-transform: uppercase; }
+.verdict.clean { background: var(--green-soft); color: var(--green); }
+.verdict.needs_improvement, .verdict.failed { background: var(--red-soft); color: var(--red); }
+.qor-featured { display: grid; grid-template-columns: repeat(5, 1fr); border-bottom: 1px solid var(--line); }
+.qor-report-card { min-height: 60px; padding: 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface-subtle); }
+.qor-report-card.featured { min-height: 72px; border: 0; border-right: 1px solid var(--line); border-radius: 0; background: white; }
+.qor-report-card.featured:last-child { border-right: 0; }
+.qor-report-card b, .qor-report-card small { display: block; }
+.qor-report-card b { color: var(--accent); font: 14px var(--mono); }
+.qor-report-card small { margin-top: 7px; color: var(--muted); font-size: 8px; }
+.qor-detail-grid { padding: 12px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
+.diagnosis-list { padding: 12px 12px 0; display: grid; gap: 7px; }
+.diagnosis-row { padding: 9px 11px; border-left: 3px solid var(--accent); border-radius: 4px; background: var(--accent-soft); }
+.diagnosis-row.warning { border-color: #d2920b; background: var(--amber-soft); }
+.diagnosis-row.error { border-color: var(--red); background: var(--red-soft); }
+.diagnosis-row.clean { border-color: var(--green); background: var(--green-soft); }
+.diagnosis-row b, .diagnosis-row p, .diagnosis-row span { display: block; }
+.diagnosis-row b { color: var(--heading); font-size: 9px; }
+.diagnosis-row p { margin: 2px 0 0; color: var(--ink); font-size: 9px; }
+.diagnosis-row span { margin-top: 3px; color: var(--muted); font-size: 8px; }
+.evidence-block-head { min-height: 45px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border-bottom: 1px solid var(--line); background: var(--surface-subtle); }
+.evidence-block-head b { color: var(--heading); font-size: 10px; }
+.evidence-block-head span { color: var(--muted); font-size: 8px; }
+.timing-track { height: 7px; margin: 16px 14px 8px; border-radius: 4px; background: #e5e9ef; overflow: hidden; }
+.timing-track span { display: block; height: 100%; background: var(--green); }
+.timing-values { padding: 0 14px 14px; display: flex; justify-content: space-between; gap: 10px; color: var(--muted); font: 8px var(--mono); }
+.layout-report-grid { margin-bottom: 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.layout-report-grid figure { margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: 5px; background: white; }
+.layout-report-grid img, .layout-report-grid canvas { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; border: 1px solid var(--line); background: white; }
+.layout-report-grid figcaption { margin-top: 7px; }
+.layout-report-grid figcaption b, .layout-report-grid figcaption span { display: block; }
+.layout-report-grid figcaption b { color: var(--heading); font-size: 10px; }
+.layout-report-grid figcaption span { margin-top: 2px; color: var(--muted); font-size: 8px; }
+.engineering-report .report-copy { padding: 14px; }
+.engineering-report .report-copy p { margin: 0 0 12px; color: var(--ink); font-size: 10px; line-height: 1.75; }
+.engineering-report .report-copy p:last-child { margin-bottom: 0; }
+.engineering-report .report-copy b { display: block; margin-bottom: 2px; color: var(--heading); }
+.report-disclaimer { margin: 0; padding: 10px 14px; border-top: 1px solid var(--line); background: var(--amber-soft); color: var(--amber); font-size: 8px; }
+.readable-artifacts { padding: 12px; }
+.readable-artifacts .artifact-link b { font-family: var(--sans); text-transform: none; }
+.compact-empty { min-height: 150px; margin-bottom: 12px; border: 1px solid var(--line); border-radius: 5px; }
 .qor-grid { margin: 10px 0; display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
 .qor-card { min-height: 58px; padding: 9px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface-subtle); }
 .qor-card b, .qor-card small { display: block; }
@@ -553,6 +599,24 @@ html[lang="zh-CN"] .workspace-head h1::after { content: " — 交互演示"; }
 .embedded-extension-body { padding: 0 12px 12px; }
 .embedded-extension-body .extension-meta { margin-top: 12px; }
 .embedded-extension-body .message { margin-inline: 0; margin-bottom: 0; }
+.extension-contract-note { margin: 0; padding: 12px; display: grid; gap: 4px; border-bottom: 1px solid var(--line); background: var(--surface-subtle); }
+.extension-contract-note b { color: var(--heading); font-size: 10px; }
+.extension-contract-note span { color: var(--muted); font-size: 9px; line-height: 1.55; }
+.extension-context { margin-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--line); }
+.extension-context div { padding: 10px; display: grid; gap: 4px; }
+.extension-context div + div { border-left: 1px solid var(--line); }
+.extension-context span, .compatibility > span { color: var(--muted); font-size: 8px; text-transform: uppercase; letter-spacing: .06em; }
+.extension-context b { color: var(--heading); font-size: 10px; }
+.compatibility { margin: 12px 0; padding: 11px; display: grid; gap: 4px; border-left: 3px solid var(--line-strong); background: var(--surface-subtle); }
+.compatibility.ready { border-left-color: var(--green); }
+.compatibility.blocked { border-left-color: var(--amber); }
+.compatibility.separate { border-left-color: var(--accent); }
+.compatibility b { color: var(--heading); font-size: 10px; }
+.compatibility p { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.6; }
+@media (max-width: 680px) {
+  .extension-context { grid-template-columns: 1fr; }
+  .extension-context div + div { border-left: 0; border-top: 1px solid var(--line); }
+}
 
 @media (max-width: 960px) {
   .site-header { grid-template-columns: auto 1fr auto; padding-inline: 14px; }
@@ -578,4 +642,8 @@ html[lang="zh-CN"] .workspace-head h1::after { content: " — 交互演示"; }
   .task-panel .design-summary > div:first-child { grid-column: 1 / -1; }
   .task-panel .stage { grid-template-columns: 18px 72px 1fr 42px; }
   .qor-grid { grid-template-columns: repeat(2, 1fr); }
+  .qor-featured, .qor-detail-grid { grid-template-columns: repeat(2, 1fr); }
+  .qor-report-card.featured { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .layout-report-grid { grid-template-columns: 1fr; }
+  .timing-values { flex-direction: column; }
 }

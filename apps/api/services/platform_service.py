@@ -97,6 +97,10 @@ class PlatformReadModel:
                 "visualization_url": f"/api/designs/{design['id']}/schematic.svg",
             })
         for run in runtime_runs:
+            # Component acceptance fixtures remain queryable in Runtime, but
+            # are not user projects and must not appear as design results.
+            if run.task_spec.design_id == "edacraft-smoke":
+                continue
             plugin = run.task_spec.plugin_id or "workflow"
             records.append({
                 "id": run.run_id,

@@ -187,6 +187,58 @@ def test_taiwei_runtime_view_exposes_hashed_3d_evidence(tmp_path):
     assert state.get_runtime_run(run.run_id)["three_d"]["replayable"] is False
 
 
+def test_runtime_view_exposes_verified_qor_report_and_readable_artifact_titles(tmp_path):
+    state = make_state(tmp_path)
+    task = TaskSpec(
+        task_id="qor-presentation-task", project_id="web", design_id="design-01-deadbeef",
+        plugin_id="orfs",
+    )
+    run, stage = state.runtime_store.submit_plugin_run(task, plugin_version="1.0.0")
+    workspace = tmp_path / "qor-attempt"
+    (workspace / "orfs/implementation/analysis").mkdir(parents=True)
+    (workspace / "orfs/implementation/results/nangate45/gcd/base").mkdir(parents=True)
+    attempt = state.runtime_store.start_attempt(
+        stage.stage_run_id, worker_id="test", workspace=str(workspace), lease_seconds=30
+    )
+    payloads = {
+        "orfs/implementation/analysis/report.json": (
+            "report", json.dumps({
+                "design": "gcd", "platform": "nangate45", "verdict": "clean",
+                "kpi": {"instance_count": 42, "setup_wns_ns": 0.25, "drc_errors": 0},
+                "llm_prompt": "must not be exposed",
+            }),
+        ),
+        "orfs/implementation/results/nangate45/gcd/base/1_synth.odb": ("odb", "SYNTH ODB"),
+        "orfs/implementation/results/nangate45/gcd/base/3_place.odb": ("odb", "PLACE ODB"),
+        "orfs/implementation/results/nangate45/gcd/base/6_final.def": ("def", "FINAL DEF"),
+        "orfs/implementation/results/nangate45/gcd/base/6_final.gds": ("gds", "FINAL GDS"),
+    }
+    for store_key, (kind, content) in payloads.items():
+        path = workspace / store_key
+        path.write_text(content, encoding="utf-8")
+        state.runtime_store.register_artifact(
+            attempt.attempt_id, kind=kind, store_key=store_key,
+            size_bytes=path.stat().st_size,
+            sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+        )
+
+    detail = state.get_runtime_run(run.run_id)
+    assert detail["analysis_report"]["report"]["kpi"]["instance_count"] == 42
+    assert "llm_prompt" not in detail["analysis_report"]["report"]
+    artifacts = {
+        item["store_key"]: item["presentation"]
+        for item in detail["stages"][0]["attempts"][0]["artifacts"]
+    }
+    assert artifacts[next(key for key in artifacts if key.endswith("1_synth.odb"))]["title_en"] == "Synthesis OpenDB database"
+    assert artifacts[next(key for key in artifacts if key.endswith("3_place.odb"))]["title_zh"] == "布局 OpenDB 数据库"
+    assert artifacts[next(key for key in artifacts if key.endswith("6_final.def"))]["title_en"] == "Final DEF layout"
+    assert artifacts[next(key for key in artifacts if key.endswith("6_final.gds"))]["title_zh"] == "最终 GDSII 版图"
+
+    report_path = workspace / "orfs/implementation/analysis/report.json"
+    report_path.write_text("tampered", encoding="utf-8")
+    assert "analysis_report" not in state.get_runtime_run(run.run_id)
+
+
 def test_natural_language_api_returns_preview_without_submitting(tmp_path):
     yosys = which("yosys")
     if yosys is None:
@@ -272,7 +324,7 @@ def test_design_example_catalog_spans_starter_and_advanced_designs(tmp_path):
     examples = state.designs.examples()
     assert {item["id"] for item in examples} >= {
         "adder8", "decoder3to8", "mux4", "counter16",
-        "alu8", "traffic_controller", "uart_tx", "mini_riscv",
+        "gcd", "alu8", "traffic_controller", "uart_tx", "mini_riscv",
     }
     assert {item["level"] for item in examples} == {"starter", "advanced"}
     assert all("module " in item["rtl_source"] for item in examples)

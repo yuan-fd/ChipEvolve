@@ -59,8 +59,6 @@ def test_results_projection_uses_registered_design_and_runtime_records(tmp_path)
     state = make_state(tmp_path)
     result = state.submit_edacraft_smoke("edacode")
     records = state.platform.results()["records"]
-    record = next(item for item in records if item["id"] == result["run"]["run"]["run_id"])
-    assert record["record_type"] == "runtime_run"
-    assert record["plugin_id"] == "edacraft-edacode"
-    assert record["status"] == "queued"
+    assert all(item["id"] != result["run"]["run"]["run_id"] for item in records)
+    assert state.get_runtime_run(result["run"]["run"]["run_id"])["run"]["status"] == "queued"
     assert result["execution_started"] is False

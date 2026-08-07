@@ -72,6 +72,11 @@ def test_taiwei_task_restricts_case_and_budget():
     assert task.labels["real_3d_required"] == "true"
     with pytest.raises(ValueError, match="gcd"):
         build_taiwei_task(project_id="p8", design_id="aes")
+    linked = build_taiwei_task(
+        project_id="p8", registered_design_id="design-07-deadbeef", timeout_seconds=60
+    )
+    assert linked.design_id == "design-07-deadbeef"
+    assert linked.inputs["case"] == "gcd"
 
 
 def test_toolchain_commit_mismatch_fails_closed(tmp_path):

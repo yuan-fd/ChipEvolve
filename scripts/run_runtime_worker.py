@@ -104,6 +104,7 @@ def main(argv: list[str] | None = None) -> int:
         design_root=args.design_root, legacy_root=args.legacy_root,
         runtime_db_path=args.runtime_db, campaign_db_path=args.campaign_db,
         optimization_db_path=args.optimization_db, byok_transport_secure=False,
+        load_taiwei_plugin=False,
     )
     worker_id = f"{socket.gethostname()}-{os.getpid()}"
     state.runtime.worker_id = worker_id
@@ -144,6 +145,8 @@ def main(argv: list[str] | None = None) -> int:
             heartbeat.write()
             print(f"Executing Runtime run {run.run_id} ({run.task_spec.plugin_id})", flush=True)
             try:
+                if run.task_spec.plugin_id == "taiwei-pin-3d":
+                    state.ensure_taiwei_plugin()
                 state.runtime.execute_once(run.run_id)
             except Exception as exc:  # Keep the worker observable if manifest resolution fails.
                 print(f"Runtime run {run.run_id} could not start: {exc}", file=sys.stderr,

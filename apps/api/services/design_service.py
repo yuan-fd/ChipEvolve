@@ -45,6 +45,12 @@ DESIGN_EXAMPLES: tuple[dict[str, str], ...] = (
         "rtl_source": "module counter16(input clk, input reset, input enable, output reg [15:0] count);\n  always @(posedge clk) begin if(reset) count <= 16'b0; else if(enable) count <= count + 1'b1; end\nendmodule\n",
     },
     {
+        "id": "gcd", "name": "GCD Engine", "level": "advanced",
+        "description": "Iterative Euclidean greatest-common-divisor engine; the module name also permits linking to the pinned TaiWei 3D acceptance case.",
+        "filename": "gcd.v",
+        "rtl_source": "module gcd(input clk, input reset, input start, input [31:0] a_in, input [31:0] b_in, output reg [31:0] result, output reg done);\n  reg [31:0] a, b;\n  always @(posedge clk) begin\n    if (reset) begin a <= 0; b <= 0; result <= 0; done <= 0; end\n    else if (start) begin a <= a_in; b <= b_in; done <= 0; end\n    else if (!done) begin\n      if (a == 0) begin result <= b; done <= 1; end\n      else if (b == 0) begin result <= a; done <= 1; end\n      else if (a > b) a <= a - b;\n      else b <= b - a;\n    end\n  end\nendmodule\n",
+    },
+    {
         "id": "alu8", "name": "8-bit ALU", "level": "advanced",
         "description": "Arithmetic and logic unit with zero and carry flags.", "filename": "alu8.v",
         "rtl_source": "module alu8(input [7:0] a,b, input [2:0] op, output reg [7:0] y, output zero, output reg carry);\n  reg [8:0] t; always @* begin t=9'b0; carry=1'b0; case(op) 3'd0:begin t={1'b0,a}+{1'b0,b};y=t[7:0];carry=t[8];end 3'd1:begin t={1'b0,a}-{1'b0,b};y=t[7:0];carry=t[8];end 3'd2:y=a&b; 3'd3:y=a|b; 3'd4:y=a^b; 3'd5:y=a<<b[2:0]; 3'd6:y=a>>b[2:0]; default:y=8'b0; endcase end assign zero=(y==8'b0);\nendmodule\n",

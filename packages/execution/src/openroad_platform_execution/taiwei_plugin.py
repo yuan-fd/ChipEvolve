@@ -36,8 +36,11 @@ class TaiWeiToolchainProfile:
         openroad_source = root / "tools/OpenROAD"
         if _git(openroad_source, "rev-parse", "HEAD") != self.openroad_commit:
             raise ValueError("TaiWei bundled OpenROAD commit mismatch")
-        if _git(root, "status", "--porcelain=v1"):
-            raise ValueError("TaiWei ORFS-Research source tree must be clean")
+        # The isolated ORFS tree contains large untracked build/install outputs.
+        # They are version-locked separately; source integrity is determined by
+        # the pinned commit plus staged and unstaged changes to tracked files.
+        if _git(root, "status", "--porcelain=v1", "--untracked-files=no"):
+            raise ValueError("TaiWei ORFS-Research tracked source must be clean")
         for name, path in (("OpenROAD", self.openroad_bin), ("Yosys", self.yosys_bin)):
             if not path.expanduser().resolve().is_file():
                 raise FileNotFoundError(f"TaiWei {name} binary is missing: {path}")
@@ -47,19 +50,21 @@ class TaiWeiToolchainProfile:
 
 
 def build_taiwei_task(*, project_id: str, design_id: str = "gcd",
+                       registered_design_id: str | None = None,
                        timeout_seconds: int = 21600,
                        task_id: str | None = None) -> TaskSpec:
     if design_id != "gcd":
         raise ValueError("TaiWei v1 only permits the gcd acceptance case")
     task = TaskSpec(
         task_id=task_id or f"taiwei-{uuid.uuid4().hex}",
-        project_id=project_id, design_id=design_id, plugin_id=TAIWEI_PLUGIN_ID,
+        project_id=project_id, design_id=registered_design_id or design_id,
+        plugin_id=TAIWEI_PLUGIN_ID,
         inputs={"flow": "ord", "tech": "asap7_3D", "case": "gcd"},
         resources={"toolchain_profile": "taiwei-official-3d"},
         timeout_seconds=timeout_seconds, max_attempts=1,
         expected_artifacts=("three_d_eval", "three_d_summary", "gds", "def", "odb", "netlist",
                             "toolchain_snapshot", "log"),
-        labels={"real_3d_required": "true"},
+        labels={"real_3d_required": "true", "fixed_case": design_id},
     )
     task.validate()
     return task

@@ -48,6 +48,13 @@ def test_frontend_and_backend_follow_the_reference_task_sequence() -> None:
     assert "physicalRuns[0]" not in javascript
     assert "Design\", \"设计" in javascript and "Run\", \"任务" in javascript
     assert "runtime_worker_ready" in javascript
+    assert "renderBackendEvidence" in javascript
+    assert "paintDensityHeatmap" in javascript
+    api_source = (ROOT / "apps/api/app.py").read_text(encoding="utf-8")
+    assert "OpenDB database" in api_source and '"1_synth", "synth", "Synthesis"' in api_source
+    assert "Run bounded smoke" not in javascript
+    assert "Current design" in javascript and "Main-flow evidence" in javascript
+    assert "/api/extensions/taiwei/run" in javascript
 
 
 def test_language_switch_has_persisted_real_translations() -> None:

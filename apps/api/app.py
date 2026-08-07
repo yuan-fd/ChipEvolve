@@ -14,6 +14,7 @@ import shutil
 import sys
 import time
 import uuid
+from functools import lru_cache
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -47,6 +48,7 @@ from openroad_platform_execution import (  # noqa: E402
     build_edacraft_task, craft_capability_matrix, craft_plan_to_task,
     edacraft_catalog, edacraft_component, edacraft_plugin_manifest,
     implcraft_plugin_manifest, orfs_plugin_manifest, rtlscout_plugin_manifest,
+    TaiWeiToolchainProfile, build_taiwei_task, taiwei_plugin_manifest,
 )
 from openroad_platform_scheduler import (  # noqa: E402
     ALLOWED_MODELS, CampaignStore, CodexCliSpecProvider, JobStore,
@@ -67,6 +69,24 @@ MAX_REQUEST_BYTES = 2 * MAX_BODY_BYTES + 64 * 1024
 SAFE_FILENAME = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
+@lru_cache(maxsize=1)
+def _pinned_taiwei_manifest():
+    """Validate the immutable production profile once per API/worker process."""
+    source = ROOT / ".external-src" / "taiwei-pin-3d"
+    tool_root = ROOT / ".tools" / "taiwei-official-3d"
+    profile = TaiWeiToolchainProfile(
+        orfs_root=tool_root / "orfs-research",
+        openroad_bin=tool_root / "openroad-build-gcc12" / "bin" / "openroad",
+        yosys_bin=tool_root / "orfs-research" / "tools" / "yosys" / "yosys",
+        runtime_library_paths=tuple(path for path in (
+            tool_root / "dependencies" / "lib",
+            tool_root / "dependencies" / "lib64",
+            Path("/opt/openEuler/gcc-toolset-12/root/usr/lib64"),
+        ) if path.is_dir()),
+    )
+    return taiwei_plugin_manifest(source, profile)
+
+
 class ApiState:
     """Small application layer shared by the HTTP handler and tests."""
 
@@ -84,6 +104,7 @@ class ApiState:
         spec_db_path: Path | None = None,
         optimization_db_path: Path | None = None,
         byok_transport_secure: bool | None = None,
+        load_taiwei_plugin: bool = True,
     ):
         self.db_path = db_path.expanduser().resolve()
         self.byok_transport_secure = (True if byok_transport_secure is None
@@ -159,6 +180,18 @@ class ApiState:
                 manifests.append(implcraft_plugin_manifest(
                     edacraft_source, implcraft_python
                 ))
+        self.taiwei_readiness = {"ready": False, "reason": "Pinned 3D toolchain unavailable"}
+        if load_taiwei_plugin:
+            try:
+                manifests.append(_pinned_taiwei_manifest())
+                self.taiwei_readiness = {
+                    "ready": True,
+                    "reason": "Pinned official gcd-only 3D toolchain is available",
+                }
+            except (FileNotFoundError, ValueError) as exc:
+                self.taiwei_readiness["reason"] = str(exc)
+        else:
+            self.taiwei_readiness["reason"] = "Pinned 3D plugin loads on demand in this worker"
         self.runtime = WorkflowRuntime(
             self.runtime_store, PluginRegistry(manifests),
             workspace_root=state_root / "runtime-workspaces",
@@ -175,6 +208,20 @@ class ApiState:
             tenant_learning_store=self.tenant_learning_store,
             extension_catalog=edacraft_catalog(),
         )
+
+    def ensure_taiwei_plugin(self) -> None:
+        """Load the expensive optional 3D manifest only when a worker needs it."""
+        try:
+            self.runtime.registry.resolve("taiwei-pin-3d")
+            return
+        except LookupError:
+            pass
+        manifest = _pinned_taiwei_manifest()
+        self.runtime.registry.register(manifest)
+        self.taiwei_readiness = {
+            "ready": True,
+            "reason": "Pinned official gcd-only 3D toolchain is available",
+        }
 
     def health(self) -> dict[str, Any]:
         openroad = _find_tool("openroad", ROOT.parent / "bin" / "openroad")
@@ -199,6 +246,8 @@ class ApiState:
             "runtime_worker_active_run": worker.get("active_run"),
             "runtime_worker_last_seen": worker.get("updated_at"),
             "byok_input_enabled": self.byok_transport_secure,
+            "taiwei_3d_ready": self.taiwei_readiness["ready"],
+            "taiwei_3d_reason": self.taiwei_readiness["reason"],
         }
         payload.update(self.designs.readiness())
         return payload
@@ -261,6 +310,33 @@ class ApiState:
             "execution_started": False,
             "notice": "Submitted to Workflow Runtime; a worker owns execution.",
         }
+
+    def submit_taiwei_design_run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if not self.taiwei_readiness["ready"]:
+            raise ValueError(self.taiwei_readiness["reason"])
+        design_id = str(payload.get("design_id") or "").strip()
+        design = self.designs.get(design_id)
+        if design.get("module") != "gcd":
+            raise ValueError("The pinned TaiWei v1 toolchain accepts only the gcd design")
+        baseline_run_id = str(payload.get("baseline_run_id") or "").strip()
+        baseline = self.runtime_store.get_run(baseline_run_id)
+        if (baseline.task_spec.design_id != design_id
+                or baseline.task_spec.plugin_id != "orfs"
+                or baseline.status.value != "succeeded"):
+            raise ValueError("A succeeded 2D ORFS run for the same registered design is required")
+        task = build_taiwei_task(
+            project_id="openroad-platform", design_id="gcd",
+            registered_design_id=design_id,
+        )
+        task = dataclasses.replace(
+            task,
+            inputs={**task.inputs, "registered_design_id": design_id,
+                    "baseline_run_id": baseline_run_id},
+            labels={**task.labels, "source": "web-linked-extension",
+                    "baseline_run_id": baseline_run_id},
+        )
+        run = self.runtime.submit(task, capability="eda.3d.pin3d")
+        return self.get_runtime_run(run.run_id)
 
     def rtlscout_status(self) -> dict[str, Any]:
         benchmark_root = ROOT / ".external-src" / "rtlscout" / "benchmarks"
@@ -393,10 +469,46 @@ class ApiState:
                     artifact["url"] = (
                         f"/api/runtime/runs/{run_id}/artifacts/{artifact['artifact_id']}"
                     )
+                    artifact["presentation"] = _artifact_presentation(artifact)
+        analysis_report = self._runtime_analysis_report(payload)
+        if analysis_report is not None:
+            payload["analysis_report"] = analysis_report
         task = payload.get("run", {}).get("task_spec", {})
         if task.get("plugin_id") == "taiwei-pin-3d":
             payload["three_d"] = self._three_d_view(payload)
         return payload
+
+    @staticmethod
+    def _runtime_analysis_report(payload: dict[str, Any]) -> dict[str, Any] | None:
+        for stage in reversed(payload.get("stages", [])):
+            for attempt in reversed(stage.get("attempts", [])):
+                workspace = Path(attempt["workspace"]).expanduser().resolve()
+                for artifact in attempt.get("artifacts", []):
+                    if not (artifact.get("kind") == "report"
+                            and str(artifact.get("store_key", "")).endswith(
+                                "analysis/report.json")):
+                        continue
+                    path = (workspace / artifact["store_key"]).resolve()
+                    try:
+                        path.relative_to(workspace)
+                    except ValueError:
+                        continue
+                    if (not path.is_file() or path.stat().st_size != artifact["size_bytes"]
+                            or _sha256(path) != artifact["sha256"]):
+                        continue
+                    try:
+                        report = json.loads(path.read_text(encoding="utf-8"))
+                    except (OSError, ValueError, json.JSONDecodeError):
+                        continue
+                    if not isinstance(report, dict):
+                        continue
+                    report.pop("llm_prompt", None)
+                    return {
+                        "source_artifact_id": artifact["artifact_id"],
+                        "source_url": artifact.get("url"),
+                        "report": report,
+                    }
+        return None
 
     def runtime_artifact(self, run_id: str, artifact_id: str) -> tuple[Path, str]:
         payload = self.runtime_store.describe_run(run_id)
@@ -998,6 +1110,66 @@ def _find_tool(name: str, fallback: Path) -> str | None:
     return str(fallback) if fallback.is_file() else None
 
 
+def _artifact_presentation(artifact: dict[str, Any]) -> dict[str, str | None]:
+    key = str(artifact.get("store_key") or "")
+    name = Path(key).name
+    kind = str(artifact.get("kind") or "other")
+    stage_patterns = (
+        ("1_synth", "synth", "Synthesis", "逻辑综合"),
+        ("2_floorplan", "floorplan", "Floorplan", "布局规划"),
+        ("3_place", "place", "Placement", "布局"),
+        ("4_cts", "cts", "Clock tree", "时钟树"),
+        ("5_route", "route", "Routing", "布线"),
+        ("6_final", "finish", "Final", "最终"),
+    )
+    stage = next((item for item in stage_patterns if item[0] in name), None)
+    stage_id = stage[1] if stage else None
+    stage_en = stage[2] if stage else ""
+    stage_zh = stage[3] if stage else ""
+    exact = {
+        "analysis/report.json": ("QoR analysis report", "QoR 分析报告", "report"),
+        "plan.json": ("Implementation plan", "实现计划", "report"),
+        "toolchain_snapshot.json": ("Toolchain snapshot", "工具链快照", "provenance"),
+        "run_result.json": ("Runtime result manifest", "Runtime 结果清单", "provenance"),
+        "logs/flow.log": ("Physical-flow execution log", "物理设计执行日志", "log"),
+        "config.mk": ("Generated ORFS configuration", "ORFS 生成配置", "configuration"),
+        "constraint.sdc": ("Timing constraints", "时序约束", "configuration"),
+        "pdn.tcl": ("Power-grid configuration", "电源网络配置", "configuration"),
+    }
+    match = next((value for suffix, value in exact.items() if key.endswith(suffix)), None)
+    if match:
+        title_en, title_zh, group = match
+    elif kind == "odb":
+        title_en, title_zh, group = (
+            f"{stage_en} OpenDB database" if stage else "OpenDB database",
+            f"{stage_zh} OpenDB 数据库" if stage else "OpenDB 数据库", "implementation",
+        )
+    elif kind == "def":
+        title_en, title_zh, group = (
+            f"{stage_en} DEF layout" if stage else "DEF layout",
+            f"{stage_zh} DEF 版图" if stage else "DEF 版图", "implementation",
+        )
+    elif kind == "gds":
+        title_en, title_zh, group = "Final GDSII layout", "最终 GDSII 版图", "implementation"
+    elif kind == "netlist":
+        title_en, title_zh, group = "Final implemented netlist", "最终实现网表", "implementation"
+    elif kind == "layout_view":
+        title_en, title_zh, group = "Final 2D layout preview", "最终 2D 版图预览", "visualization"
+    elif kind == "three_d_view":
+        title_en, title_zh, group = "3D layout view", "3D 版图视图", "visualization"
+    elif kind == "report":
+        title_en, title_zh, group = f"Report · {name}", f"报告 · {name}", "report"
+    elif kind == "log":
+        title_en, title_zh, group = f"Log · {name}", f"日志 · {name}", "log"
+    else:
+        title_en, title_zh, group = f"{kind.replace('_', ' ').title()} · {name}", \
+            f"{kind.replace('_', ' ')} · {name}", "other"
+    return {
+        "title_en": title_en, "title_zh": title_zh, "stage": stage_id,
+        "group": group, "filename": name,
+    }
+
+
 def _read_worker_heartbeat(path: Path, *, stale_after_seconds: float = 10.0) -> dict[str, Any]:
     offline = {"ready": False, "status": "offline", "updated_at": None,
                "active_run": None}
@@ -1191,6 +1363,10 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                     return
                 if path == "/api/craft/plans":
                     self._json(state.craft_plan(self._read_json()), HTTPStatus.CREATED)
+                    return
+                if path == "/api/extensions/taiwei/run":
+                    self._json(state.submit_taiwei_design_run(
+                        self._read_json()), HTTPStatus.CREATED)
                     return
                 match = re.fullmatch(r"/api/extensions/edacraft/([^/]+)/smoke", path)
                 if match:

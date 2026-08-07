@@ -7,7 +7,8 @@ const state = {
   selectedDesign: null, selectedRun: null, designView: "schematic",
   resultFilter: "all", extensions: [], selectedExtension: null,
   rtlscoutStatus: null, providerProfile: null, selectedRtlscoutRun: null,
-  requestedExtension: null, rtlscoutPoll: null, runtimePoll: null, healthPoll: null, locale: "en",
+  requestedExtension: null, rtlscoutPoll: null, runtimePoll: null, healthPoll: null,
+  health: null, locale: "en",
 };
 const stages = ["synth", "floorplan", "place", "cts", "route", "finish"];
 const ZH = {
@@ -42,8 +43,9 @@ const ZH = {
   "tutorial.1.title": "从规格生成并审查 RTL", "tutorial.1.help": "连接模型 Provider，描述功能与端口，在确认前检查生成的 RTL。",
   "tutorial.key.required": "内置规则演示无需 Key · LLM 生成使用用户自己的 API Key", "tutorial.frontend.action": "打开前端设计 →",
   "tutorial.2.title": "运行可验证的 RTL 自探索", "tutorial.2.help": "RTLScout 提出 RTL 改动，由 Verilator 与 Yosys 独立验证并评价每个候选。",
-  "tutorial.key.optional": "内置 Smoke 无需 Key · 完整探索使用用户自己的 API Key",
-  "tutorial.3.title": "尝试器件或电路研究支线", "tutorial.3.help": "可选运行 TCAD、互连电磁或 SPICE 有界 Smoke；它们补充数字主流程，不会重新生成 RTL。",
+  "tutorial.key.optional": "内置验证演示无需 Key · 完整探索使用用户自己的 API Key",
+  "tutorial.3.title": "检查器件或电路研究支线", "tutorial.3.help": "选择主线设计后，平台会继承项目上下文，并明确列出 TCAD、互连电磁或 SPICE 还需要的专业输入。",
+  "tutorial.device.requirement": "需要器件结构、互连端口或晶体管级网表；不使用固定示例冒充当前设计结果",
   "tutorial.key.none": "无需 API Key", "tutorial.device.action": "打开器件支线 →",
   "tutorial.4.title": "生成基线 2D 版图", "tutorial.4.help": "选择已登记 RTL，使用基线模式，从逻辑综合运行至最终 GDS。",
   "tutorial.backend.action": "打开后端实现 →", "tutorial.5.title": "创建阶段感知批量实验",
@@ -83,8 +85,10 @@ const ZH = {
   "backend.run.empty": "尚未选择任务", "backend.run.empty.help": "排队、运行和已完成的记录会显示在这里。",
   "backend.evidence.title": "版图、QoR 与实现证据", "backend.evidence.subtitle": "查看版图、时序、面积、功耗、DRC、报告和下载产物。",
   "backend.evidence.empty": "运行证据将在这里显示。", "backend.evidence.empty.help": "选择已完成的 Runtime 任务以读取版图和报告。",
-  "backend.extensions.title": "可选研究支线", "backend.extensions.subtitle": "只打开当前设计真正需要的专业能力。",
+  "backend.extensions.title": "可选研究支线", "backend.extensions.subtitle": "自动继承当前设计和成功主线；只有扩展输入兼容时才能运行。",
   "backend.extensions.digital": "物理设计支线", "backend.extensions.device": "器件与电路支线",
+  "backend.extensions.contract": "当前设计 → 成功主线 → 兼容扩展",
+  "backend.extensions.contract.help": "平台不会把固定示例冒充当前设计的处理结果。器件、互连电磁和 SPICE 支线会在执行前明确说明额外输入。",
   "backend.ext.flow": "批量实验、参数搜索、状态监控和有界纠错。", "backend.ext.3d": "双层实现、HBT、跨层指标与 3D 视图。",
   "backend.ext.evolve": "可选的 OpenROAD 源码候选优化长任务。", "backend.ext.tcad": "三维半导体器件结构与有界物理仿真。",
   "backend.ext.mom": "互连电磁分析与 S 参数提取。", "backend.ext.ckt": "SPICE 级模拟与射频电路仿真。"
@@ -155,6 +159,7 @@ function applyLocale(locale) {
   renderDesignChips();
   if ($("#rtlscoutMode")) updateRtlscoutControls();
   if (state.selectedRun) selectRun(state.selectedRun.run.run_id);
+  if (state.selectedExtension) selectExtension(state.selectedExtension);
 }
 
 function esc(value) {
@@ -215,12 +220,20 @@ function buildExtensions(platform) {
   ];
   const craft = (platform.extensions?.components || []).map(component => {
     const slug = component.plugin_id.replace("edacraft-", "");
+    const inputs = {
+      tcadcraft: "Device geometry, materials, contacts, mesh, and boundary conditions",
+      momcraft: "Selected interconnect geometry, material stack, ports, and frequency sweep",
+      cktcraft: "Transistor-level SPICE netlist, compact models, stimuli, and analyses",
+      rtlcraft: "Python hardware DSL and generation configuration",
+      edacode: "Analog or mixed-signal design workspace and model provider",
+      implcraft: "Registered RTL and implementation configuration",
+    };
     return {
       ...component, slug, id: component.plugin_id,
       source_commit: platform.extensions.source_commit,
-      status_label: slug === "implcraft" ? "Dry-run" : "Smoke ready",
-      input: slug === "implcraft" ? "Registered RTL and implementation configuration" : `Bounded ${component.smoke_mode} fixture or component-specific user input`,
-      workflow: ["Validate extension input", "Submit an isolated Runtime task", "Execute the bounded component adapter", "Register artifacts, metrics, versions, and status"],
+      status_label: slug === "implcraft" ? "Main-flow adapter" : "Input adapter required",
+      input: inputs[slug] || "Component-specific research input",
+      workflow: ["Inherit the current project context", "Validate the component-specific input", "Submit an isolated Runtime task", "Register artifacts, metrics, versions, and status"],
     };
   });
   return [...special, ...craft];
@@ -230,6 +243,7 @@ async function loadPlatform() {
   try {
     const [platform, health] = await Promise.all([api("/api/platform"), api("/api/health")]);
     state.platform = platform;
+    state.health = health;
     state.extensions = buildExtensions(platform);
     renderWorkerHealth(health);
     if (state.requestedExtension) selectExtension(state.requestedExtension);
@@ -243,7 +257,7 @@ async function loadPlatform() {
 }
 
 async function loadHealth() {
-  try { renderWorkerHealth(await api("/api/health")); }
+  try { state.health = await api("/api/health"); renderWorkerHealth(state.health); }
   catch (_) { renderWorkerHealth({ok: false, runtime_worker_ready: false}); }
   if (state.healthPoll) clearTimeout(state.healthPoll);
   state.healthPoll = setTimeout(loadHealth, 5000);
@@ -378,6 +392,7 @@ async function selectDesign(id) {
   $("#downloadRtl").href = `/api/designs/${encodeURIComponent(id)}/source?kind=rtl`;
   $("#downloadNetlist").href = `/api/designs/${encodeURIComponent(id)}/source?kind=netlist`;
   await renderDesignView();
+  if (state.selectedExtension) selectExtension(state.selectedExtension);
 }
 
 async function renderDesignView() {
@@ -520,6 +535,7 @@ async function loadRuns(preferred = null) {
       await selectRun(id);
     } else resetRunResult();
     await renderRtlscoutDashboard();
+    if (state.selectedExtension) selectExtension(state.selectedExtension);
   } catch (error) {
     message("#flowMessage", error.message, true);
   }
@@ -685,11 +701,113 @@ async function selectRun(id) {
   }
   const artifacts = attempt.artifacts || [];
   const metrics = attempt.metrics || [];
-  const views = artifacts.filter(artifact => ["layout_view", "three_d_view"].includes(artifact.kind));
-  const visual = views.length ? `<div class="layout-gallery">${views.map(view => `<figure class="layout-figure"><img src="${esc(view.url)}" alt="Registered layout view"><figcaption>${esc(view.store_key)} · SHA-256 ${esc((view.sha256 || "").slice(0, 12))}…</figcaption></figure>`).join("")}</div>` : `<div class="empty"><span>□</span><h3>${ui("No registered layout preview in this attempt.", "该次尝试尚未登记版图预览。")}</h3><p>${ui("Artifacts and reports remain listed below.", "产物与报告仍会在下方列出。")}</p></div>`;
-  const metricCards = metrics.length ? `<div class="qor-grid">${metrics.slice(0, 15).map(metric => `<div class="qor-card"><b>${esc(metric.value)}${metric.unit ? ` ${esc(metric.unit)}` : ""}</b><small>${esc(metric.name)}</small></div>`).join("")}</div>` : "";
-  $("#backendEvidence").innerHTML = `${visual}${metricCards}<div class="artifact-grid">${artifacts.map(artifact => `<a class="artifact-link" href="${esc(artifact.url)}" target="_blank" rel="noopener"><b>${esc(artifact.kind)}</b><span>${esc(artifact.store_key)} · ${esc((artifact.sha256 || "").slice(0, 10))}…</span></a>`).join("")}</div>${attempt.failure ? `<div class="message error">${esc(attempt.failure.message || attempt.failure.category)}</div>` : ""}`;
+  renderBackendEvidence(detail, artifacts, metrics, attempt.failure);
   if (["queued", "preparing", "running", "retry_wait", "cancel_requested"].includes(run.status)) state.runtimePoll = setTimeout(() => loadRuns(run.run_id), 3000);
+}
+
+const QOR_LABELS = {
+  instance_count: ["Standard cells", "标准单元数"], area_um2: ["Instance area", "实例面积"],
+  die_area_um2: ["Die area", "Die 面积"], core_area_um2: ["Core area", "Core 面积"],
+  utilization_pct: ["Utilization", "利用率"], setup_wns_ns: ["Setup WNS", "Setup WNS"],
+  setup_tns_ns: ["Setup TNS", "Setup TNS"], hold_wns_ns: ["Hold WNS", "Hold WNS"],
+  hold_tns_ns: ["Hold TNS", "Hold TNS"], drc_errors: ["DRC violations", "DRC 违例"],
+  wirelength_um: ["Wirelength", "总线长"], estimated_wirelength_um: ["Estimated wirelength", "预估线长"],
+  power_W: ["Total power", "总功耗"], fmax_mhz: ["Maximum frequency", "最大频率"],
+  clock_period_ns: ["Clock period", "时钟周期"], via_count: ["Total vias", "Via 总数"],
+  via_singlecut_count: ["Single-cut vias", "单孔 Via"], via_multicut_count: ["Multi-cut vias", "多层 Via"],
+  antenna_violations: ["Antenna violations", "天线违例"], congestion_overflow: ["Congestion overflow", "拥塞溢出"],
+  skew_ns: ["Clock skew", "时钟偏移"], grt_overflow_iterations: ["Overflow iterations", "拥塞迭代次数"],
+};
+
+const QOR_UNITS = {
+  area_um2: "µm²", die_area_um2: "µm²", core_area_um2: "µm²", utilization_pct: "%",
+  setup_wns_ns: "ns", setup_tns_ns: "ns", hold_wns_ns: "ns", hold_tns_ns: "ns",
+  wirelength_um: "µm", estimated_wirelength_um: "µm", power_W: "W", fmax_mhz: "MHz",
+  clock_period_ns: "ns", skew_ns: "ns",
+};
+
+function reportMetric(report, key) {
+  const direct = report?.kpi?.[key];
+  if (direct !== null && direct !== undefined) return direct;
+  for (const stage of ["finish", "route", "cts", "place", "floorplan", "synth"]) {
+    const value = report?.stages?.[stage]?.metrics?.[key];
+    if (value !== null && value !== undefined) return value;
+  }
+  return null;
+}
+
+function metricText(key, value) {
+  if (value === null || value === undefined) return "—";
+  const number = Number(value);
+  let text = String(value);
+  if (Number.isFinite(number)) {
+    if (number !== 0 && Math.abs(number) < .001) text = number.toExponential(2);
+    else text = Number.isInteger(number) ? String(number) : number.toFixed(Math.abs(number) >= 100 ? 2 : 4).replace(/0+$/, "").replace(/\.$/, "");
+  }
+  return `${text}${QOR_UNITS[key] ? ` ${QOR_UNITS[key]}` : ""}`;
+}
+
+function metricCard(key, value, featured = false) {
+  const label = QOR_LABELS[key] || [key, key];
+  return `<div class="qor-report-card ${featured ? "featured" : ""}"><b>${esc(metricText(key, value))}</b><small>${esc(ui(label[0], label[1]))}</small></div>`;
+}
+
+function artifactTitle(artifact) {
+  const presentation = artifact.presentation || {};
+  return state.locale === "zh" ? (presentation.title_zh || artifact.kind) : (presentation.title_en || artifact.kind);
+}
+
+function renderArtifacts(artifacts) {
+  if (!artifacts.length) return "";
+  const order = {synth: 1, floorplan: 2, place: 3, cts: 4, route: 5, finish: 6};
+  const sorted = [...artifacts].sort((a, b) => (order[a.presentation?.stage] || 20) - (order[b.presentation?.stage] || 20) || artifactTitle(a).localeCompare(artifactTitle(b)));
+  return `<section class="evidence-block"><div class="evidence-block-head"><b>${ui("Implementation files", "实现产物")}</b><span>${ui("Stage and purpose are shown before the raw filename.", "标题优先说明阶段和用途，原始文件名保留在下方。")}</span></div><div class="artifact-grid readable-artifacts">${sorted.map(artifact => `<a class="artifact-link" href="${esc(artifact.url)}" target="_blank" rel="noopener"><b>${esc(artifactTitle(artifact))}</b><span>${esc(artifact.presentation?.filename || artifact.store_key)} · SHA-256 ${esc((artifact.sha256 || "").slice(0, 10))}…</span></a>`).join("")}</div></section>`;
+}
+
+function renderBackendEvidence(detail, artifacts, runtimeMetrics, failure) {
+  const report = detail.analysis_report?.report;
+  const views = artifacts.filter(artifact => ["layout_view", "three_d_view"].includes(artifact.kind));
+  const visual = views.length ? `<div class="layout-report-grid">${views.map(view => `<figure class="layout-figure"><img src="${esc(view.url)}" alt="${esc(artifactTitle(view))}"><figcaption><b>${esc(artifactTitle(view))}</b><span>${esc(view.presentation?.filename || view.store_key)}</span></figcaption></figure>`).join("")}${report?.cell_density?.available ? `<figure class="density-figure"><canvas id="densityHeatmap" width="420" height="420"></canvas><figcaption><b>${ui("Placement-density heatmap", "布局密度热力图")}</b><span>${esc(report.cell_density.density_unit || ui("Normalized density", "归一化密度"))}</span></figcaption></figure>` : ""}</div>` : `<div class="empty compact-empty"><span>□</span><h3>${ui("No registered layout preview in this attempt.", "该次尝试尚未登记版图预览。")}</h3><p>${ui("The report and implementation files remain available below.", "分析报告与实现产物仍会显示在下方。")}</p></div>`;
+
+  if (!report) {
+    const metricCards = runtimeMetrics.length ? `<div class="qor-grid">${runtimeMetrics.slice(0, 15).map(metric => `<div class="qor-card"><b>${esc(metric.value)}${metric.unit ? ` ${esc(metric.unit)}` : ""}</b><small>${esc(metric.name)}</small></div>`).join("")}</div>` : "";
+    $("#backendEvidence").innerHTML = `${visual}${metricCards}${renderArtifacts(artifacts)}${failure ? `<div class="message error">${esc(failure.message || failure.category)}</div>` : ""}`;
+    return;
+  }
+
+  const featuredKeys = ["instance_count", "area_um2", "utilization_pct", "setup_wns_ns", "drc_errors"];
+  const detailKeys = ["setup_tns_ns", "hold_wns_ns", "hold_tns_ns", "power_W", "fmax_mhz", "clock_period_ns", "wirelength_um", "via_count", "via_singlecut_count", "via_multicut_count", "antenna_violations", "congestion_overflow"];
+  const featured = featuredKeys.map(key => metricCard(key, reportMetric(report, key), true)).join("");
+  const detailed = detailKeys.filter(key => reportMetric(report, key) !== null).map(key => metricCard(key, reportMetric(report, key))).join("");
+  const diagnosis = [...(report.diagnosis?.violations || []), ...(report.diagnosis?.observations || [])];
+  const diagnosisHtml = diagnosis.length ? diagnosis.map(item => `<article class="diagnosis-row ${esc(item.severity || "info")}"><b>${esc(item.type || ui("Observation", "观察"))}</b><p>${esc(item.message || "")}</p>${item.recommendation ? `<span>${esc(item.recommendation)}</span>` : ""}</article>`).join("") : `<article class="diagnosis-row clean"><b>${ui("No rule-based violation", "未发现规则违例")}</b><p>${esc(report.diagnosis?.summary || ui("The available timing and DRC evidence is clean.", "现有时序与 DRC 证据正常。"))}</p></article>`;
+  const period = Number(reportMetric(report, "clock_period_ns"));
+  const wns = Number(reportMetric(report, "setup_wns_ns"));
+  const dataDelay = Number.isFinite(period) && Number.isFinite(wns) ? period - wns : null;
+  const timingPct = dataDelay !== null && period > 0 ? Math.max(0, Math.min(100, dataDelay / period * 100)) : 0;
+  const timing = dataDelay !== null ? `<section class="timing-panel"><div class="evidence-block-head"><b>${ui("Timing analysis", "时序分析")}</b><span>${ui("Target period and measured setup slack", "目标周期与实测 Setup 裕量")}</span></div><div class="timing-track"><span style="width:${timingPct.toFixed(1)}%"></span></div><div class="timing-values"><span>${ui("Data-path delay", "数据路径延迟")}: ${esc(metricText("clock_period_ns", dataDelay))}</span><span>WNS: ${esc(metricText("setup_wns_ns", wns))}</span><span>Fmax: ${esc(metricText("fmax_mhz", reportMetric(report, "fmax_mhz")))}</span></div></section>` : "";
+  const stageCount = Object.values(report.stages || {}).filter(stage => stage.status === "completed").length;
+  const narrative = `<section class="engineering-report"><div class="evidence-block-head"><b>${ui("Evidence-based engineering report", "基于证据的工程分析报告")}</b><span>${ui("Deterministic report from registered OpenROAD metrics; no model-generated numbers.", "由已登记 OpenROAD 指标确定性生成，不使用模型编造数字。")}</span></div><div class="report-copy"><p><b>${ui("1. Flow and area", "1. 流程与面积")}</b>${ui(`The ${report.design || "design"} flow completed ${stageCount}/6 physical stages in ${Number(report.runtime_seconds || 0).toFixed(1)} s. Instance area is ${metricText("area_um2", reportMetric(report, "area_um2"))} at ${metricText("utilization_pct", reportMetric(report, "utilization_pct"))} utilization.`, `${report.design || "该设计"} 完成 ${stageCount}/6 个物理设计阶段，总耗时 ${Number(report.runtime_seconds || 0).toFixed(1)} 秒。实例面积为 ${metricText("area_um2", reportMetric(report, "area_um2"))}，利用率为 ${metricText("utilization_pct", reportMetric(report, "utilization_pct"))}。`)}</p><p><b>${ui("2. Timing", "2. 时序")}</b>${ui(`Setup WNS is ${metricText("setup_wns_ns", reportMetric(report, "setup_wns_ns"))}; hold WNS is ${metricText("hold_wns_ns", reportMetric(report, "hold_wns_ns"))}.`, `Setup WNS 为 ${metricText("setup_wns_ns", reportMetric(report, "setup_wns_ns"))}；Hold WNS 为 ${metricText("hold_wns_ns", reportMetric(report, "hold_wns_ns"))}。`)}</p><p><b>${ui("3. Power and routing", "3. 功耗与布线")}</b>${ui(`Total power is ${metricText("power_W", reportMetric(report, "power_W"))}; routed wirelength is ${metricText("wirelength_um", reportMetric(report, "wirelength_um"))} with ${metricText("via_count", reportMetric(report, "via_count"))} vias.`, `总功耗为 ${metricText("power_W", reportMetric(report, "power_W"))}；布线总线长为 ${metricText("wirelength_um", reportMetric(report, "wirelength_um"))}，Via 总数为 ${metricText("via_count", reportMetric(report, "via_count"))}。`)}</p><p><b>${ui("4. Signoff checks", "4. 规则检查")}</b>${ui(`The registered report contains ${metricText("drc_errors", reportMetric(report, "drc_errors"))} DRC violations and ${metricText("antenna_violations", reportMetric(report, "antenna_violations"))} antenna violations.`, `已登记报告包含 ${metricText("drc_errors", reportMetric(report, "drc_errors"))} 个 DRC 违例和 ${metricText("antenna_violations", reportMetric(report, "antenna_violations"))} 个天线违例。`)}</p></div>${report.disclaimer ? `<p class="report-disclaimer">${esc(report.disclaimer)}</p>` : ""}</section>`;
+
+  $("#backendEvidence").innerHTML = `<section class="qor-report"><div class="qor-report-head"><div><small>${esc(report.platform || "OpenROAD")}</small><h3>${esc(report.design || "Design")} · ${ui("physical-design report", "物理设计报告")}</h3><p>${esc(report.diagnosis?.summary || report.flow_status || "")}</p></div><span class="verdict ${esc(report.verdict || "")}">${esc(report.verdict || report.flow_status || "recorded")}</span></div><div class="qor-featured">${featured}</div><div class="diagnosis-list">${diagnosisHtml}</div><div class="qor-detail-grid">${detailed}</div>${timing}</section>${visual}${narrative}${renderArtifacts(artifacts)}${failure ? `<div class="message error">${esc(failure.message || failure.category)}</div>` : ""}`;
+  if (report.cell_density?.available) paintDensityHeatmap(report.cell_density.density_map || []);
+}
+
+function paintDensityHeatmap(matrix) {
+  const canvas = $("#densityHeatmap");
+  if (!canvas || !Array.isArray(matrix) || !matrix.length) return;
+  const context = canvas.getContext("2d");
+  const rows = matrix.length;
+  const columns = Math.max(...matrix.map(row => Array.isArray(row) ? row.length : 0));
+  const cellWidth = canvas.width / Math.max(columns, 1);
+  const cellHeight = canvas.height / rows;
+  context.fillStyle = "#f7f8fa";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  matrix.forEach((row, y) => (row || []).forEach((raw, x) => {
+    const value = Math.max(0, Math.min(1, Number(raw) || 0));
+    context.fillStyle = `hsl(${220 - value * 210} 78% ${96 - value * 48}%)`;
+    context.fillRect(x * cellWidth, y * cellHeight, Math.ceil(cellWidth), Math.ceil(cellHeight));
+  }));
 }
 
 async function submitFlow() {
@@ -743,37 +861,63 @@ function openExtension(id) {
   else if ($("#embeddedExtensionDetail")) $("#embeddedExtensionDetail").innerHTML = `<div class="empty-row">${ui("Loading the selected research branch…", "正在加载所选研究支线……")}</div>`;
 }
 
+function successfulBaselineForDesign(designId) {
+  if (!designId) return null;
+  const selected = state.selectedRun?.run;
+  if (selected?.status === "succeeded" && selected.task_spec?.plugin_id === "orfs" && selected.task_spec?.design_id === designId) {
+    return state.runs.find(run => run.run_id === selected.run_id) || {
+      run_id: selected.run_id, status: selected.status, plugin_id: "orfs", design_id: designId,
+    };
+  }
+  return state.runs.find(run => run.plugin_id === "orfs" && run.design_id === designId && run.status === "succeeded") || null;
+}
+
+function extensionCompatibility(id, design, baseline) {
+  const inherited = Boolean(design);
+  if (id === "taiwei-3d") {
+    if (!design) return {tone: "blocked", label: ui("Choose a design", "请先选择设计"), reason: ui("Select a registered design in step ① before opening 3D implementation.", "请先在步骤①选择已登记设计，再打开 3D 实现。")};
+    if (!baseline) return {tone: "blocked", label: ui("Main flow required", "需要成功主线"), reason: ui("Complete one successful 2D baseline run for this same design first.", "请先为同一设计完成一次成功的 2D 基线任务。")};
+    if (design.module !== "gcd") return {tone: "blocked", label: ui("Not supported by pinned case", "固定案例不兼容"), reason: ui("The audited TaiWei release currently accepts only its official gcd case. The selected digital design is retained, but arbitrary RTL cannot yet be mapped into this 3D flow.", "已审计的 TaiWei 固定版本目前只接受官方 gcd 案例。当前数字设计仍会保留，但暂时不能把任意 RTL 映射到该 3D 流程。")};
+    if (!state.health?.taiwei_3d_ready) return {tone: "blocked", label: ui("Toolchain unavailable", "工具链不可用"), reason: state.health?.taiwei_3d_reason || ui("The pinned 3D toolchain is not ready.", "固定 3D 工具链尚未就绪。")};
+    return {tone: "ready", label: ui("Ready for linked 3D run", "可以启动关联 3D 任务"), reason: ui("The selected gcd project and its successful 2D baseline will be recorded on the pinned official 3D acceptance run.", "当前 gcd 项目及其成功 2D 基线会共同登记到官方固定 3D 验收任务中。"), action: "taiwei"};
+  }
+  if (id === "edacraft-tcadcraft") return {tone: "blocked", label: ui("Additional device input required", "需要补充器件输入"), reason: ui("The project context is inherited, but digital RTL/GDS does not define device geometry, materials, contacts, mesh, or physical boundary conditions. A design-to-device input adapter is not yet implemented.", "项目上下文已经继承，但数字 RTL/GDS 不包含器件结构、材料、接触、网格和物理边界条件；设计到器件的输入适配器尚未实现。")};
+  if (id === "edacraft-momcraft") return {tone: "blocked", label: ui("Interconnect extraction required", "需要互连提取"), reason: ui("The project context is inherited. Before EM simulation, a user must select interconnect geometry and define ports, materials, and a frequency sweep; the GDS-to-MoM extractor is not yet implemented.", "项目上下文已经继承。电磁仿真前还需选择互连几何并定义端口、材料和扫频范围；GDS 到 MoM 的提取适配器尚未实现。")};
+  if (id === "edacraft-cktcraft") return {tone: "blocked", label: ui("Transistor netlist required", "需要晶体管级网表"), reason: ui("The project context is inherited, but a digital gate-level flow cannot derive transistor models, SPICE stimuli, or RF analyses. Supply a transistor-level design before this branch can run.", "项目上下文已经继承，但数字门级流程无法推导晶体管模型、SPICE 激励或射频分析；需要先提供晶体管级设计。")};
+  if (id === "dplevolve") return {tone: "separate", label: ui("Platform-wide tool evolution", "平台级工具演进"), reason: ui("This optimizes OpenROAD source code rather than post-processing the selected chip. The current design may be used later as evaluation evidence, but it is not transformed by this extension.", "该功能优化的是 OpenROAD 源码，不是对当前芯片做后处理。当前设计以后可以作为评测证据，但不会被这个扩展直接转换。")};
+  return {tone: inherited ? "blocked" : "separate", label: ui("No linked action", "暂无关联动作"), reason: ui("No compatible current-design adapter is available for this component.", "该组件目前没有兼容当前设计的输入适配器。")};
+}
+
 function selectExtension(id) {
   const extension = state.extensions.find(item => item.id === id);
   const root = $("#embeddedExtensionDetail");
   if (!extension || !root) return;
   state.requestedExtension = null;
   state.selectedExtension = id;
-  const isCraft = id.startsWith("edacraft-");
-  const slug = id.replace("edacraft-", "");
-  const smokeAllowed = isCraft && ["tcadcraft", "momcraft", "cktcraft"].includes(slug);
-  const primaryHint = id === "flow-agent"
-    ? ui("Use Flow mode in step ② to create a bounded Campaign plan.", "请在步骤②的流程模式中创建有界批量实验计划。")
-    : id === "taiwei-3d" ? ui("Choose a registered design, then submit the pinned 3D workflow when its toolchain is available.", "选择已登记设计，并在固定 3D 工具链可用时提交 3D 流程。")
-      : id === "dplevolve" ? ui("This long-running source optimizer starts only after the user supplies a provider and compute budget.", "该源码优化长任务仅在用户提供 Provider 与计算预算后启动。") : extension.safety_note;
+  const design = state.selectedDesign;
+  const baseline = successfulBaselineForDesign(design?.id);
+  const compatibility = extensionCompatibility(id, design, baseline);
+  const designLabel = design ? `${ui("Design", "设计")} · ${design.module}` : ui("No design selected", "尚未选择设计");
+  const baselineLabel = baseline ? `${runDisplayName(baseline.run_id)} · ${ui("2D baseline succeeded", "2D 基线成功")}` : ui("No successful 2D baseline for this design", "当前设计尚无成功 2D 基线");
+  const action = compatibility.action === "taiwei" ? `<button class="button primary" data-run-taiwei>${ui("Start linked 3D run", "启动关联 3D 任务")} <span>→</span></button>` : "";
   root.innerHTML = `<div class="embedded-extension-head"><div><small>${esc(extension.layer)}</small><b>${esc(extension.name)}</b><span>${esc(extension.summary)}</span></div><button type="button" aria-label="Close extension detail" id="closeExtensionDetail">×</button></div>
-    <div class="embedded-extension-body"><div class="extension-meta"><div><span>${ui("Availability", "可用状态")}</span><b>${esc(extension.status_label)}</b></div><div><span>${ui("Required input", "所需输入")}</span><b>${esc(extension.input)}</b></div><div><span>${ui("Execution", "执行方式")}</span><b>${esc(extension.execution_class)}</b></div></div>
-    <p class="selection-note">${esc(primaryHint)}</p><div class="extension-actions">${smokeAllowed ? `<button class="button primary" data-smoke-slug="${esc(slug)}">${ui("Run bounded smoke", "运行有界 Smoke")} <span>→</span></button>` : ""}<button class="button" data-route="projects">${ui("View recorded results", "查看已有结果")}</button></div><p class="message" id="extensionMessage"></p></div>`;
-  $$('[data-route]', root).forEach(element => element.addEventListener("click", () => route(element.dataset.route)));
+    <div class="embedded-extension-body"><div class="extension-context"><div><span>${ui("Current design", "当前设计")}</span><b>${esc(designLabel)}</b></div><div><span>${ui("Main-flow evidence", "主线证据")}</span><b>${esc(baselineLabel)}</b></div></div><div class="extension-meta"><div><span>${ui("Required component input", "扩展所需输入")}</span><b>${esc(extension.input)}</b></div><div><span>${ui("Execution", "执行方式")}</span><b>${esc(extension.execution_class)}</b></div></div>
+    <div class="compatibility ${esc(compatibility.tone)}"><span>${ui("Compatibility", "兼容性")}</span><b>${esc(compatibility.label)}</b><p>${esc(compatibility.reason)}</p></div>${action ? `<div class="extension-actions">${action}</div>` : ""}<p class="message" id="extensionMessage"></p></div>`;
   $("#closeExtensionDetail").addEventListener("click", () => { root.innerHTML = ""; state.selectedExtension = null; });
-  const smoke = $('[data-smoke-slug]', root);
-  if (smoke) smoke.addEventListener("click", () => submitExtensionSmoke(smoke.dataset.smokeSlug));
+  const taiwei = $('[data-run-taiwei]', root);
+  if (taiwei) taiwei.addEventListener("click", () => submitTaiweiExtension(design.id, baseline.run_id));
   root.scrollIntoView({behavior: "smooth", block: "nearest"});
 }
 
-async function submitExtensionSmoke(slug) {
-  const button = $('[data-smoke-slug]', $("#embeddedExtensionDetail"));
+async function submitTaiweiExtension(designId, baselineRunId) {
+  const button = $('[data-run-taiwei]', $("#embeddedExtensionDetail"));
+  if (!window.confirm(ui("This is a long-running pinned 3D acceptance flow. Start it for the selected gcd project?", "这是耗时较长的固定 3D 验收流程。确认对当前 gcd 项目启动吗？"))) return;
   button.disabled = true;
-  message("#extensionMessage", ui("Submitting the bounded smoke to Runtime…", "正在向 Runtime 提交有界 Smoke……"));
+  message("#extensionMessage", ui("Submitting the linked 3D task to Runtime…", "正在向 Runtime 提交关联 3D 任务……"));
   try {
-    await post(`/api/extensions/edacraft/${encodeURIComponent(slug)}/smoke`, {});
-    message("#extensionMessage", ui("The smoke task is queued. The Runtime worker owns execution; open Results to inspect it.", "Smoke 任务已进入队列，由 Runtime Worker 执行；可在结果页查看。"));
-    await loadRuns();
+    const detail = await post("/api/extensions/taiwei/run", {design_id: designId, baseline_run_id: baselineRunId});
+    message("#extensionMessage", ui("The linked 3D task is queued. Its project, 2D baseline, and 3D evidence remain connected.", "关联 3D 任务已进入队列；项目、2D 基线与 3D 证据会保持关联。"));
+    await loadRuns(detail.run?.run_id);
   } catch (error) {
     message("#extensionMessage", error.message, true);
   } finally {
