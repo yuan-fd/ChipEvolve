@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "plugin_id": "edacraft-rtlcraft",
-  "plugin_version": "1.1.0",
+  "plugin_version": "1.2.0",
   "adapter_entry": ["python3", "./../../packages/execution/src/openroad_platform_execution/edacraft_adapter.py"],
   "capabilities": ["eda.rtl.dsl_emit"],
   "supported_arch": ["aarch64"],

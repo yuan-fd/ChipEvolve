@@ -23,13 +23,16 @@ class AuthSession:
     user_id: str
     username: str
     legacy_access: bool
+    developer: bool
     session_id: str
 
     def public(self) -> dict[str, object]:
         return {
             "authenticated": True,
-            "user": {"id": self.user_id, "username": self.username},
+            "user": {"id": self.user_id, "username": self.username,
+                     "role": "developer" if self.developer else "member"},
             "legacy_access": self.legacy_access,
+            "developer": self.developer,
             "session_id": self.session_id,
         }
 
@@ -49,6 +52,7 @@ class AuthStore:
                     password_hash BLOB NOT NULL,
                     password_iterations INTEGER NOT NULL,
                     legacy_access INTEGER NOT NULL DEFAULT 0,
+                    role TEXT NOT NULL DEFAULT 'member',
                     created_at REAL NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS web_sessions_v1 (
@@ -70,7 +74,26 @@ class AuthStore:
                     PRIMARY KEY(resource_type, resource_id),
                     FOREIGN KEY(user_id) REFERENCES web_users_v1(user_id)
                 );
+                CREATE TABLE IF NOT EXISTS web_feature_usage_v1 (
+                    user_id TEXT NOT NULL,
+                    feature TEXT NOT NULL,
+                    window_id INTEGER NOT NULL,
+                    usage_count INTEGER NOT NULL,
+                    updated_at REAL NOT NULL,
+                    PRIMARY KEY(user_id, feature, window_id),
+                    FOREIGN KEY(user_id) REFERENCES web_users_v1(user_id)
+                );
             """)
+            columns = {row[1] for row in connection.execute(
+                "PRAGMA table_info(web_users_v1)"
+            ).fetchall()}
+            if "role" not in columns:
+                connection.execute(
+                    "ALTER TABLE web_users_v1 ADD COLUMN role TEXT NOT NULL DEFAULT 'member'"
+                )
+            connection.execute(
+                "UPDATE web_users_v1 SET role = 'developer' WHERE legacy_access = 1"
+            )
 
     def register(self, username: str, password: str) -> tuple[AuthSession, str]:
         normalized = self._username(username)
@@ -88,21 +111,21 @@ class AuthStore:
                 connection.execute(
                     """INSERT INTO web_users_v1
                        (user_id, username, password_salt, password_hash,
-                        password_iterations, legacy_access, created_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        password_iterations, legacy_access, role, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                     (user_id, normalized, salt, digest, PBKDF2_ITERATIONS,
-                     int(first_user), now),
+                     int(first_user), "developer" if first_user else "member", now),
                 )
             except sqlite3.IntegrityError as exc:
                 raise ValueError("Username is already registered") from exc
-        return self._new_session(user_id, normalized, first_user)
+        return self._new_session(user_id, normalized, first_user, first_user)
 
     def login(self, username: str, password: str) -> tuple[AuthSession, str]:
         normalized = self._username(username)
         with self._connect() as connection:
             row = connection.execute(
                 """SELECT user_id, username, password_salt, password_hash,
-                          password_iterations, legacy_access
+                          password_iterations, legacy_access, role
                    FROM web_users_v1 WHERE username = ? COLLATE NOCASE""",
                 (normalized,),
             ).fetchone()
@@ -112,7 +135,7 @@ class AuthStore:
         candidate = self._derive(password, row[2], int(row[4]))
         if not hmac.compare_digest(candidate, row[3]):
             raise ValueError("Invalid username or password")
-        return self._new_session(row[0], row[1], bool(row[5]))
+        return self._new_session(row[0], row[1], bool(row[5]), row[6] == "developer")
 
     def resolve(self, token: str | None) -> AuthSession | None:
         if not token:
@@ -121,13 +144,13 @@ class AuthStore:
         now = time.time()
         with self._connect() as connection:
             row = connection.execute(
-                """SELECT s.session_id, s.user_id, u.username, u.legacy_access,
+                """SELECT s.session_id, s.user_id, u.username, u.legacy_access, u.role,
                           s.expires_at
                    FROM web_sessions_v1 s JOIN web_users_v1 u USING(user_id)
                    WHERE s.token_hash = ?""",
                 (token_hash,),
             ).fetchone()
-            if row is None or float(row[4]) <= now:
+            if row is None or float(row[5]) <= now:
                 connection.execute(
                     "DELETE FROM web_sessions_v1 WHERE token_hash = ?", (token_hash,)
                 )
@@ -136,7 +159,7 @@ class AuthStore:
                 "UPDATE web_sessions_v1 SET last_seen_at = ? WHERE token_hash = ?",
                 (now, token_hash),
             )
-        return AuthSession(row[1], row[2], bool(row[3]), row[0])
+        return AuthSession(row[1], row[2], bool(row[3]), row[4] == "developer", row[0])
 
     def logout(self, token: str | None) -> None:
         if not token:
@@ -184,8 +207,46 @@ class AuthStore:
             ).fetchone()
         return row is not None
 
-    def _new_session(self, user_id: str, username: str,
-                     legacy_access: bool) -> tuple[AuthSession, str]:
+    def list_users(self) -> list[dict[str, object]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """SELECT user_id, username, role, created_at
+                   FROM web_users_v1 ORDER BY created_at"""
+            ).fetchall()
+        return [
+            {"user_id": row[0], "username": row[1], "role": row[2],
+             "created_at": row[3]}
+            for row in rows
+        ]
+
+    def consume_allowance(self, user_id: str, feature: str, *, limit: int,
+                          window_seconds: int = 86_400) -> tuple[bool, int]:
+        if limit < 1 or window_seconds < 60:
+            raise ValueError("Invalid feature allowance")
+        now = time.time()
+        window_id = int(now // window_seconds)
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """SELECT usage_count FROM web_feature_usage_v1
+                   WHERE user_id = ? AND feature = ? AND window_id = ?""",
+                (user_id, feature, window_id),
+            ).fetchone()
+            used = int(row[0]) if row else 0
+            if used >= limit:
+                return False, 0
+            connection.execute(
+                """INSERT INTO web_feature_usage_v1
+                   (user_id, feature, window_id, usage_count, updated_at)
+                   VALUES (?, ?, ?, 1, ?)
+                   ON CONFLICT(user_id, feature, window_id) DO UPDATE SET
+                   usage_count = usage_count + 1, updated_at = excluded.updated_at""",
+                (user_id, feature, window_id, now),
+            )
+        return True, limit - used - 1
+
+    def _new_session(self, user_id: str, username: str, legacy_access: bool,
+                     developer: bool) -> tuple[AuthSession, str]:
         token = secrets.token_urlsafe(32)
         token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
         session_id = f"session-{uuid.uuid4().hex}"
@@ -197,7 +258,7 @@ class AuthStore:
                    VALUES (?, ?, ?, ?, ?, ?)""",
                 (token_hash, session_id, user_id, now, now + SESSION_SECONDS, now),
             )
-        return AuthSession(user_id, username, legacy_access, session_id), token
+        return AuthSession(user_id, username, legacy_access, developer, session_id), token
 
     @staticmethod
     def _username(value: str) -> str:

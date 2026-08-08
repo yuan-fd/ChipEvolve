@@ -140,6 +140,16 @@ class ApiState:
         self.secret_broker = InMemorySecretBroker(default_ttl_seconds=8 * 3600)
         self.recommendation_store = RecommendationStore(state_root / "recommendations.db")
         self._spec_provider_bindings: dict[str, dict[str, str]] = {}
+        self.server_spec_model = os.environ.get(
+            "OPENROAD_PLATFORM_SERVER_SPEC_MODEL", "gpt-5.6-sol"
+        ).strip()
+        if self.server_spec_model not in ALLOWED_MODELS:
+            raise ValueError("OPENROAD_PLATFORM_SERVER_SPEC_MODEL is not allowlisted")
+        self.server_spec_model_ready = shutil.which("codex") is not None
+        self.server_spec_daily_limit = int(os.environ.get(
+            "OPENROAD_PLATFORM_SERVER_SPEC_DAILY_LIMIT", "20"
+        ))
+        self._server_spec_lock = threading.Lock()
         self.designs = DesignService(
             design_root or ROOT / "var" / "designs",
             legacy_root=legacy_root or Path(os.environ.get("ICCAD_ROOT", ROOT.parent / "iccad")),
@@ -250,6 +260,8 @@ class ApiState:
             "runtime_worker_active_run": worker.get("active_run"),
             "runtime_worker_last_seen": worker.get("updated_at"),
             "byok_input_enabled": self.byok_transport_secure,
+            "server_spec_model_ready": self.server_spec_model_ready,
+            "server_spec_model": self.server_spec_model,
             "taiwei_3d_ready": self.taiwei_readiness["ready"],
             "taiwei_3d_reason": self.taiwei_readiness["reason"],
         }
@@ -341,6 +353,71 @@ class ApiState:
             "notice": "Submitted to Workflow Runtime; a worker owns execution.",
         }
 
+    def submit_edacraft_run(self, slug: str, payload: dict[str, Any], *,
+                            owner_id: str | None = None,
+                            include_legacy: bool = False) -> dict[str, Any]:
+        """Submit an explicit device, interconnect, or circuit analysis input."""
+        if slug not in {"tcadcraft", "momcraft", "cktcraft"}:
+            raise ValueError("Only TCADCraft, MoMCraft, and CktCraft are available here")
+        design_id = str(payload.get("design_id") or "").strip()
+        if design_id:
+            self._owned_design(design_id, owner_id, include_legacy=include_legacy)
+        else:
+            design_id = "device-research"
+
+        inputs: dict[str, object] = {"input_origin": "user-supplied-specialist-input"}
+        parameters: dict[str, object] = {}
+        if slug == "tcadcraft":
+            parameters = {
+                "length_nm": _bounded_number(payload, "length_nm", 10.0, 1.0, 10_000.0),
+                "width_nm": _bounded_number(payload, "width_nm", 5.0, 1.0, 10_000.0),
+                "height_nm": _bounded_number(payload, "height_nm", 3.0, 1.0, 10_000.0),
+            }
+        elif slug == "momcraft":
+            parameters = {
+                "length_mm": _bounded_number(payload, "length_mm", 2.0, .01, 100.0),
+                "width_mm": _bounded_number(payload, "width_mm", .5, .001, 20.0),
+                "height_mm": _bounded_number(payload, "height_mm", .3, .001, 20.0),
+                "eps_eff": _bounded_number(payload, "eps_eff", 3.2, 1.0, 30.0),
+                "mesh_segments": int(_bounded_number(
+                    payload, "mesh_segments", 4, 2, 64, integer=True
+                )),
+                "frequency_ghz": _bounded_number(
+                    payload, "frequency_ghz", 1.0, .001, 300.0
+                ),
+            }
+        else:
+            netlist = str(payload.get("spice_netlist") or "").strip()
+            if not netlist:
+                raise ValueError("spice_netlist is required")
+            if len(netlist.encode("utf-8")) > 64 * 1024:
+                raise ValueError("SPICE netlist exceeds 64 KiB")
+            if re.search(r"(?im)^\s*\.(?:include|lib|control|shell)\b", netlist):
+                raise ValueError("External includes and control commands are not allowed")
+            if not re.search(r"(?im)^\s*\.end\s*$", netlist):
+                raise ValueError("SPICE netlist must end with .end")
+            inputs["spice_netlist"] = netlist
+
+        component = edacraft_component(slug)
+        task = build_edacraft_task(
+            slug, design_id=design_id, inputs=inputs, parameters=parameters
+        )
+        task = dataclasses.replace(task, labels={
+            **task.labels,
+            "source": "web-specialist-input",
+            "linked_design_id": design_id,
+            **({"owner_id": owner_id} if owner_id else {}),
+        })
+        run = self.runtime.submit(task, capability=component.capability)
+        return {
+            "run": self.get_runtime_run(
+                run.run_id, owner_id=owner_id, include_legacy=include_legacy
+            ),
+            "component": component.to_dict(),
+            "execution_started": False,
+            "notice": "The specialist task is saved; the Runtime worker owns execution.",
+        }
+
     def submit_taiwei_design_run(self, payload: dict[str, Any], *, owner_id: str | None = None,
                                  include_legacy: bool = False) -> dict[str, Any]:
         if not self.taiwei_readiness["ready"]:
@@ -348,7 +425,10 @@ class ApiState:
         design_id = str(payload.get("design_id") or "").strip()
         design = self._owned_design(design_id, owner_id, include_legacy=include_legacy)
         if design.get("module") != "gcd":
-            raise ValueError("The pinned TaiWei v1 toolchain accepts only the gcd design")
+            raise ValueError(
+                "The current platform adapter is validated only for TaiWei's official gcd "
+                "configuration; this is an adapter mapping limitation, not an engine limitation"
+            )
         baseline_run_id = str(payload.get("baseline_run_id") or "").strip()
         baseline = self._authorize_runtime(
             baseline_run_id, owner_id, include_legacy=include_legacy
@@ -811,13 +891,24 @@ class ApiState:
         rtl_sha = rtl.get("sha256") if isinstance(rtl, dict) else run.task_spec.inputs.get("rtl_sha256")
         if not isinstance(rtl_sha, str):
             raise ValueError("Runtime task has no immutable RTL fingerprint")
+        stages = self.runtime_store.list_stages(run_id)
+        plugin_version = str(stages[0].plugin_version if stages else "registered")
         context = LearningContext(
             design_id=run.task_spec.design_id, design_fingerprint=rtl_sha,
-            platform=str(run.task_spec.parameters.get("platform") or "unknown"),
-            pdk_id=str(payload.get("pdk_id") or ""),
-            toolchain_id=str(payload.get("toolchain_id") or ""),
+            platform=_learning_identifier(
+                run.task_spec.parameters.get("platform"), "unknown-platform"
+            ),
+            pdk_id=_learning_identifier(
+                payload.get("pdk_id") or run.task_spec.parameters.get("platform"),
+                "unknown-pdk",
+            ),
+            toolchain_id=_learning_identifier(
+                f"{run.task_spec.plugin_id}-{plugin_version}", "unknown-toolchain"
+            ),
             flow_stage=str(run.task_spec.parameters.get("target_stage") or "finish"),
-            metric_parser_version=str(payload.get("metric_parser_version") or ""),
+            metric_parser_version=_learning_identifier(
+                payload.get("metric_parser_version"), "web-evidence-v1"
+            ),
         )
         receipt = self.learning_collector.collect(
             run_id, context, tenant_id=owner_id,
@@ -1110,10 +1201,13 @@ class ApiState:
         budgets = payload.get("budgets")
         if budgets is not None and not isinstance(budgets, dict):
             raise ValueError("budgets must be an object")
-        result = SpecConversationManager(self.spec_store, provider).create(
+        manager = SpecConversationManager(self.spec_store, provider)
+        operation = lambda: manager.create(  # noqa: E731
             message=str(payload.get("message") or ""), design_id=design_id,
             design_context=design, budgets=budgets,
         )
+        result = (self._server_spec_call(owner_id, operation)
+                  if provider.provider_name == "codex-cli" else operation())
         if owner_id:
             self.auth.bind_resource("spec_session", result["session_id"], owner_id)
         if provider.provider_name == "openai-compatible-byok":
@@ -1144,9 +1238,12 @@ class ApiState:
         design_id = session.get("design_id")
         design = self._owned_design(design_id, owner_id, include_legacy=include_legacy) if design_id else None
         provider = self._spec_provider_for_session(session_id, session)
-        return SpecConversationManager(self.spec_store, provider).turn(
+        manager = SpecConversationManager(self.spec_store, provider)
+        operation = lambda: manager.turn(  # noqa: E731
             session_id, str(payload.get("message") or ""), design_context=design,
         )
+        return (self._server_spec_call(owner_id, operation)
+                if provider.provider_name == "codex-cli" else operation())
 
     def register_spec_design(self, session_id: str,
                              payload: dict[str, Any]) -> dict[str, Any]:
@@ -1237,6 +1334,25 @@ class ApiState:
         if binding is None:
             raise ValueError("BYOK session binding expired; re-enter the API key")
         return self._spec_provider_from_payload({"provider": session["provider"], **binding})
+
+    def _server_spec_call(self, owner_id: str | None, operation: Any) -> Any:
+        if not self.server_spec_model_ready:
+            raise ValueError("The shared server model is temporarily unavailable")
+        if not self._server_spec_lock.acquire(blocking=False):
+            raise ValueError("The shared server model is busy; retry shortly")
+        try:
+            if owner_id and self.auth.has_user(owner_id):
+                allowed, _ = self.auth.consume_allowance(
+                    owner_id, "server-spec-model",
+                    limit=self.server_spec_daily_limit,
+                )
+                if not allowed:
+                    raise ValueError(
+                        "The shared server-model fair-use allowance resets daily"
+                    )
+            return operation()
+        finally:
+            self._server_spec_lock.release()
 
     @staticmethod
     def _spec_provider(name: str, model: str | None):
@@ -1463,11 +1579,26 @@ def _optional_string(value: Any) -> str | None:
     return text or None
 
 
+def _learning_identifier(value: Any, fallback: str) -> str:
+    text = re.sub(r"[^A-Za-z0-9_.:-]+", "-", str(value or "").strip()).strip("_.:-")
+    return (text or fallback)[:128]
+
+
 def _number(payload: dict[str, Any], key: str, default: float) -> float:
     try:
         return float(payload.get(key, default))
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{key} must be numeric") from exc
+
+
+def _bounded_number(payload: dict[str, Any], key: str, default: float,
+                    minimum: float, maximum: float, *, integer: bool = False) -> float:
+    value = _number(payload, key, default)
+    if not minimum <= value <= maximum:
+        raise ValueError(f"{key} must be between {minimum:g} and {maximum:g}")
+    if integer and not value.is_integer():
+        raise ValueError(f"{key} must be an integer")
+    return value
 
 
 def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
@@ -1509,6 +1640,14 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
             parsed = urlparse(self.path)
             path = parsed.path
             session = self._auth_session()
+            query = parse_qs(parsed.query)
+            developer_all = bool(
+                session and session.developer and (query.get("scope") or [""])[0] == "all"
+            )
+            list_owner = None if developer_all else (session.user_id if session else None)
+            direct_owner = None if session and session.developer else (
+                session.user_id if session else None
+            )
             try:
                 if path == "/api/auth/session":
                     self._json(session.public() if session else {"authenticated": False})
@@ -1520,6 +1659,8 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                         "runtime_worker_ready": health["runtime_worker_ready"],
                         "runtime_worker_status": health["runtime_worker_status"],
                         "taiwei_3d_ready": health["taiwei_3d_ready"],
+                        "server_spec_model_ready": health["server_spec_model_ready"],
+                        "server_spec_model": health["server_spec_model"],
                     })
                 elif path == "/api/platform":
                     self._json(state.platform.snapshot(
@@ -1536,9 +1677,24 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                 elif session is None:
                     self._error(HTTPStatus.UNAUTHORIZED, "Sign in to access this workspace")
                 elif path == "/api/platform/results":
-                    self._json(state.platform.results(
-                        owner_id=session.user_id, include_legacy=session.legacy_access
-                    ))
+                    result = state.platform.results(
+                        owner_id=list_owner,
+                        include_legacy=session.legacy_access or developer_all,
+                    )
+                    if developer_all:
+                        users = {item["user_id"]: item["username"]
+                                 for item in state.auth.list_users()}
+                        for record in result["records"]:
+                            record["owner_username"] = users.get(
+                                record.get("owner_id"), "Legacy / system"
+                            )
+                        result["scope"] = "all-users"
+                    self._json(result)
+                elif path == "/api/developer/users":
+                    if not session.developer:
+                        self._error(HTTPStatus.FORBIDDEN, "Developer role required")
+                    else:
+                        self._json({"users": state.auth.list_users()})
                 elif path == "/api/platform/evolution":
                     self._json(state.platform.evolution(
                         owner_id=session.user_id, include_legacy=session.legacy_access
@@ -1551,14 +1707,15 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                     self._json(state.projects())
                 elif path == "/api/designs":
                     self._json({"designs": state.designs.list(
-                        owner_id=session.user_id, include_legacy=session.legacy_access
+                        owner_id=list_owner,
+                        include_legacy=session.legacy_access or developer_all,
                     )})
                 elif path == "/api/designs/examples":
                     self._json({"examples": state.designs.examples()})
                 elif re.fullmatch(r"/api/designs/[^/]+/schematic\.svg", path):
                     design_id = unquote(path.split("/")[3])
                     self._text(state.designs.schematic(
-                        design_id, owner_id=session.user_id,
+                        design_id, owner_id=direct_owner,
                         include_legacy=session.legacy_access,
                     ), "image/svg+xml; charset=utf-8")
                 elif re.fullmatch(r"/api/designs/[^/]+/source", path):
@@ -1567,13 +1724,13 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                     if kind not in {"rtl", "netlist"}:
                         raise ValueError("kind must be rtl or netlist")
                     self._text(state.designs.source(
-                        design_id, kind, owner_id=session.user_id,
+                        design_id, kind, owner_id=direct_owner,
                         include_legacy=session.legacy_access,
                     ), "text/plain; charset=utf-8")
                 elif path.startswith("/api/designs/"):
                     self._json(state.designs.get(
                         unquote(path.removeprefix("/api/designs/")), include_source=True,
-                        owner_id=session.user_id, include_legacy=session.legacy_access,
+                        owner_id=direct_owner, include_legacy=session.legacy_access,
                     ))
                 elif path == "/api/runs":
                     self._json({"runs": state.list_runs(
@@ -1582,19 +1739,20 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                 elif path == "/api/runtime/runs":
                     design_id = (parse_qs(parsed.query).get("design_id") or [None])[0]
                     self._json(state.list_runtime_runs(
-                        owner_id=session.user_id, include_legacy=session.legacy_access,
+                        owner_id=list_owner,
+                        include_legacy=session.legacy_access or developer_all,
                         design_id=design_id,
                     ))
                 elif re.fullmatch(r"/api/runtime/runs/[^/]+/artifacts/[^/]+", path):
                     parts = path.split("/")
                     artifact_path, content_type = state.runtime_artifact(
                         unquote(parts[4]), unquote(parts[6]),
-                        owner_id=session.user_id, include_legacy=session.legacy_access)
+                        owner_id=direct_owner, include_legacy=session.legacy_access)
                     self._file(artifact_path, content_type)
                 elif path.startswith("/api/runtime/runs/"):
                     self._json(state.get_runtime_run(
                         unquote(path.removeprefix("/api/runtime/runs/")),
-                        owner_id=session.user_id, include_legacy=session.legacy_access))
+                        owner_id=direct_owner, include_legacy=session.legacy_access))
                 elif path == "/api/campaigns":
                     self._json(state.list_campaigns(
                         owner_id=session.user_id, include_legacy=session.legacy_access
@@ -1717,6 +1875,14 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                 if match:
                     self._json(state.submit_edacraft_smoke(
                         unquote(match.group(1)), owner_id=session.user_id), HTTPStatus.CREATED)
+                    return
+                match = re.fullmatch(r"/api/extensions/edacraft/([^/]+)/run", path)
+                if match:
+                    self._json(state.submit_edacraft_run(
+                        unquote(match.group(1)), self._read_json(),
+                        owner_id=session.user_id,
+                        include_legacy=session.legacy_access,
+                    ), HTTPStatus.CREATED)
                     return
                 if path == "/api/extensions/rtlscout/runs":
                     self._json(state.submit_rtlscout(

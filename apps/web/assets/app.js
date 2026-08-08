@@ -9,7 +9,7 @@ const state = {
   rtlscoutStatus: null, providerProfile: null, selectedRtlscoutRun: null,
   requestedExtension: null, rtlscoutPoll: null, runtimePoll: null, healthPoll: null,
   health: null, auth: null, workspaceLoaded: false, locale: "en",
-  specSession: null, pendingCampaign: null,
+  specSession: null, pendingCampaign: null, developerView: false,
 };
 const stages = ["synth", "floorplan", "place", "cts", "route", "finish"];
 const ZH = {
@@ -45,8 +45,8 @@ const ZH = {
   "overview.optional.device.action": "打开器件工具 →",
   "tutorial.eyebrow": "端到端使用教程", "tutorial.title": "依次走完平台的各条工作流。",
   "tutorial.help": "建议先使用小型设计完成一次验收；所有可选支线都会明确标注，且不会自动启动。",
-  "tutorial.1.title": "从规格生成并审查 RTL", "tutorial.1.help": "连接模型 Provider，描述功能与端口，在确认前检查生成的 RTL。",
-  "tutorial.key.required": "上传 RTL 和使用示例无需 Key · LLM Spec-to-RTL 使用用户自己的 API Key", "tutorial.frontend.action": "打开前端设计 →",
+  "tutorial.1.title": "从规格生成并审查 RTL", "tutorial.1.help": "描述功能与端口，审查服务器模型生成的 RTL，回答待确认问题后批准登记。",
+  "tutorial.key.required": "已包含服务器共享模型 · 无需用户 API Key", "tutorial.frontend.action": "打开前端设计 →",
   "tutorial.2.title": "运行可验证的 RTL 自探索", "tutorial.2.help": "RTLScout 提出 RTL 改动，由 Verilator 与 Yosys 独立验证并评价每个候选。",
   "tutorial.key.optional": "可验证离线演示无需 Key · 当前预览站尚未启用完整自定义 Provider 探索",
   "tutorial.3.title": "检查器件或电路研究支线", "tutorial.3.help": "选择主线设计后，平台会继承项目上下文，并明确列出 TCAD、互连电磁或 SPICE 还需要的专业输入。",
@@ -60,13 +60,13 @@ const ZH = {
   "tutorial.7.help": "对于官方 gcd 验收设计，可打开 TaiWei 支线查看双层布局、跨层指标、3D 视图与重放证据。",
   "tutorial.8.title": "检查结果并收集验证经验", "tutorial.8.help": "对比版图与 QoR，再将成功执行证据明确收集到学习库；公开论文与 benchmark 元数据已按来源登记。",
   "tutorial.learning.status": "学习入库需明确触发，避免失败或未验证结果成为事实", "tutorial.results.action": "打开结果管理 →",
-  "api.eyebrow": "模型 API 认证", "api.title": "连接自己的模型，不把凭据交给项目。",
-  "api.help": "平台登录与模型 API 认证彼此独立：登录负责隔离 EDA 工作；模型 API Key 用于可选的大模型生成和探索功能。",
+  "api.eyebrow": "模型访问", "api.title": "直接使用共享模型，或连接私有 Provider。",
+  "api.help": "平台登录负责隔离 EDA 工作。Spec-to-RTL 默认使用服务器共享模型；私有 Provider 只作为受支持研究扩展的可选配置。",
   "api.login.title": "登录个人工作区", "api.login.help": "创建简单的平台账户。登录后只显示你自己的设计、任务、报告和学习记录。",
-  "api.provider.title": "选择模型 Provider", "api.provider.help": "在前端设计页填写 HTTPS 的 OpenAI-compatible 地址、模型名称和自己的 API Key。",
+  "api.provider.title": "直接使用共享模型", "api.provider.help": "Spec-to-RTL 登录后即可使用服务器模型，不要求用户填写个人 API Key。",
   "api.secret.title": "API Key 仅保留在会话中", "api.secret.help": "Key 只在当前服务会话的内存中使用，不写入项目文件、设计数据库、产物或 Git。",
   "api.run.title": "只启动你明确选择的功能", "api.run.help": "连接 Provider 不会自动启动任务。只有主动运行大模型 Spec-to-RTL 或 RTL 探索时才会调用 API。",
-  "api.required": "需要 API Key", "api.required.help": "大模型 Spec-to-RTL 与 Tool-Evolve 使用用户自己的 Key。完整自定义 Provider RTLScout 探索尚未在当前预览站启用。基线 RTL-to-GDS、报告、示例和确定性分析无需模型 Key。",
+  "api.required": "私有 Provider 可选", "api.required.help": "共享模型已覆盖 Spec-to-RTL。Tool-Evolve 与完整自定义 Provider RTLScout 尚未在当前预览站启用，因此连接私有 Key 不会解锁隐藏的生产流程。",
   "switch.frontend": "前端设计", "switch.backend": "后端实现", "switch.results": "运行结果",
   "frontend.kicker": "交互式设计工作区", "frontend.title": "前端设计",
   "frontend.subtitle": "按清晰顺序创建或导入 RTL、完成综合并查看电路结果。",
@@ -76,7 +76,7 @@ const ZH = {
   "frontend.rtl.source": "RTL 源码", "frontend.upload.action": "导入并综合",
   "frontend.spec.title": "根据自然语言生成 RTL", "frontend.spec.help": "描述功能和接口，在物理实现前先审查生成结果。",
   "frontend.spec.label": "自然语言规格", "frontend.spec.placeholder": "设计一个带使能和高电平复位的四位同步计数器。",
-  "frontend.spec.action": "创建规格会话", "frontend.spec.note": "Spec-to-RTL 需要连接模型 Provider；未连接时，规则助手只能为已有设计配置流程，不会编造 RTL。",
+  "frontend.spec.action": "创建规格会话", "frontend.spec.note": "服务器共享模型可直接生成供审查的 RTL，无需用户填写 API Key；私有 Provider 仍可选。",
   "frontend.examples.title": "选择经过审计的 RTL 示例", "frontend.examples.subtitle": "包含基础逻辑、ALU、控制器、UART 和教学用 RISC-V。",
   "frontend.examples.selected": "当前示例", "frontend.examples.action": "综合该示例",
   "frontend.results.title": "综合结果", "frontend.results.subtitle": "查看门级统计、电路图、Verilog 源码和综合网表。",
@@ -171,6 +171,7 @@ function applyLocale(locale) {
   }
   renderExampleChips();
   renderDesignChips();
+  if (state.platform) state.extensions = buildExtensions(state.platform);
   if ($("#rtlscoutMode")) updateRtlscoutControls();
   if (state.selectedRun) selectRun(state.selectedRun.run.run_id);
   if (state.selectedExtension) selectExtension(state.selectedExtension);
@@ -199,6 +200,9 @@ function renderAuth() {
   const button = $("#accountButton");
   button.textContent = signedIn ? state.auth.user.username : ui("Sign in", "登录");
   button.classList.toggle("authenticated", signedIn);
+  if ($("#developerResultControls")) {
+    $("#developerResultControls").hidden = !(signedIn && state.auth.developer);
+  }
 }
 
 function openAuth(note = "") {
@@ -246,6 +250,7 @@ async function logout() {
   state.designs = []; state.runs = []; state.results = [];
   state.selectedDesign = null; state.selectedRun = null;
   state.specSession = null; state.pendingCampaign = null;
+  state.developerView = false;
   if (state.runtimePoll) clearTimeout(state.runtimePoll);
   if (state.rtlscoutPoll) clearTimeout(state.rtlscoutPoll);
   renderAuth(); resetDesignResult(); resetRunResult(); route("overview");
@@ -288,16 +293,16 @@ function selectInputMode(name) {
 function buildExtensions(platform) {
   const special = [
     {
-      id: "taiwei-3d", name: "TaiWei 3D IC", layer: "3D physical design", status_label: "Pinned flow",
-      summary: "Two-tier gcd implementation with HBT, cross-tier metrics, 3D views, and replay evidence.",
-      execution_class: "Pinned isolated 3D toolchain", input: "RTL, 3D platform files, clock and implementation constraints",
+      id: "taiwei-3d", name: "TaiWei 3D IC", layer: ui("3D physical design", "3D 物理设计"), status_label: ui("Pinned flow", "固定工具链"),
+      summary: ui("Two-tier gcd implementation with HBT, cross-tier metrics, 3D views, and replay evidence.", "双层 gcd 实现，包含 HBT、跨层指标、3D 视图与重放证据。"),
+      execution_class: ui("Pinned isolated 3D toolchain", "隔离的固定 3D 工具链"), input: ui("RTL, 3D platform files, clock and implementation constraints", "RTL、3D 平台文件、时钟与实现约束"),
       safety_note: "The 3D toolchain is isolated from the default 2D OpenROAD/ORFS environment.",
       workflow: ["2D bootstrap", "Tier partition and 3D floorplan", "Upper/bottom placement and 3D CTS", "Routing, metrics, views, and final evidence"],
     },
     {
-      id: "dplevolve", name: "DPLEvolve / Tool-Evolve", layer: "source optimization", status_label: "On demand",
-      summary: "OpenROAD source-code candidate generation, validation, QoR evaluation, and best-candidate tracking.",
-      execution_class: "User-configured long-running task", input: "Source request, model provider/API key, validation target and compute budget",
+      id: "dplevolve", name: "DPLEvolve / Tool-Evolve", layer: ui("source optimization", "源码优化"), status_label: ui("On demand", "按需启用"),
+      summary: ui("OpenROAD source-code candidate generation, validation, QoR evaluation, and best-candidate tracking.", "生成 OpenROAD 源码候选，完成验证、QoR 评估与最优候选跟踪。"),
+      execution_class: ui("User-configured long-running task", "由用户配置的长时任务"), input: ui("Source request, model provider/API key, validation target and compute budget", "源码优化请求、模型配置、验证目标与计算预算"),
       safety_note: "Optional candidate generator. It never runs automatically and remains outside the primary RTL-to-GDS path.",
       workflow: ["Audit request and source baseline", "Generate reviewable candidates", "Compile and validate each candidate", "Measure QoR and retain the best verified result"],
     },
@@ -305,17 +310,23 @@ function buildExtensions(platform) {
   const craft = (platform.extensions?.components || []).map(component => {
     const slug = component.plugin_id.replace("edacraft-", "");
     const inputs = {
-      tcadcraft: "Device geometry, materials, contacts, mesh, and boundary conditions",
-      momcraft: "Selected interconnect geometry, material stack, ports, and frequency sweep",
-      cktcraft: "Transistor-level SPICE netlist, compact models, stimuli, and analyses",
-      rtlcraft: "Python hardware DSL and generation configuration",
-      edacode: "Analog or mixed-signal design workspace and model provider",
-      implcraft: "Registered RTL and implementation configuration",
+      tcadcraft: ui("Device dimensions for structure and invariant validation", "用于结构与一致性验证的器件尺寸"),
+      momcraft: ui("Microstrip geometry, effective permittivity, mesh, and frequency", "微带几何、有效介电常数、网格与频率"),
+      cktcraft: ui("Bounded component- or transistor-level SPICE .op netlist", "有界的元件级或晶体管级 SPICE .op 网表"),
+      rtlcraft: ui("Python hardware DSL and generation configuration", "Python 硬件 DSL 与生成配置"),
+      edacode: ui("Analog or mixed-signal design workspace and model provider", "模拟/混合信号设计工作区与模型 Provider"),
+      implcraft: ui("Registered RTL and implementation configuration", "已登记 RTL 与实现配置"),
     };
+    const localized = {
+      tcadcraft: {layer: ui("device", "器件"), summary: ui("Parameterized device structure and bounded physics validation.", "参数化器件结构与有界物理一致性验证。"), execution: ui("Local structure validation", "本地结构验证")},
+      momcraft: {layer: ui("interconnect", "互连"), summary: ui("Numerical microstrip S-parameter extraction with the upstream solver.", "使用上游数值求解器提取微带 S 参数。"), execution: ui("Bounded numerical solver", "有界数值求解")},
+      cktcraft: {layer: ui("circuit", "电路"), summary: ui("SPICE operating-point simulation with the upstream rfsim solver.", "使用上游 rfsim 求解器进行 SPICE 工作点仿真。"), execution: ui("Bounded netlist solver", "有界网表求解")},
+    }[slug];
     return {
       ...component, slug, id: component.plugin_id,
+      ...(localized ? {layer: localized.layer, summary: localized.summary, execution_class: localized.execution} : {}),
       source_commit: platform.extensions.source_commit,
-      status_label: slug === "implcraft" ? "Main-flow adapter" : "Input adapter required",
+      status_label: slug === "implcraft" ? ui("Main-flow adapter", "主流程适配器") : (["tcadcraft", "momcraft", "cktcraft"].includes(slug) ? ui("Runnable", "可运行") : ui("Research adapter", "研究适配器")),
       input: inputs[slug] || "Component-specific research input",
       workflow: ["Inherit the current project context", "Validate the component-specific input", "Submit an isolated design task", "Register artifacts, metrics, versions, and status"],
     };
@@ -490,7 +501,8 @@ async function renderDesignView() {
   const canvas = $("#frontendCanvas");
   $$('[data-design-view]').forEach(button => button.classList.toggle("active", button.dataset.designView === state.designView));
   if (state.designView === "schematic") {
-    canvas.innerHTML = `<img src="/api/designs/${encodeURIComponent(design.id)}/schematic.svg" alt="Synthesized circuit schematic">`;
+    const schematic = `/api/designs/${encodeURIComponent(design.id)}/schematic.svg`;
+    canvas.innerHTML = `<div class="schematic-toolbar"><span>${ui("Click the schematic to inspect it at full resolution.", "点击电路图可按原始分辨率查看。")}</span><div><a href="${schematic}" target="_blank" rel="noopener">${ui("Open full size", "放大查看")}</a><a href="${schematic}" download="${esc(design.module)}-schematic.svg">${ui("Download SVG", "下载 SVG")}</a></div></div><a class="schematic-zoom" href="${schematic}" target="_blank" rel="noopener"><img src="${schematic}" alt="Synthesized circuit schematic"></a>`;
   } else {
     const text = await api(`/api/designs/${encodeURIComponent(design.id)}/source?kind=${state.designView}`);
     const lines = formatCodeForDisplay(text);
@@ -541,7 +553,11 @@ async function createSpec() {
   button.disabled = true;
   message("#specMessage", "Creating a reviewable specification session…");
   try {
-    const payload = {message: prompt, provider: "deterministic"};
+    const payload = {
+      message: prompt,
+      provider: state.health?.server_spec_model_ready ? "codex-cli" : "deterministic",
+      model: state.health?.server_spec_model || "gpt-5.6-sol",
+    };
     if (state.providerProfile?.secret?.handle) {
       payload.provider = "openai-compatible-byok";
       payload.profile_id = state.providerProfile.profile_id;
@@ -552,7 +568,7 @@ async function createSpec() {
     const result = await post("/api/spec/sessions", payload);
     state.specSession = result;
     renderSpecReview(result);
-    message("#specMessage", ui("Specification draft created. Review the structured result below.", "规格草案已创建，请在下方审查结构化结果。"));
+    message("#specMessage", ui("Specification draft created by the shared server model. Review the structured RTL below.", "服务器共享模型已生成规格草案，请在下方审查结构化 RTL。"));
   } catch (error) {
     message("#specMessage", error.message, true);
   } finally {
@@ -666,7 +682,7 @@ async function loadRuns(preferred = null) {
   try {
     state.runs = (await api("/api/runtime/runs")).runs || [];
     const selectedDesignId = state.selectedDesign?.id;
-    const physicalRuns = state.runs.filter(run => selectedDesignId && run.design_id === selectedDesignId && ["orfs", "taiwei-pin-3d", "implcraft"].includes(run.plugin_id));
+    const physicalRuns = state.runs.filter(run => selectedDesignId && run.design_id === selectedDesignId && (["orfs", "taiwei-pin-3d", "implcraft"].includes(run.plugin_id) || ["edacraft-tcadcraft", "edacraft-momcraft", "edacraft-cktcraft"].includes(run.plugin_id)));
     $("#runSelect").innerHTML = `<option value="">${selectedDesignId ? ui("Choose a design task", "选择该设计的任务") : ui("Select a design first", "请先选择设计")}</option>` + physicalRuns.map((run, index) => `<option value="${esc(run.run_id)}">${ui("Task", "任务")} ${String(index + 1).padStart(2, "0")} · ${esc(humanStatus(run.status))}</option>`).join("");
     const preferredPhysical = physicalRuns.find(run => run.run_id === preferred)?.run_id;
     const selectedPhysical = physicalRuns.find(run => run.run_id === state.selectedRun?.run?.run_id)?.run_id;
@@ -687,7 +703,7 @@ function designModule(designId) {
 }
 
 function runDisplayName(runId) {
-  const physical = state.runs.filter(run => run.design_id === state.selectedDesign?.id && ["orfs", "taiwei-pin-3d", "implcraft"].includes(run.plugin_id));
+  const physical = state.runs.filter(run => run.design_id === state.selectedDesign?.id && (["orfs", "taiwei-pin-3d", "implcraft"].includes(run.plugin_id) || ["edacraft-tcadcraft", "edacraft-momcraft", "edacraft-cktcraft"].includes(run.plugin_id)));
   const index = physical.findIndex(run => run.run_id === runId);
   return `${ui("Run", "任务")} ${String(index >= 0 ? index + 1 : 1).padStart(2, "0")}`;
 }
@@ -1075,14 +1091,14 @@ function extensionCompatibility(id, design, baseline) {
   if (id === "taiwei-3d") {
     if (!design) return {tone: "blocked", label: ui("Choose a design", "请先选择设计"), reason: ui("Select a registered design in step ① before opening 3D implementation.", "请先在步骤①选择已登记设计，再打开 3D 实现。")};
     if (!baseline) return {tone: "blocked", label: ui("Main flow required", "需要成功主线"), reason: ui("Complete one successful 2D baseline run for this same design first.", "请先为同一设计完成一次成功的 2D 基线任务。")};
-    if (design.module !== "gcd") return {tone: "blocked", label: ui("Not supported by pinned case", "固定案例不兼容"), reason: ui("The audited TaiWei release currently accepts only its official gcd case. The selected digital design is retained, but arbitrary RTL cannot yet be mapped into this 3D flow.", "已审计的 TaiWei 固定版本目前只接受官方 gcd 案例。当前数字设计仍会保留，但暂时不能把任意 RTL 映射到该 3D 流程。")};
+    if (design.module !== "gcd") return {tone: "blocked", label: ui("Platform adapter currently validated for gcd", "平台适配层目前仅验收 gcd"), reason: ui("This is a limitation in our adapter, not in the TaiWei engine: design configuration, RTL/SDC mapping, and result post-processing are still fixed to the audited official gcd flow. General RTL requires a generated 3D design configuration and design-independent post-processing.", "这是我们平台适配层的限制，不是 TaiWei 引擎只能处理 gcd：当前设计配置、RTL/SDC 映射及结果后处理仍固定为已验收的官方 gcd 流程。任意 RTL 还需要通用 3D 配置生成器和去 gcd 化后处理。")};
     if (!state.health?.taiwei_3d_ready) return {tone: "blocked", label: ui("Toolchain unavailable", "工具链不可用"), reason: state.health?.taiwei_3d_reason || ui("The pinned 3D toolchain is not ready.", "固定 3D 工具链尚未就绪。")};
     return {tone: "ready", label: ui("Ready for linked 3D run", "可以启动关联 3D 任务"), reason: ui("The selected gcd project and its successful 2D baseline will be recorded on the pinned official 3D acceptance run.", "当前 gcd 项目及其成功 2D 基线会共同登记到官方固定 3D 验收任务中。"), action: "taiwei"};
   }
-  if (id === "edacraft-tcadcraft") return {tone: "blocked", label: ui("Additional device input required", "需要补充器件输入"), reason: ui("The project context is inherited, but digital RTL/GDS does not define device geometry, materials, contacts, mesh, or physical boundary conditions. A design-to-device input adapter is not yet implemented.", "项目上下文已经继承，但数字 RTL/GDS 不包含器件结构、材料、接触、网格和物理边界条件；设计到器件的输入适配器尚未实现。")};
-  if (id === "edacraft-momcraft") return {tone: "blocked", label: ui("Interconnect extraction required", "需要互连提取"), reason: ui("The project context is inherited. Before EM simulation, a user must select interconnect geometry and define ports, materials, and a frequency sweep; the GDS-to-MoM extractor is not yet implemented.", "项目上下文已经继承。电磁仿真前还需选择互连几何并定义端口、材料和扫频范围；GDS 到 MoM 的提取适配器尚未实现。")};
-  if (id === "edacraft-cktcraft") return {tone: "blocked", label: ui("Transistor netlist required", "需要晶体管级网表"), reason: ui("The project context is inherited, but a digital gate-level flow cannot derive transistor models, SPICE stimuli, or RF analyses. Supply a transistor-level design before this branch can run.", "项目上下文已经继承，但数字门级流程无法推导晶体管模型、SPICE 激励或射频分析；需要先提供晶体管级设计。")};
-  if (id === "dplevolve") return {tone: "separate", label: ui("Platform-wide tool evolution", "平台级工具演进"), reason: ui("This optimizes OpenROAD source code rather than post-processing the selected chip. The current design may be used later as evaluation evidence, but it is not transformed by this extension.", "该功能优化的是 OpenROAD 源码，不是对当前芯片做后处理。当前设计以后可以作为评测证据，但不会被这个扩展直接转换。")};
+  if (id === "edacraft-tcadcraft") return {tone: "ready", label: ui("Device structure validation available", "器件结构验证可用"), reason: ui("Enter device dimensions below to run upstream TCADCraft geometry and physics-invariant checks. The pinned upstream full PDE solver does not compile because its implementation and header declarations disagree, so full TCAD convergence is not claimed.", "在下方输入器件尺寸即可运行上游 TCADCraft 几何与物理一致性检查。固定上游版本的完整 PDE 求解器因实现与头文件声明不一致而无法编译，因此这里不宣称完整 TCAD 收敛仿真。"), action: "tcadcraft"};
+  if (id === "edacraft-momcraft") return {tone: "ready", label: ui("S-parameter solver available", "S 参数求解可用"), reason: ui("Enter microstrip geometry, effective permittivity, mesh size, and frequency. The compiled upstream MoM solver will produce a real Touchstone result. Automatic GDS interconnect extraction is a separate future adapter.", "输入微带几何、有效介电常数、网格数和频率后，平台会调用已编译的上游 MoM 求解器并生成真实 Touchstone 结果。GDS 互连自动提取属于后续独立适配器。"), action: "momcraft"};
+  if (id === "edacraft-cktcraft") return {tone: "ready", label: ui("SPICE operating-point solver available", "SPICE 工作点求解可用"), reason: ui("Paste a bounded transistor- or component-level SPICE netlist. The upstream rfsim binary executes a real .op solve; external model includes remain disabled in the public service.", "粘贴有界的晶体管级或元件级 SPICE 网表后，上游 rfsim 会执行真实 .op 求解；公网服务暂不允许外部模型 include。"), action: "cktcraft"};
+  if (id === "dplevolve") return {tone: "separate", label: ui("Validated adapter; candidate pipeline not enabled", "适配器已验证；候选流水线尚未开放"), reason: ui("Your understanding is correct: AI should propose an OpenROAD source patch, compile an isolated candidate, run the same designs with baseline and candidate binaries, compare PPA/DRC/runtime and retain only a verified improvement. Today only the pinned repository audit and low-cost adapter smoke are enabled; no expensive candidate generation is exposed yet.", "你的理解是正确的：AI 应提出 OpenROAD 源码补丁，隔离编译候选版本，用同一组设计分别运行基线与候选工具，比较 PPA、DRC 和运行时间，仅保留验证后确实更优的候选。目前只启用了固定仓库审计和低成本适配器 smoke，尚未开放高消耗的候选生成流水线。")};
   return {tone: inherited ? "blocked" : "separate", label: ui("No linked action", "暂无关联动作"), reason: ui("No compatible current-design adapter is available for this component.", "该组件目前没有兼容当前设计的输入适配器。")};
 }
 
@@ -1097,14 +1113,39 @@ function selectExtension(id) {
   const compatibility = extensionCompatibility(id, design, baseline);
   const designLabel = design ? `${ui("Design", "设计")} · ${design.module}` : ui("No design selected", "尚未选择设计");
   const baselineLabel = baseline ? `${runDisplayName(baseline.run_id)} · ${ui("2D baseline succeeded", "2D 基线成功")}` : ui("No successful 2D baseline for this design", "当前设计尚无成功 2D 基线");
-  const action = compatibility.action === "taiwei" ? `<button class="button primary" data-run-taiwei>${ui("Start linked 3D run", "启动关联 3D 任务")} <span>→</span></button>` : "";
+  const action = compatibility.action === "taiwei" ? `<button class="button primary" data-run-taiwei>${ui("Start linked 3D run", "启动关联 3D 任务")} <span>→</span></button>` : specialistExtensionForm(compatibility.action);
   root.innerHTML = `<div class="embedded-extension-head"><div><small>${esc(extension.layer)}</small><b>${esc(extension.name)}</b><span>${esc(extension.summary)}</span></div><button type="button" aria-label="Close extension detail" id="closeExtensionDetail">×</button></div>
     <div class="embedded-extension-body"><div class="extension-context"><div><span>${ui("Current design", "当前设计")}</span><b>${esc(designLabel)}</b></div><div><span>${ui("Main-flow evidence", "主线证据")}</span><b>${esc(baselineLabel)}</b></div></div><div class="extension-meta"><div><span>${ui("Required component input", "扩展所需输入")}</span><b>${esc(extension.input)}</b></div><div><span>${ui("Execution", "执行方式")}</span><b>${esc(extension.execution_class)}</b></div></div>
     <div class="compatibility ${esc(compatibility.tone)}"><span>${ui("Compatibility", "兼容性")}</span><b>${esc(compatibility.label)}</b><p>${esc(compatibility.reason)}</p></div>${action ? `<div class="extension-actions">${action}</div>` : ""}<p class="message" id="extensionMessage"></p></div>`;
   $("#closeExtensionDetail").addEventListener("click", () => { root.innerHTML = ""; state.selectedExtension = null; });
   const taiwei = $('[data-run-taiwei]', root);
   if (taiwei) taiwei.addEventListener("click", () => submitTaiweiExtension(design.id, baseline.run_id));
+  const specialist = $('[data-run-specialist]', root);
+  if (specialist) specialist.addEventListener("click", () => submitSpecialistExtension(compatibility.action, design?.id));
   root.scrollIntoView({behavior: "smooth", block: "nearest"});
+}
+
+function specialistExtensionForm(action) {
+  if (action === "tcadcraft") return `<div class="specialist-form"><div class="form-grid three"><label><span>${ui("Length (nm)", "长度（nm）")}</span><input id="tcadLength" type="number" min="1" max="10000" value="10"></label><label><span>${ui("Width (nm)", "宽度（nm）")}</span><input id="tcadWidth" type="number" min="1" max="10000" value="5"></label><label><span>${ui("Height (nm)", "高度（nm）")}</span><input id="tcadHeight" type="number" min="1" max="10000" value="3"></label></div><button class="button primary" data-run-specialist>${ui("Validate device structure", "验证器件结构")} <span>→</span></button></div>`;
+  if (action === "momcraft") return `<div class="specialist-form"><div class="form-grid"><label><span>${ui("Length (mm)", "长度（mm）")}</span><input id="momLength" type="number" min="0.01" max="100" step="0.01" value="2"></label><label><span>${ui("Width (mm)", "宽度（mm）")}</span><input id="momWidth" type="number" min="0.001" max="20" step="0.001" value="0.5"></label><label><span>${ui("Height (mm)", "高度（mm）")}</span><input id="momHeight" type="number" min="0.001" max="20" step="0.001" value="0.3"></label><label><span>${ui("Effective ε", "有效介电常数 ε")}</span><input id="momEps" type="number" min="1" max="30" step="0.1" value="3.2"></label><label><span>${ui("Mesh segments", "网格段数")}</span><input id="momMesh" type="number" min="2" max="64" step="1" value="4"></label><label><span>${ui("Frequency (GHz)", "频率（GHz）")}</span><input id="momFrequency" type="number" min="0.001" max="300" step="0.1" value="1"></label></div><button class="button primary" data-run-specialist>${ui("Run S-parameter solve", "运行 S 参数求解")} <span>→</span></button></div>`;
+  if (action === "cktcraft") return `<div class="specialist-form"><label><span>${ui("SPICE .op netlist", "SPICE .op 网表")}</span><textarea id="cktNetlist" rows="11">* Resistor-divider operating point\nV1 in 0 5.0\nR1 in mid 2k\nR2 mid 0 3k\nI1 mid 0 1m\n\n.op\n.print v(in) v(mid) i(v1)\n\n.end</textarea></label><small>${ui("This editable template is specialist input, not a result inferred from the selected RTL.", "这是可编辑的专业输入模板，不是从当前 RTL 推导出的结果。")}</small><button class="button primary" data-run-specialist>${ui("Run operating-point simulation", "运行工作点仿真")} <span>→</span></button></div>`;
+  return "";
+}
+
+async function submitSpecialistExtension(slug, designId) {
+  const button = $('[data-run-specialist]', $("#embeddedExtensionDetail"));
+  const payload = {design_id: designId || ""};
+  if (slug === "tcadcraft") Object.assign(payload, {length_nm: Number($("#tcadLength").value), width_nm: Number($("#tcadWidth").value), height_nm: Number($("#tcadHeight").value)});
+  if (slug === "momcraft") Object.assign(payload, {length_mm: Number($("#momLength").value), width_mm: Number($("#momWidth").value), height_mm: Number($("#momHeight").value), eps_eff: Number($("#momEps").value), mesh_segments: Number($("#momMesh").value), frequency_ghz: Number($("#momFrequency").value)});
+  if (slug === "cktcraft") payload.spice_netlist = $("#cktNetlist").value;
+  button.disabled = true;
+  message("#extensionMessage", ui("Saving the specialist analysis task…", "正在保存专业分析任务……"));
+  try {
+    const detail = await post(`/api/extensions/edacraft/${encodeURIComponent(slug)}/run`, payload);
+    message("#extensionMessage", ui("Task saved. Live progress and generated evidence are shown in the design-task dashboard below.", "任务已保存；下方设计任务仪表盘会显示实时进度与生成证据。"));
+    await loadRuns(detail.run?.run?.run_id || detail.run?.run_id);
+  } catch (error) { message("#extensionMessage", error.message, true); }
+  finally { button.disabled = false; }
 }
 
 async function submitTaiweiExtension(designId, baselineRunId) {
@@ -1125,7 +1166,8 @@ async function submitTaiweiExtension(designId, baselineRunId) {
 
 async function loadResults() {
   try {
-    state.results = (await api("/api/platform/results")).records || [];
+    const suffix = state.developerView ? "?scope=all" : "";
+    state.results = (await api(`/api/platform/results${suffix}`)).records || [];
     renderResults();
   } catch (error) {
     $("#resultList").innerHTML = `<div class="empty-row">${esc(error.message)}</div>`;
@@ -1134,7 +1176,7 @@ async function loadResults() {
 
 function renderResults() {
   const records = state.results.filter(record => state.resultFilter === "all" || record.record_type === state.resultFilter);
-  $("#resultList").innerHTML = records.length ? records.map(record => `<button class="result-row" data-result="${esc(record.id)}"><span class="record-kind">${esc(record.project_type)}</span><div><b>${esc(resultDisplayName(record))} · ${esc(record.name)}</b><span>${esc(record.summary)} · ${esc(humanStatus(record.status))}</span></div><time>${formatDate(record.created_at)}</time><i>→</i></button>`).join("") : `<div class="empty"><span>○</span><h3>${ui("No work recorded yet.", "还没有设计记录。")}</h3><p>${ui("Create or import a design to begin your personal workspace.", "创建或导入一个设计，开始使用个人工作区。")}</p></div>`;
+  $("#resultList").innerHTML = records.length ? records.map(record => `<button class="result-row" data-result="${esc(record.id)}"><span class="record-kind">${esc(record.project_type)}</span><div><b>${esc(resultDisplayName(record))} · ${esc(record.name)}</b><span>${state.developerView ? `${esc(record.owner_username || "Legacy / system")} · ` : ""}${esc(record.summary)} · ${esc(humanStatus(record.status))}</span></div><time>${formatDate(record.created_at)}</time><i>→</i></button>`).join("") : `<div class="empty"><span>○</span><h3>${ui("No work recorded yet.", "还没有设计记录。")}</h3><p>${ui("Create or import a design to begin your personal workspace.", "创建或导入一个设计，开始使用个人工作区。")}</p></div>`;
   $$('[data-result]').forEach(button => button.addEventListener("click", () => selectResult(button.dataset.result)));
 }
 
@@ -1179,7 +1221,7 @@ async function collectLearning(runId, task) {
     const receipt = await post(`/api/runtime/runs/${encodeURIComponent(runId)}/collect-learning`, {
       project_id: task.project_id || "openroad-platform",
       pdk_id: task.parameters?.platform || "registered-platform",
-      toolchain_id: `${task.plugin_id || "runtime"}@${task.plugin_version || "registered"}`,
+      toolchain_id: `${task.plugin_id || "design"}-${task.plugin_version || "registered"}`,
       metric_parser_version: "web-evidence-v1",
     });
     message("#collectLearningMessage", ui(`Verified experience collected · ${receipt.status || "recorded"}.`, `验证经验已收集 · ${receipt.status || "已登记"}。`));
@@ -1287,6 +1329,11 @@ $("#approveBatchPlan").addEventListener("click", approveBatchPlan);
 $("#flowMode").addEventListener("change", updateFlowMode);
 $$('[data-locale]').forEach(button => button.addEventListener("click", () => { applyLocale(button.dataset.locale); updateFlowMode(); if (!state.selectedRun) renderStageRail(new Map()); }));
 $("#refreshResults").addEventListener("click", loadResults);
+$("#developerScope").addEventListener("click", async () => {
+  state.developerView = !state.developerView;
+  $("#developerScope").textContent = state.developerView ? ui("Show only my work", "只看我的记录") : ui("Show all users", "查看所有用户");
+  await loadResults();
+});
 $("#closeResultDetail").addEventListener("click", () => { $("#projectDetailSection").classList.remove("open"); $("#resultList").scrollIntoView({behavior: "smooth"}); });
 $$('#resultFilters button').forEach(button => button.addEventListener("click", () => { $$('#resultFilters button').forEach(item => item.classList.remove("active")); button.classList.add("active"); state.resultFilter = button.dataset.filter; renderResults(); }));
 

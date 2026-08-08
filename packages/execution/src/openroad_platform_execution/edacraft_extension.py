@@ -16,7 +16,7 @@ from openroad_platform_contracts import PluginManifest, TaskSpec
 
 
 EDACRAFT_UPSTREAM_COMMIT = "739eee0f3ced8fc3cbb6f01b6cc89414758fd898"
-EDACRAFT_PLUGIN_VERSION = "1.1.0"
+EDACRAFT_PLUGIN_VERSION = "1.2.0"
 EDACRAFT_CKTCRAFT_SHA256 = "0040bc5d392fb3ad03ee4fc432d861233b2c75e4a9911c2459e8f7910e0a822c"
 EDACRAFT_MOMCRAFT_SHA256 = "0fd99280dfd69befb3ad3c119e7da9ab539014c77e3e379dca4155dfa9e7e6bf"
 
@@ -69,24 +69,24 @@ EDACRAFT_COMPONENTS = (
     ),
     EDACraftComponent(
         "tcadcraft", "TCADCraft", "device", "eda.tcad.physics_validation",
-        "local-physics-validation",
+        "parameterized-structure-validation",
         "3D quantum-corrected semiconductor device simulation and device templates.",
-        "physics-invariants", ("device_geometry", "physics_validation", "report", "source_snapshot"),
-        "The bounded smoke runs upstream geometry and physics invariants, not the inconsistent full solver build.",
+        "physics-invariants", ("device_geometry", "device_view", "physics_validation", "report", "source_snapshot"),
+        "Parameterized device geometry and physics invariants run locally; the inconsistent upstream full solver is not claimed.",
     ),
     EDACraftComponent(
         "momcraft", "MoMCraft", "interconnect", "eda.em.microstrip_solve",
-        "local-numerical-solver-smoke",
+        "parameterized-numerical-solver",
         "Method-of-Moments interconnect extraction and Touchstone S-parameter handling.",
         "microstrip-solve", ("s_parameters", "solver_result", "report", "source_snapshot"),
-        "A one-frequency, coarse-mesh upstream numerical solve bounds cost; it is not sign-off EM.",
+        "User-selected microstrip geometry and frequency run through the upstream numerical solver with bounded mesh cost; this is not sign-off EM.",
     ),
     EDACraftComponent(
         "cktcraft", "CktCraft", "circuit", "eda.spice.op",
-        "local-numerical-solver-smoke",
+        "bounded-user-netlist-solver",
         "SPICE/RF simulator supporting OP, DC, AC, HB, PSS, and transient analyses.",
         "dc-operating-point", ("simulation_result", "simulation_log", "report", "source_snapshot"),
-        "The fixed upstream resistor-divider .op is a real numerical smoke, not sign-off circuit verification.",
+        "A bounded user-supplied SPICE .op netlist runs in the upstream solver; external includes are forbidden and sign-off is not claimed.",
     ),
     EDACraftComponent(
         "implcraft", "ImplCraft", "backend", "eda.implcraft.scriptgen",
@@ -181,6 +181,8 @@ def build_edacraft_task(
     design_id: str = "edacraft-smoke",
     timeout_seconds: int = 120,
     task_id: str | None = None,
+    inputs: dict[str, object] | None = None,
+    parameters: dict[str, object] | None = None,
 ) -> TaskSpec:
     component = edacraft_component(slug)
     if slug == "implcraft":
@@ -191,8 +193,9 @@ def build_edacraft_task(
         design_id=design_id,
         plugin_id=component.plugin_id,
         inputs={"fixture": "p18-bounded-real-smoke",
-                "prompt": "Propose a review-only CMOS inverter operating-point plan."},
-        parameters={"mode": component.smoke_mode},
+                "prompt": "Propose a review-only CMOS inverter operating-point plan.",
+                **dict(inputs or {})},
+        parameters={"mode": component.smoke_mode, **dict(parameters or {})},
         resources={"execution_class": component.execution_class},
         timeout_seconds=timeout_seconds,
         max_attempts=1,

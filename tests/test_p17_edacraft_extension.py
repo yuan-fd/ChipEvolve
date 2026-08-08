@@ -56,6 +56,21 @@ def test_tasks_are_bounded_low_cost_smokes():
         assert task.labels["full_solver_executed"] == expected
 
 
+def test_parameterized_specialist_tasks_preserve_explicit_inputs():
+    tcad = build_edacraft_task(
+        "tcadcraft", parameters={"length_nm": 12, "width_nm": 7, "height_nm": 4}
+    )
+    assert tcad.parameters["length_nm"] == 12
+    mom = build_edacraft_task(
+        "momcraft", parameters={"frequency_ghz": 2.4, "mesh_segments": 8}
+    )
+    assert mom.parameters["frequency_ghz"] == 2.4
+    ckt = build_edacraft_task(
+        "cktcraft", inputs={"spice_netlist": "V1 in 0 1\n.op\n.end"}
+    )
+    assert ckt.inputs["spice_netlist"].endswith(".end")
+
+
 @pytest.mark.skipif(not (SOURCE / ".git").exists(), reason="pinned EDACraft cache absent")
 @pytest.mark.parametrize("slug", ["rtlcraft", "edacode", "tcadcraft", "momcraft", "cktcraft"])
 def test_pinned_component_smokes_use_runtime_adapter(slug, tmp_path):
@@ -73,3 +88,30 @@ def test_pinned_component_smokes_use_runtime_adapter(slug, tmp_path):
     assert report["safety"]["runtime_authoritative"] is True
     assert report["safety"]["full_solver_executed"] is (slug in {"momcraft", "cktcraft"})
     assert report["safety"]["signoff_claimed"] is False
+
+
+@pytest.mark.skipif(not (SOURCE / ".git").exists(), reason="pinned EDACraft cache absent")
+@pytest.mark.parametrize(
+    ("slug", "inputs", "parameters", "metric"),
+    [
+        ("tcadcraft", {}, {"length_nm": 12, "width_nm": 7, "height_nm": 4},
+         "tcadcraft.device_volume_nm3"),
+        ("momcraft", {}, {"length_mm": 3, "width_mm": .4, "height_mm": .2,
+                          "eps_eff": 4.1, "mesh_segments": 6, "frequency_ghz": 2.4},
+         "momcraft.s21_magnitude"),
+        ("cktcraft", {"spice_netlist": (
+            "* user input\nV1 in 0 3.3\nR1 in out 1k\nR2 out 0 2k\n"
+            ".op\n.print v(in) v(out) i(v1)\n.end"
+        )}, {}, "cktcraft.converged"),
+    ],
+)
+def test_parameterized_specialist_inputs_execute_upstream_solver(
+    slug, inputs, parameters, metric, tmp_path
+):
+    execution = ProcessAdapter().execute(
+        edacraft_plugin_manifest(slug, SOURCE, sys.executable),
+        build_edacraft_task(slug, inputs=inputs, parameters=parameters),
+        workspace=tmp_path / f"parameterized-{slug}",
+    )
+    assert execution.result.status is RuntimeStatus.SUCCEEDED
+    assert metric in {item["name"] for item in execution.result.metrics}

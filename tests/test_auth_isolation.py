@@ -58,6 +58,8 @@ def test_public_overview_login_and_two_user_design_run_isolation(tmp_path: Path)
             "username": "alice", "password": "alice-pass-123",
         })
         assert status == 201 and alice_session["authenticated"] is True
+        assert alice_session["developer"] is True
+        assert alice_session["user"]["role"] == "developer"
         status, design = request(alice, base, "/api/designs/import", method="POST", body={
             "filename": "alice_top.v",
             "rtl_source": "module alice_top(input a, output y); assign y = ~a; endmodule\n",
@@ -68,6 +70,7 @@ def test_public_overview_login_and_two_user_design_run_isolation(tmp_path: Path)
             "username": "bob", "password": "bob-pass-12345",
         })
         assert status == 201 and bob_session["user"]["id"] != alice_session["user"]["id"]
+        assert bob_session["developer"] is False
         assert request(bob, base, "/api/designs")[1]["designs"] == []
         assert request(bob, base, f"/api/designs/{design['id']}")[0] == 404
 
@@ -141,6 +144,38 @@ def test_public_overview_login_and_two_user_design_run_isolation(tmp_path: Path)
         assert status == 201 and len(started["run_ids"]) == 2
         assert started["execution_started"] is True
         assert request(bob, base, "/api/runtime/runs")[1]["runs"] == []
+
+        status, bob_design = request(bob, base, "/api/designs/import", method="POST", body={
+            "filename": "bob_top.v",
+            "rtl_source": "module bob_top(input a, output y); assign y = a; endmodule\n",
+        })
+        assert status == 201
+        assert all(item["id"] != bob_design["id"]
+                   for item in request(alice, base, "/api/designs")[1]["designs"])
+        all_results = request(alice, base, "/api/platform/results?scope=all")[1]
+        bob_records = [item for item in all_results["records"]
+                       if item["id"] == bob_design["id"]]
+        assert bob_records[0]["owner_username"] == "bob"
+        assert request(alice, base, f"/api/designs/{bob_design['id']}")[0] == 200
+        assert request(bob, base, "/api/developer/users")[0] == 403
+        assert len(request(alice, base, "/api/developer/users")[1]["users"]) == 2
+
+        status, specialist = request(
+            bob, base, "/api/extensions/edacraft/momcraft/run", method="POST", body={
+                "design_id": bob_design["id"], "length_mm": 3.0,
+                "width_mm": .4, "height_mm": .2, "eps_eff": 4.1,
+                "mesh_segments": 6, "frequency_ghz": 2.4,
+            },
+        )
+        assert status == 201
+        specialist_task = specialist["run"]["run"]["task_spec"]
+        assert specialist_task["parameters"]["frequency_ghz"] == 2.4
+        assert specialist_task["labels"]["linked_design_id"] == bob_design["id"]
+        assert request(
+            bob, base, "/api/extensions/edacraft/cktcraft/run", method="POST",
+            body={"design_id": bob_design["id"],
+                  "spice_netlist": ".include /tmp/model.lib\n.op\n.end"},
+        )[0] == 400
 
         assert request(alice, base, "/api/auth/logout", method="POST", body={})[0] == 200
         assert request(alice, base, "/api/designs")[0] == 401

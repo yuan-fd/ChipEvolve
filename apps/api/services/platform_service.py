@@ -98,6 +98,7 @@ class PlatformReadModel:
             records.append({
                 "id": design["id"],
                 "record_type": "design",
+                "owner_id": str(design.get("owner_id") or ""),
                 "project_type": "RTL / netlist",
                 "name": design.get("module") or design["id"],
                 "summary": design.get("description") or "Registered design",
@@ -115,6 +116,7 @@ class PlatformReadModel:
             records.append({
                 "id": run.run_id,
                 "record_type": "runtime_run",
+                "owner_id": str((run.task_spec.labels or {}).get("owner_id") or ""),
                 "project_type": _project_type(plugin),
                 "name": design_names.get(run.task_spec.design_id, _friendly_design_name(run.task_spec.design_id)),
                 "summary": _project_type(plugin),

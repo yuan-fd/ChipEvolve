@@ -157,6 +157,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .viewer-downloads a { color: var(--accent); font-size: 9px; font-weight: 600; text-decoration: none; }
 .visual-canvas { padding: 16px; min-height: 470px; background: white; }
 .visual-canvas img { display: block; width: 100%; max-height: 440px; object-fit: contain; background: white; border: 1px solid var(--line); border-radius: 4px; }
+.schematic-toolbar { min-height: 34px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 14px; color: var(--muted); font-size: 9px; }
+.schematic-toolbar > div { display: flex; gap: 12px; }
+.schematic-toolbar a { color: var(--accent); font-weight: 650; text-decoration: none; }
+.schematic-zoom { display: block; cursor: zoom-in; }
 .detail-code { margin: 0; max-height: 440px; padding: 16px; overflow: auto; border-radius: 4px; background: #111827; color: #e5e7eb; font: 10px/1.6 var(--mono); white-space: pre; }
 .code-viewer { min-height: 438px; border: 1px solid var(--line); border-radius: 4px; background: #fff; overflow: auto; }
 .code-lines { margin: 0; padding: 14px 0 18px 52px; min-width: 100%; color: #98a2b3; font: 11px/1.72 var(--mono); counter-reset: line; }
@@ -279,7 +283,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .extension-meta span { color: var(--muted); }
 .extension-actions { margin-top: 16px; display: flex; gap: 7px; }
 
-.result-toolbar { margin-bottom: 12px; display: flex; justify-content: space-between; }
+.result-toolbar { margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.developer-result-controls { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.developer-result-controls[hidden] { display: none; }
+.developer-result-controls > span { color: var(--muted); font-size: 9px; font-weight: 650; text-transform: uppercase; letter-spacing: .08em; }
 .segmented { display: flex; padding: 2px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface-subtle); }
 .segmented button { padding: 6px 10px; border: 0; border-radius: 3px; background: transparent; color: var(--muted); font-size: 9px; }
 .segmented button.active { background: white; color: var(--accent); font-weight: 650; }
@@ -635,6 +642,11 @@ html[lang="zh-CN"] .workspace-head h1::after { content: " — 交互演示"; }
 .embedded-extension-body { padding: 0 12px 12px; }
 .embedded-extension-body .extension-meta { margin-top: 12px; }
 .embedded-extension-body .message { margin-inline: 0; margin-bottom: 0; }
+.specialist-form { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); display: grid; gap: 12px; }
+.specialist-form label { display: grid; gap: 5px; color: var(--muted); font-size: 9px; }
+.specialist-form small { color: var(--muted); font-size: 9px; line-height: 1.55; }
+.specialist-form .button { justify-self: start; }
+.form-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .extension-contract-note { margin: 0; padding: 12px; display: grid; gap: 4px; border-bottom: 1px solid var(--line); background: var(--surface-subtle); }
 .extension-contract-note b { color: var(--heading); font-size: 10px; }
 .extension-contract-note span { color: var(--muted); font-size: 9px; line-height: 1.55; }
