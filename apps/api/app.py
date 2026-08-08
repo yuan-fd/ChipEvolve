@@ -12,10 +12,12 @@ import os
 import re
 import shutil
 import sys
+import threading
 import time
 import uuid
 from functools import lru_cache
 from http import HTTPStatus
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -59,9 +61,9 @@ from openroad_platform_scheduler import (  # noqa: E402
     WorkflowRuntime, OptimizationCampaignBridge,
 )
 try:  # Supports both `python apps/api/app.py` and package imports in tests.
-    from .services import DesignService, PlatformReadModel  # type: ignore[attr-defined]
+    from .services import AuthSession, AuthStore, DesignService, PlatformReadModel  # type: ignore[attr-defined]
 except ImportError:
-    from services import DesignService, PlatformReadModel  # type: ignore[no-redef]
+    from services import AuthSession, AuthStore, DesignService, PlatformReadModel  # type: ignore[no-redef]
 
 
 MAX_BODY_BYTES = 2 * 1024 * 1024
@@ -103,6 +105,7 @@ class ApiState:
         campaign_db_path: Path | None = None,
         spec_db_path: Path | None = None,
         optimization_db_path: Path | None = None,
+        auth_db_path: Path | None = None,
         byok_transport_secure: bool | None = None,
         load_taiwei_plugin: bool = True,
     ):
@@ -133,6 +136,7 @@ class ApiState:
         self.learning_collector = LearningCollector(self.runtime_store,
                                                     self.tenant_learning_store)
         self.provider_profiles = ProviderProfileStore(state_root / "provider-profiles.db")
+        self.auth = AuthStore(auth_db_path or state_root / "web-auth.db")
         self.secret_broker = InMemorySecretBroker(default_ttl_seconds=8 * 3600)
         self.recommendation_store = RecommendationStore(state_root / "recommendations.db")
         self._spec_provider_bindings: dict[str, dict[str, str]] = {}
@@ -253,6 +257,30 @@ class ApiState:
         return payload
 
     @staticmethod
+    def _task_owned(task: Any, owner_id: str | None,
+                    *, include_legacy: bool = False) -> bool:
+        if owner_id is None:
+            return True
+        labels = task.labels if hasattr(task, "labels") else task.get("labels", {})
+        recorded = str((labels or {}).get("owner_id") or "")
+        return recorded == owner_id or (include_legacy and not recorded)
+
+    def _owned_design(self, design_id: str, owner_id: str | None,
+                      *, include_legacy: bool = False,
+                      include_source: bool = False) -> dict[str, Any]:
+        return self.designs.get(
+            design_id, include_source=include_source, owner_id=owner_id,
+            include_legacy=include_legacy,
+        )
+
+    def _authorize_runtime(self, run_id: str, owner_id: str | None,
+                           *, include_legacy: bool = False):
+        run = self.runtime_store.get_run(run_id)
+        if not self._task_owned(run.task_spec, owner_id, include_legacy=include_legacy):
+            raise KeyError(f"Unknown run: {run_id}")
+        return run
+
+    @staticmethod
     def projects() -> dict[str, Any]:
         return {
             "projects": [
@@ -298,28 +326,33 @@ class ApiState:
             },
         }
 
-    def submit_edacraft_smoke(self, slug: str) -> dict[str, Any]:
+    def submit_edacraft_smoke(self, slug: str, *, owner_id: str | None = None) -> dict[str, Any]:
         component = edacraft_component(slug)
         if slug == "implcraft":
             raise ValueError("ImplCraft requires a registered RTL design; use the preserved Craft plan API")
         task = build_edacraft_task(slug)
+        if owner_id:
+            task = dataclasses.replace(task, labels={**task.labels, "owner_id": owner_id})
         run = self.runtime.submit(task, capability=component.capability)
         return {
-            "run": self.get_runtime_run(run.run_id),
+            "run": self.get_runtime_run(run.run_id, owner_id=owner_id),
             "component": component.to_dict(),
             "execution_started": False,
             "notice": "Submitted to Workflow Runtime; a worker owns execution.",
         }
 
-    def submit_taiwei_design_run(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def submit_taiwei_design_run(self, payload: dict[str, Any], *, owner_id: str | None = None,
+                                 include_legacy: bool = False) -> dict[str, Any]:
         if not self.taiwei_readiness["ready"]:
             raise ValueError(self.taiwei_readiness["reason"])
         design_id = str(payload.get("design_id") or "").strip()
-        design = self.designs.get(design_id)
+        design = self._owned_design(design_id, owner_id, include_legacy=include_legacy)
         if design.get("module") != "gcd":
             raise ValueError("The pinned TaiWei v1 toolchain accepts only the gcd design")
         baseline_run_id = str(payload.get("baseline_run_id") or "").strip()
-        baseline = self.runtime_store.get_run(baseline_run_id)
+        baseline = self._authorize_runtime(
+            baseline_run_id, owner_id, include_legacy=include_legacy
+        )
         if (baseline.task_spec.design_id != design_id
                 or baseline.task_spec.plugin_id != "orfs"
                 or baseline.status.value != "succeeded"):
@@ -333,10 +366,12 @@ class ApiState:
             inputs={**task.inputs, "registered_design_id": design_id,
                     "baseline_run_id": baseline_run_id},
             labels={**task.labels, "source": "web-linked-extension",
-                    "baseline_run_id": baseline_run_id},
+                    "baseline_run_id": baseline_run_id,
+                    **({"owner_id": owner_id} if owner_id else {})},
         )
         run = self.runtime.submit(task, capability="eda.3d.pin3d")
-        return self.get_runtime_run(run.run_id)
+        return self.get_runtime_run(run.run_id, owner_id=owner_id,
+                                    include_legacy=include_legacy)
 
     def rtlscout_status(self) -> dict[str, Any]:
         benchmark_root = ROOT / ".external-src" / "rtlscout" / "benchmarks"
@@ -363,7 +398,7 @@ class ApiState:
             },
         }
 
-    def submit_rtlscout(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def submit_rtlscout(self, payload: dict[str, Any], *, owner_id: str | None = None) -> dict[str, Any]:
         if not self.rtlscout_readiness["ready"]:
             raise ValueError(str(self.rtlscout_readiness["reason"]))
         mode = str(payload.get("mode") or "offline_demo")
@@ -386,21 +421,30 @@ class ApiState:
             max_steps=max(1, min(int(payload.get("max_steps", 3)), 8)),
             cost_metric=cost_metric,
             timeout_seconds=max(60, min(int(payload.get("timeout_seconds", 1800)), 3600)),
-            labels={"source": "web", "mode": "offline-verified-demo"},
+            labels={"source": "web", "mode": "offline-verified-demo",
+                    **({"owner_id": owner_id} if owner_id else {})},
         )
         run = self.runtime.submit(task, capability="agent.rtl.optimize")
         return {
-            "run": self.get_runtime_run(run.run_id),
+            "run": self.get_runtime_run(run.run_id, owner_id=owner_id),
             "execution_started": False,
             "notice": "Queued in Workflow Runtime; a separate worker owns execution.",
         }
 
-    def list_runs(self, limit: int = 50) -> list[dict[str, Any]]:
+    def list_runs(self, limit: int = 50, *, owner_id: str | None = None,
+                  include_legacy: bool = False) -> list[dict[str, Any]]:
         limit = max(1, min(limit, 200))
-        return [self._serialize_job(job) for job in self.store.list(limit=limit)]
+        return [self._serialize_job(job) for job in self.store.list(limit=limit)
+                if owner_id is None
+                or job.request.labels.get("owner_id") == owner_id
+                or (include_legacy and not job.request.labels.get("owner_id"))]
 
-    def get_run(self, run_id: str) -> dict[str, Any]:
+    def get_run(self, run_id: str, *, owner_id: str | None = None,
+                include_legacy: bool = False) -> dict[str, Any]:
         job = self.store.get(run_id)
+        recorded = job.request.labels.get("owner_id")
+        if owner_id is not None and recorded != owner_id and not (include_legacy and not recorded):
+            raise KeyError(f"Unknown run: {run_id}")
         payload = self._serialize_job(job)
         payload["events"] = self.store.events(run_id)
         result = payload.get("result") or {}
@@ -442,7 +486,8 @@ class ApiState:
             place_density=_number(payload, "place_density", 0.45),
             stage_timeout_seconds=int(_number(payload, "stage_timeout_seconds", 3600)),
             run_id=run_id,
-            labels={"source": "web"},
+            labels={"source": "web", **({"owner_id": str(payload["owner_id"])}
+                                            if payload.get("owner_id") else {})},
         )
         request.validate(require_rtl=False)
         rtl_path.parent.mkdir(parents=True, exist_ok=False)
@@ -452,16 +497,23 @@ class ApiState:
     def cancel_run(self, run_id: str) -> dict[str, Any]:
         return self._serialize_job(self.store.request_cancel(run_id))
 
-    def list_runtime_runs(self, limit: int = 50) -> dict[str, Any]:
+    def list_runtime_runs(self, limit: int = 50, *, owner_id: str | None = None,
+                          include_legacy: bool = False,
+                          design_id: str | None = None) -> dict[str, Any]:
         return {"runs": [{"run_id": run.run_id, "task_id": run.task_id,
                            "status": run.status.value, "created_at": run.created_at,
                            "started_at": run.started_at, "ended_at": run.ended_at,
                            "plugin_id": run.task_spec.plugin_id,
                            "project_id": run.task_spec.project_id,
                            "design_id": run.task_spec.design_id}
-                          for run in self.runtime_store.list_runs(limit=limit)]}
+                          for run in self.runtime_store.list_runs(limit=limit)
+                          if self._task_owned(run.task_spec, owner_id,
+                                              include_legacy=include_legacy)
+                          and (not design_id or run.task_spec.design_id == design_id)]}
 
-    def get_runtime_run(self, run_id: str) -> dict[str, Any]:
+    def get_runtime_run(self, run_id: str, *, owner_id: str | None = None,
+                        include_legacy: bool = False) -> dict[str, Any]:
+        self._authorize_runtime(run_id, owner_id, include_legacy=include_legacy)
         payload = self.runtime_store.describe_run(run_id)
         for stage in payload.get("stages", []):
             for attempt in stage.get("attempts", []):
@@ -476,7 +528,39 @@ class ApiState:
         task = payload.get("run", {}).get("task_spec", {})
         if task.get("plugin_id") == "taiwei-pin-3d":
             payload["three_d"] = self._three_d_view(payload)
+        payload["wait"] = self._wait_summary(run_id)
         return payload
+
+    def _wait_summary(self, run_id: str) -> dict[str, Any]:
+        target = self.runtime_store.get_run(run_id)
+        waiting = [run for run in reversed(self.runtime_store.list_runs(limit=500))
+                   if run.status.value in {"queued", "preparing", "retry_wait"}]
+        active = [run for run in self.runtime_store.list_runs(limit=500)
+                  if run.run_id != run_id
+                  and run.status.value in {"running", "cancel_requested"}]
+        predecessors = list(active)
+        if target.status.value in {"queued", "preparing", "retry_wait"}:
+            for run in waiting:
+                if run.run_id == run_id:
+                    break
+                predecessors.append(run)
+        estimates = {
+            "orfs": 120, "rtlscout": 45, "taiwei-pin-3d": 21_600,
+            "edacraft-tcadcraft": 120, "edacraft-momcraft": 120,
+            "edacraft-cktcraft": 120, "edacraft-edacode": 60,
+        }
+        estimated = 0
+        if target.status.value in {"queued", "preparing", "retry_wait"}:
+            estimated = sum(estimates.get(str(run.task_spec.plugin_id), 120)
+                            for run in predecessors)
+        people = {str(run.task_spec.labels.get("owner_id") or f"legacy-{run.run_id}")
+                  for run in predecessors}
+        return {
+            "people_ahead": len(people),
+            "tasks_ahead": len(predecessors),
+            "estimated_wait_seconds": estimated,
+            "status": target.status.value,
+        }
 
     @staticmethod
     def _runtime_analysis_report(payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -510,7 +594,10 @@ class ApiState:
                     }
         return None
 
-    def runtime_artifact(self, run_id: str, artifact_id: str) -> tuple[Path, str]:
+    def runtime_artifact(self, run_id: str, artifact_id: str, *,
+                         owner_id: str | None = None,
+                         include_legacy: bool = False) -> tuple[Path, str]:
+        self._authorize_runtime(run_id, owner_id, include_legacy=include_legacy)
         payload = self.runtime_store.describe_run(run_id)
         for stage in payload.get("stages", []):
             for attempt in stage.get("attempts", []):
@@ -582,15 +669,32 @@ class ApiState:
         )
         return result
 
-    def cancel_runtime_run(self, run_id: str) -> dict[str, Any]:
+    def cancel_runtime_run(self, run_id: str, *, owner_id: str | None = None,
+                           include_legacy: bool = False) -> dict[str, Any]:
+        self._authorize_runtime(run_id, owner_id, include_legacy=include_legacy)
         self.runtime_store.request_cancel(run_id)
-        return self.runtime_store.describe_run(run_id)
+        return self.get_runtime_run(run_id, owner_id=owner_id,
+                                    include_legacy=include_legacy)
 
-    def list_campaigns(self) -> dict[str, Any]:
-        return {"campaigns": [self.get_campaign(item["campaign_id"])
-                              for item in self.campaign_store.list()]}
+    def list_campaigns(self, *, owner_id: str | None = None,
+                       include_legacy: bool = False) -> dict[str, Any]:
+        campaigns = []
+        for item in self.campaign_store.list():
+            try:
+                campaigns.append(self.get_campaign(
+                    item["campaign_id"], owner_id=owner_id,
+                    include_legacy=include_legacy,
+                ))
+            except KeyError:
+                continue
+        return {"campaigns": campaigns}
 
-    def get_campaign(self, campaign_id: str) -> dict[str, Any]:
+    def get_campaign(self, campaign_id: str, *, owner_id: str | None = None,
+                     include_legacy: bool = False) -> dict[str, Any]:
+        if owner_id and not self.auth.owns_resource(
+            "campaign", campaign_id, owner_id, include_legacy=include_legacy
+        ):
+            raise KeyError(f"Unknown campaign: {campaign_id}")
         try:
             return self.stage_campaigns.describe(campaign_id)
         except KeyError:
@@ -604,11 +708,22 @@ class ApiState:
                             "status": run.status.value if run else "unbound"})
         return {**campaign, "members": members}
 
-    def list_optimization_studies(self) -> dict[str, Any]:
-        return {"studies": self.optimization_store.list()}
+    def list_optimization_studies(self, *, owner_id: str | None = None,
+                                  include_legacy: bool = False) -> dict[str, Any]:
+        allowed = {item["id"] for item in self.designs.list(
+            limit=100, owner_id=owner_id, include_legacy=include_legacy
+        )} if owner_id else None
+        return {"studies": [item for item in self.optimization_store.list()
+                             if allowed is None or item.get("design_id") in allowed]}
 
-    def get_optimization_study(self, study_id: str) -> dict[str, Any]:
-        return self.optimization_store.describe(study_id)
+    def get_optimization_study(self, study_id: str, *, owner_id: str | None = None,
+                               include_legacy: bool = False) -> dict[str, Any]:
+        detail = self.optimization_store.describe(study_id)
+        if owner_id:
+            self._owned_design(
+                detail["study"]["design_id"], owner_id, include_legacy=include_legacy
+            )
+        return detail
 
     def public_knowledge(self, query: dict[str, list[str]] | None = None) -> dict[str, Any]:
         query = query or {}
@@ -644,7 +759,10 @@ class ApiState:
         if not self._byok_transport_available():
             raise ValueError("BYOK key input is disabled until the external service uses HTTPS")
         provider_host = urlparse(profile.base_url).hostname or ""
-        allowed_hosts = {"api.openai.com", "localhost", "127.0.0.1", "::1"}
+        allowed_hosts = {
+            "api.openai.com", "api.anthropic.com", "api.deepinfra.com", "openrouter.ai",
+            "localhost", "127.0.0.1", "::1",
+        }
         allowed_hosts.update(item.strip().lower() for item in os.environ.get(
             "OPENROAD_PLATFORM_PROVIDER_ALLOW_HOSTS", "").split(",") if item.strip())
         if provider_host.lower() not in allowed_hosts:
@@ -652,6 +770,7 @@ class ApiState:
         profile_id = self.provider_profiles.save(profile)
         handle = self.secret_broker.put(api_key, owner_id=owner_id, session_id=session_id)
         return {"profile_id": profile_id, "owner_id": owner_id, "session_id": session_id,
+                "model": profile.model, "base_url": profile.base_url,
                 "secret": self.secret_broker.describe(handle, owner_id=owner_id,
                                                         session_id=session_id),
                 "persistence": "profile-only; API key is memory-only",
@@ -670,7 +789,10 @@ class ApiState:
         return {"revoked": revoked}
 
     def collect_runtime_learning(self, run_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        run = self.runtime_store.get_run(run_id)
+        owner_id = str(payload.get("owner_id") or "local-user")
+        run = self._authorize_runtime(
+            run_id, owner_id, include_legacy=payload.get("include_legacy") is True
+        )
         rtl = run.task_spec.inputs.get("rtl")
         rtl_sha = rtl.get("sha256") if isinstance(rtl, dict) else run.task_spec.inputs.get("rtl_sha256")
         if not isinstance(rtl_sha, str):
@@ -684,7 +806,7 @@ class ApiState:
             metric_parser_version=str(payload.get("metric_parser_version") or ""),
         )
         receipt = self.learning_collector.collect(
-            run_id, context, tenant_id=str(payload.get("tenant_id") or ""),
+            run_id, context, tenant_id=owner_id,
             project_id=str(payload.get("project_id") or run.task_spec.project_id),
         )
         return dataclasses.asdict(receipt)
@@ -731,8 +853,13 @@ class ApiState:
     def decide_recommendation(self, recommendation_id: str,
                               payload: dict[str, Any]) -> dict[str, Any]:
         owner_id = str(payload.get("owner_id") or "local-user")
+        include_legacy = payload.get("include_legacy") is True
         recommendation = self.recommendation_store.get(owner_id, recommendation_id)
         study = self.optimization_store.get(recommendation.study_id)
+        registered_owner = self.auth.has_user(owner_id)
+        design = (self._owned_design(
+            study.design_id, owner_id, include_legacy=include_legacy,
+        ) if registered_owner else self.designs.get(study.design_id))
         bounds = {item.name: (item.lower, item.upper) for item in study.parameter_space}
         decision = self.recommendation_store.decide(
             owner_id, recommendation_id, action=str(payload.get("action") or ""),
@@ -763,9 +890,11 @@ class ApiState:
                         "decision_id": decision.decision_id,
                         "human_confirmed": True, "predictions_are_canonical_metrics": False},
         )
-        design = self.designs.get(study.design_id)
         base = build_orfs_task(
-            self.designs.rtl_path(study.design_id), project_id="openroad-platform",
+            (self.designs.rtl_path(
+                study.design_id, owner_id=owner_id, include_legacy=include_legacy,
+            ) if registered_owner else self.designs.rtl_path(study.design_id)),
+            project_id="openroad-platform",
             design_id=study.design_id, top=design["module"],
             target_stage=str(payload.get("target_stage") or "finish"),
             clock_period_ns=_number(payload, "clock_period_ns", 10.0),
@@ -776,7 +905,7 @@ class ApiState:
         base = dataclasses.replace(
             base, task_id=f"human-task-{decision.decision_id.removeprefix('decision-')}",
             labels={**base.labels, "human_decision_id": decision.decision_id,
-                    "recommendation_id": recommendation_id},
+                    "recommendation_id": recommendation_id, "owner_id": owner_id},
         )
         campaign_id = self.optimization_bridge.create(
             str(payload.get("campaign_name") or f"approved-{study.study_id}"), base, plan,
@@ -785,6 +914,8 @@ class ApiState:
             direction=(study.objectives[0].direction if study.objectives else "min"),
             top_k=1, max_repairs=int(payload.get("max_repairs", 1)),
         )
+        if registered_owner:
+            self.auth.bind_resource("campaign", campaign_id, owner_id)
         result.update({"campaign_created": True, "campaign_id": campaign_id,
                        "campaign": self.stage_campaigns.describe(campaign_id),
                        "experiment_plan": plan.to_dict(),
@@ -831,7 +962,18 @@ class ApiState:
 
     def collect_campaign_learning(self, campaign_id: str,
                                   payload: dict[str, Any]) -> dict[str, Any]:
+        owner_id = str(payload.get("owner_id") or payload.get("tenant_id") or "local-user")
+        include_legacy = payload.get("include_legacy") is True
+        registered_owner = self.auth.has_user(owner_id)
+        if registered_owner:
+            self.get_campaign(
+                campaign_id, owner_id=owner_id, include_legacy=include_legacy,
+            )
         study_id = str(payload.get("study_id") or "")
+        if registered_owner:
+            self.get_optimization_study(
+                study_id, owner_id=owner_id, include_legacy=include_legacy,
+            )
         study = self.optimization_store.get(study_id)
         context = LearningContext(
             design_id=study.design_id,
@@ -848,7 +990,7 @@ class ApiState:
         for member in self.campaign_store.members(campaign_id):
             if member.run_id:
                 receipts.append(dataclasses.asdict(self.learning_collector.collect(
-                    member.run_id, context, tenant_id=str(payload.get("tenant_id") or "local-user"),
+                    member.run_id, context, tenant_id=owner_id,
                     project_id=str(payload.get("project_id") or "openroad-platform"),
                 )))
         observation_ids = self.optimization_bridge.ingest_terminal(
@@ -864,10 +1006,13 @@ class ApiState:
         return {"recommendations": self.recommendation_store.list(owner_id)}
 
     def craft_plan(self, payload: dict[str, Any]) -> dict[str, Any]:
+        owner_id = _optional_string(payload.get("owner_id"))
+        include_legacy = payload.get("include_legacy") is True
         design_id = str(payload.get("design_id") or "").strip()
-        design = self.designs.get(design_id)
+        design = self._owned_design(design_id, owner_id, include_legacy=include_legacy)
         plan = build_craft_flow_plan(
-            self.designs.rtl_path(design_id), project_id=str(payload.get("project_id") or "openroad-platform"),
+            self.designs.rtl_path(design_id, owner_id=owner_id,
+                                  include_legacy=include_legacy), project_id=str(payload.get("project_id") or "openroad-platform"),
             design_id=design_id, top=str(payload.get("top") or design["module"]),
             clock=str(payload.get("clock") or "clk"),
             clock_period_ns=_number(payload, "clock_period_ns", 10.0),
@@ -881,6 +1026,8 @@ class ApiState:
         backend = str(payload.get("backend") or "openroad-orfs")
         task = craft_plan_to_task(plan, backend,
                                   commercial_tool_chain=str(payload.get("commercial_tool_chain") or "synopsys"))
+        if owner_id:
+            task = dataclasses.replace(task, labels={**task.labels, "owner_id": owner_id})
         result = {"flow_plan": plan.to_dict(), "capability_matrix": craft_capability_matrix(plan),
                   "backend": backend, "task_spec": task.to_dict(), "execution_started": False}
         if payload.get("execute") is True:
@@ -890,12 +1037,15 @@ class ApiState:
             if run is None:
                 run = self.runtime.submit(task, capability="eda.rtl_to_gds")
             result["execution_started"] = True
-            result["runtime"] = self.get_runtime_run(run.run_id)
+            result["runtime"] = self.get_runtime_run(run.run_id, owner_id=owner_id,
+                                                     include_legacy=include_legacy)
         return result
 
     def create_stage_campaign(self, payload: dict[str, Any]) -> dict[str, Any]:
+        owner_id = _optional_string(payload.get("owner_id"))
+        include_legacy = payload.get("include_legacy") is True
         design_id = str(payload.get("design_id") or "").strip()
-        design = self.designs.get(design_id)
+        design = self._owned_design(design_id, owner_id, include_legacy=include_legacy)
         objective = str(payload.get("objective") or "balanced")
         flow_mode = str(payload.get("flow_mode") or "campaign")
         if objective not in {"balanced", "timing", "area", "power"}:
@@ -903,7 +1053,8 @@ class ApiState:
         if flow_mode not in {"campaign", "agent"}:
             raise ValueError("stage-aware campaign flow_mode must be campaign or agent")
         base = build_orfs_task(
-            self.designs.rtl_path(design_id), project_id="openroad-platform",
+            self.designs.rtl_path(design_id, owner_id=owner_id,
+                                  include_legacy=include_legacy), project_id="openroad-platform",
             design_id=design_id, top=design["module"],
             target_stage=str(payload.get("target_stage") or "finish"),
             clock_period_ns=_number(payload, "clock_period_ns", 10.0),
@@ -911,7 +1062,8 @@ class ApiState:
             place_density=_number(payload, "place_density", 0.45),
             stage_timeout_seconds=int(_number(payload, "stage_timeout_seconds", 3600)),
             labels={"source": "web-campaign", "objective": objective,
-                    "flow_mode": flow_mode},
+                    "flow_mode": flow_mode,
+                    **({"owner_id": owner_id} if owner_id else {})},
         )
         grid = payload.get("parameter_grid") or {}
         if not isinstance(grid, dict):
@@ -929,11 +1081,15 @@ class ApiState:
             max_repairs=int(payload.get("max_repairs", 2)),
             max_total_runs=int(payload.get("max_total_runs", 64)),
         )
+        if owner_id:
+            self.auth.bind_resource("campaign", campaign_id, owner_id)
         return self.stage_campaigns.describe(campaign_id)
 
     def create_spec_session(self, payload: dict[str, Any]) -> dict[str, Any]:
+        owner_id = _optional_string(payload.get("owner_id"))
+        include_legacy = payload.get("include_legacy") is True
         design_id = _optional_string(payload.get("design_id"))
-        design = self.designs.get(design_id) if design_id else None
+        design = self._owned_design(design_id, owner_id, include_legacy=include_legacy) if design_id else None
         provider = self._spec_provider_from_payload(payload)
         budgets = payload.get("budgets")
         if budgets is not None and not isinstance(budgets, dict):
@@ -942,6 +1098,8 @@ class ApiState:
             message=str(payload.get("message") or ""), design_id=design_id,
             design_context=design, budgets=budgets,
         )
+        if owner_id:
+            self.auth.bind_resource("spec_session", result["session_id"], owner_id)
         if provider.provider_name == "openai-compatible-byok":
             self._spec_provider_bindings[result["session_id"]] = {
                 key: str(payload[key]) for key in
@@ -949,26 +1107,39 @@ class ApiState:
             }
         return result
 
-    def get_spec_session(self, session_id: str) -> dict[str, Any]:
+    def get_spec_session(self, session_id: str, *, owner_id: str | None = None,
+                         include_legacy: bool = False) -> dict[str, Any]:
+        if owner_id and not self.auth.owns_resource(
+            "spec_session", session_id, owner_id, include_legacy=include_legacy
+        ):
+            raise KeyError(f"Unknown spec session: {session_id}")
         session = self.spec_store.get(session_id)
         if session.get("run_id"):
-            session["runtime"] = self.runtime_store.describe_run(session["run_id"])
+            session["runtime"] = self.get_runtime_run(
+                session["run_id"], owner_id=owner_id, include_legacy=include_legacy
+            )
         return session
 
     def add_spec_turn(self, session_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        owner_id = _optional_string(payload.get("owner_id"))
+        include_legacy = payload.get("include_legacy") is True
+        self.get_spec_session(session_id, owner_id=owner_id, include_legacy=include_legacy)
         session = self.spec_store.get(session_id)
         design_id = session.get("design_id")
-        design = self.designs.get(design_id) if design_id else None
+        design = self._owned_design(design_id, owner_id, include_legacy=include_legacy) if design_id else None
         provider = self._spec_provider_for_session(session_id, session)
         return SpecConversationManager(self.spec_store, provider).turn(
             session_id, str(payload.get("message") or ""), design_context=design,
         )
 
     def execute_spec_session(self, session_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        owner_id = _optional_string(payload.get("owner_id"))
+        include_legacy = payload.get("include_legacy") is True
+        self.get_spec_session(session_id, owner_id=owner_id, include_legacy=include_legacy)
         session = self.spec_store.get(session_id)
         design_id = session.get("design_id")
         if design_id:
-            design = self.designs.get(design_id)
+            design = self._owned_design(design_id, owner_id, include_legacy=include_legacy)
         else:
             rtl = session["state"].get("rtl_source")
             if not isinstance(rtl, str) or not rtl.strip():
@@ -976,18 +1147,25 @@ class ApiState:
             design = self.designs.import_rtl(
                 filename=f"{session['state'].get('top') or 'design'}.v", source=rtl,
                 description=session["state"].get("functionality"),
+                owner_id=owner_id,
             )
             design_id = design["id"]
         provider = self._spec_provider_for_session(session_id, session)
         task = SpecConversationManager(self.spec_store, provider).compile(
-            session_id, rtl_path=self.designs.rtl_path(design_id), design_id=design_id,
+            session_id, rtl_path=self.designs.rtl_path(
+                design_id, owner_id=owner_id, include_legacy=include_legacy
+            ), design_id=design_id,
             confirmed=payload.get("confirmed") is True,
         )
         run = self.runtime_store.find_run_by_task_id(task.task_id)
+        task = dataclasses.replace(
+            task, labels={**task.labels, **({"owner_id": owner_id} if owner_id else {})}
+        )
         if run is None:
             run = self.runtime.submit(task, capability="eda.rtl_to_gds")
         self.spec_store.bind_run(session_id, run.run_id, design_id=design_id)
-        return self.get_spec_session(session_id)
+        return self.get_spec_session(session_id, owner_id=owner_id,
+                                     include_legacy=include_legacy)
 
     def _spec_provider_from_payload(self, payload: dict[str, Any]):
         name = str(payload.get("provider") or "deterministic")
@@ -1024,17 +1202,23 @@ class ApiState:
             return CodexCliSpecProvider(model=selected)
         raise ValueError("provider must be deterministic, codex-cli or openai-compatible-byok")
 
-    def cancel_campaign(self, campaign_id: str) -> dict[str, Any]:
+    def cancel_campaign(self, campaign_id: str, *, owner_id: str | None = None,
+                        include_legacy: bool = False) -> dict[str, Any]:
+        self.get_campaign(campaign_id, owner_id=owner_id, include_legacy=include_legacy)
         for member in self.campaign_store.members(campaign_id):
             if member.run_id:
                 self.runtime_store.request_cancel(member.run_id)
-        return self.get_campaign(campaign_id)
+        return self.get_campaign(campaign_id, owner_id=owner_id,
+                                 include_legacy=include_legacy)
 
     def submit_design_run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        owner_id = _optional_string(payload.get("owner_id"))
+        include_legacy = payload.get("include_legacy") is True
         design_id = str(payload.get("design_id") or "").strip()
-        design = self.designs.get(design_id)
+        design = self._owned_design(design_id, owner_id, include_legacy=include_legacy)
         request = RunRequest(
-            rtl_path=str(self.designs.rtl_path(design_id)),
+            rtl_path=str(self.designs.rtl_path(design_id, owner_id=owner_id,
+                                               include_legacy=include_legacy)),
             top=_optional_string(payload.get("top")) or design["module"],
             clock=_optional_string(payload.get("clock")),
             clock_period_ns=_number(payload, "clock_period_ns", 10.0),
@@ -1043,14 +1227,17 @@ class ApiState:
             core_utilization_pct=_number(payload, "core_utilization_pct", 10.0),
             place_density=_number(payload, "place_density", 0.45),
             stage_timeout_seconds=int(_number(payload, "stage_timeout_seconds", 3600)),
-            labels={"source": "design", "design_id": design_id},
+            labels={"source": "design", "design_id": design_id,
+                    **({"owner_id": owner_id} if owner_id else {})},
         )
         request.validate()
         return self._serialize_job(self.store.submit(request))
 
     def submit_runtime_design_run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        owner_id = _optional_string(payload.get("owner_id"))
+        include_legacy = payload.get("include_legacy") is True
         design_id = str(payload.get("design_id") or "").strip()
-        design = self.designs.get(design_id)
+        design = self._owned_design(design_id, owner_id, include_legacy=include_legacy)
         objective = str(payload.get("objective") or "balanced")
         flow_mode = str(payload.get("flow_mode") or "baseline")
         if objective not in {"balanced", "timing", "area", "power"}:
@@ -1058,7 +1245,8 @@ class ApiState:
         if flow_mode != "baseline":
             raise ValueError("single Runtime submission requires baseline flow_mode")
         task = build_orfs_task(
-            self.designs.rtl_path(design_id), project_id="openroad-platform",
+            self.designs.rtl_path(design_id, owner_id=owner_id,
+                                  include_legacy=include_legacy), project_id="openroad-platform",
             design_id=design_id,
             top=_optional_string(payload.get("top")) or design["module"],
             clock=_optional_string(payload.get("clock")),
@@ -1070,20 +1258,25 @@ class ApiState:
             labels={
                 "source": "web-runtime", "design_id": design_id,
                 "objective": objective, "flow_mode": flow_mode,
+                **({"owner_id": owner_id} if owner_id else {}),
             },
         )
         run = self.runtime.submit(task, capability="eda.rtl_to_gds")
-        return self.get_runtime_run(run.run_id)
+        return self.get_runtime_run(run.run_id, owner_id=owner_id,
+                                    include_legacy=include_legacy)
 
     def compile_task_intent(self, payload: dict[str, Any]) -> dict[str, Any]:
+        owner_id = _optional_string(payload.get("owner_id"))
+        include_legacy = payload.get("include_legacy") is True
         design_id = str(payload.get("design_id") or "").strip()
         intent = str(payload.get("intent") or "").strip()
         if not design_id:
             raise ValueError("design_id is required")
-        design = self.designs.get(design_id)
+        design = self._owned_design(design_id, owner_id, include_legacy=include_legacy)
         task = NaturalLanguageTaskCompiler().compile(
             intent, project_id="openroad-platform", design_id=design_id,
-            rtl_path=self.designs.rtl_path(design_id), top=design["module"],
+            rtl_path=self.designs.rtl_path(design_id, owner_id=owner_id,
+                                           include_legacy=include_legacy), top=design["module"],
         )
         return {"task_spec": task.to_dict(), "execution_started": False,
                 "notice": "Validated preview only; Runtime submission is a separate action."}
@@ -1219,6 +1412,9 @@ def _number(payload: dict[str, Any], key: str, default: float) -> float:
 
 
 def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
+    auth_failures: dict[str, list[float]] = {}
+    auth_failure_lock = threading.Lock()
+
     class RequestHandler(BaseHTTPRequestHandler):
         server_version = "OpenROADPlatform/0.1"
 
@@ -1253,15 +1449,41 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
         def do_GET(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
             path = parsed.path
+            session = self._auth_session()
             try:
-                if path == "/api/health":
-                    self._json(state.health())
+                if path == "/api/auth/session":
+                    self._json(session.public() if session else {"authenticated": False})
+                elif path == "/api/health":
+                    health = state.health()
+                    self._json(health if session else {
+                        "ok": health["ok"], "service": health["service"],
+                        "execution_ready": health["execution_ready"],
+                        "runtime_worker_ready": health["runtime_worker_ready"],
+                        "runtime_worker_status": health["runtime_worker_status"],
+                        "taiwei_3d_ready": health["taiwei_3d_ready"],
+                    })
                 elif path == "/api/platform":
-                    self._json(state.platform.snapshot())
+                    self._json(state.platform.snapshot(
+                        owner_id=session.user_id if session else None,
+                        include_legacy=session.legacy_access if session else False,
+                        public=session is None,
+                    ))
+                elif path in {"/", "/index.html"}:
+                    self._file(WEB_ROOT / "index.html", "text/html; charset=utf-8")
+                elif path == "/assets/app.css":
+                    self._file(WEB_ROOT / "assets" / "app.css", "text/css; charset=utf-8")
+                elif path == "/assets/app.js":
+                    self._file(WEB_ROOT / "assets" / "app.js", "text/javascript; charset=utf-8")
+                elif session is None:
+                    self._error(HTTPStatus.UNAUTHORIZED, "Sign in to access this workspace")
                 elif path == "/api/platform/results":
-                    self._json(state.platform.results())
+                    self._json(state.platform.results(
+                        owner_id=session.user_id, include_legacy=session.legacy_access
+                    ))
                 elif path == "/api/platform/evolution":
-                    self._json(state.platform.evolution())
+                    self._json(state.platform.evolution(
+                        owner_id=session.user_id, include_legacy=session.legacy_access
+                    ))
                 elif path == "/api/extensions/edacraft":
                     self._json(edacraft_catalog())
                 elif path == "/api/extensions/rtlscout":
@@ -1269,64 +1491,85 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                 elif path == "/api/projects":
                     self._json(state.projects())
                 elif path == "/api/designs":
-                    self._json({"designs": state.designs.list()})
+                    self._json({"designs": state.designs.list(
+                        owner_id=session.user_id, include_legacy=session.legacy_access
+                    )})
                 elif path == "/api/designs/examples":
                     self._json({"examples": state.designs.examples()})
                 elif re.fullmatch(r"/api/designs/[^/]+/schematic\.svg", path):
                     design_id = unquote(path.split("/")[3])
-                    self._text(state.designs.schematic(design_id), "image/svg+xml; charset=utf-8")
+                    self._text(state.designs.schematic(
+                        design_id, owner_id=session.user_id,
+                        include_legacy=session.legacy_access,
+                    ), "image/svg+xml; charset=utf-8")
                 elif re.fullmatch(r"/api/designs/[^/]+/source", path):
                     design_id = unquote(path.split("/")[3])
                     kind = parse_qs(parsed.query).get("kind", ["rtl"])[0]
                     if kind not in {"rtl", "netlist"}:
                         raise ValueError("kind must be rtl or netlist")
-                    self._text(state.designs.source(design_id, kind), "text/plain; charset=utf-8")
+                    self._text(state.designs.source(
+                        design_id, kind, owner_id=session.user_id,
+                        include_legacy=session.legacy_access,
+                    ), "text/plain; charset=utf-8")
                 elif path.startswith("/api/designs/"):
                     self._json(state.designs.get(
-                        unquote(path.removeprefix("/api/designs/")), include_source=True
+                        unquote(path.removeprefix("/api/designs/")), include_source=True,
+                        owner_id=session.user_id, include_legacy=session.legacy_access,
                     ))
                 elif path == "/api/runs":
-                    self._json({"runs": state.list_runs()})
+                    self._json({"runs": state.list_runs(
+                        owner_id=session.user_id, include_legacy=session.legacy_access
+                    )})
                 elif path == "/api/runtime/runs":
-                    self._json(state.list_runtime_runs())
+                    design_id = (parse_qs(parsed.query).get("design_id") or [None])[0]
+                    self._json(state.list_runtime_runs(
+                        owner_id=session.user_id, include_legacy=session.legacy_access,
+                        design_id=design_id,
+                    ))
                 elif re.fullmatch(r"/api/runtime/runs/[^/]+/artifacts/[^/]+", path):
                     parts = path.split("/")
                     artifact_path, content_type = state.runtime_artifact(
-                        unquote(parts[4]), unquote(parts[6]))
+                        unquote(parts[4]), unquote(parts[6]),
+                        owner_id=session.user_id, include_legacy=session.legacy_access)
                     self._file(artifact_path, content_type)
                 elif path.startswith("/api/runtime/runs/"):
                     self._json(state.get_runtime_run(
-                        unquote(path.removeprefix("/api/runtime/runs/"))))
+                        unquote(path.removeprefix("/api/runtime/runs/")),
+                        owner_id=session.user_id, include_legacy=session.legacy_access))
                 elif path == "/api/campaigns":
-                    self._json(state.list_campaigns())
+                    self._json(state.list_campaigns(
+                        owner_id=session.user_id, include_legacy=session.legacy_access
+                    ))
                 elif path == "/api/optimization/studies":
-                    self._json(state.list_optimization_studies())
+                    self._json(state.list_optimization_studies(
+                        owner_id=session.user_id, include_legacy=session.legacy_access
+                    ))
                 elif path == "/api/knowledge/public":
                     self._json(state.public_knowledge(parse_qs(parsed.query)))
                 elif path == "/api/providers":
-                    owner_id = (parse_qs(parsed.query).get("owner_id") or ["local-user"])[0]
-                    self._json(state.list_provider_profiles(owner_id))
+                    self._json(state.list_provider_profiles(session.user_id))
                 elif path == "/api/recommendations":
-                    owner_id = (parse_qs(parsed.query).get("owner_id") or ["local-user"])[0]
-                    self._json(state.list_recommendations(owner_id))
+                    self._json(state.list_recommendations(session.user_id))
                 elif path == "/api/learning/observations":
-                    self._json(state.list_learning_observations(parse_qs(parsed.query)))
+                    self._json(state.list_learning_observations({
+                        "tenant_id": [session.user_id], "project_id": ["openroad-platform"]
+                    }))
                 elif path.startswith("/api/optimization/studies/"):
                     self._json(state.get_optimization_study(
-                        unquote(path.removeprefix("/api/optimization/studies/"))))
+                        unquote(path.removeprefix("/api/optimization/studies/")),
+                        owner_id=session.user_id, include_legacy=session.legacy_access))
                 elif re.fullmatch(r"/api/spec/sessions/[^/]+", path):
-                    self._json(state.get_spec_session(unquote(path.split("/")[-1])))
+                    self._json(state.get_spec_session(
+                        unquote(path.split("/")[-1]), owner_id=session.user_id,
+                        include_legacy=session.legacy_access))
                 elif path.startswith("/api/campaigns/"):
                     self._json(state.get_campaign(
-                        unquote(path.removeprefix("/api/campaigns/"))))
+                        unquote(path.removeprefix("/api/campaigns/")),
+                        owner_id=session.user_id, include_legacy=session.legacy_access))
                 elif path.startswith("/api/runs/"):
-                    self._json(state.get_run(unquote(path.removeprefix("/api/runs/"))))
-                elif path in {"/", "/index.html"}:
-                    self._file(WEB_ROOT / "index.html", "text/html; charset=utf-8")
-                elif path == "/assets/app.css":
-                    self._file(WEB_ROOT / "assets" / "app.css", "text/css; charset=utf-8")
-                elif path == "/assets/app.js":
-                    self._file(WEB_ROOT / "assets" / "app.js", "text/javascript; charset=utf-8")
+                    self._json(state.get_run(
+                        unquote(path.removeprefix("/api/runs/")),
+                        owner_id=session.user_id, include_legacy=session.legacy_access))
                 else:
                     self._error(HTTPStatus.NOT_FOUND, "route not found")
             except KeyError as exc:
@@ -1339,83 +1582,139 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
         def do_POST(self) -> None:  # noqa: N802
             path = urlparse(self.path).path
             try:
+                if path in {"/api/auth/register", "/api/auth/login"}:
+                    if self._auth_rate_limited():
+                        self._error(HTTPStatus.TOO_MANY_REQUESTS,
+                                    "Too many sign-in attempts; wait five minutes")
+                        return
+                    payload = self._read_json()
+                    try:
+                        if path.endswith("register"):
+                            session, token = state.auth.register(
+                                str(payload.get("username") or ""),
+                                str(payload.get("password") or ""),
+                            )
+                        else:
+                            session, token = state.auth.login(
+                                str(payload.get("username") or ""),
+                                str(payload.get("password") or ""),
+                            )
+                    except ValueError:
+                        self._record_auth_failure()
+                        raise
+                    self._clear_auth_failures()
+                    self._json(session.public(), HTTPStatus.CREATED,
+                               headers={"Set-Cookie": self._session_cookie(token)})
+                    return
+                token = self._session_token()
+                session = state.auth.resolve(token)
+                if path == "/api/auth/logout":
+                    state.auth.logout(token)
+                    self._json({"authenticated": False}, headers={
+                        "Set-Cookie": self._session_cookie("", expire=True)
+                    })
+                    return
+                if session is None:
+                    self._error(HTTPStatus.UNAUTHORIZED, "Sign in to access this workspace")
+                    return
+
+                def scoped(payload: dict[str, Any]) -> dict[str, Any]:
+                    return {**payload, "owner_id": session.user_id,
+                            "tenant_id": session.user_id,
+                            "session_id": session.session_id,
+                            "include_legacy": session.legacy_access}
+
                 if path == "/api/runs":
-                    self._json(state.submit_run(self._read_json()), HTTPStatus.CREATED)
+                    self._json(state.submit_run(scoped(self._read_json())), HTTPStatus.CREATED)
                     return
                 if path == "/api/runs/from-design":
-                    self._json(state.submit_design_run(self._read_json()), HTTPStatus.CREATED)
+                    self._json(state.submit_design_run(scoped(self._read_json())), HTTPStatus.CREATED)
                     return
                 if path == "/api/runtime/runs/from-design":
-                    self._json(state.submit_runtime_design_run(self._read_json()),
+                    self._json(state.submit_runtime_design_run(scoped(self._read_json())),
                                HTTPStatus.CREATED)
                     return
                 if path == "/api/tasks/compile":
-                    self._json(state.compile_task_intent(self._read_json()))
+                    self._json(state.compile_task_intent(scoped(self._read_json())))
                     return
                 if path == "/api/spec/sessions":
-                    self._json(state.create_spec_session(self._read_json()), HTTPStatus.CREATED)
+                    self._json(state.create_spec_session(scoped(self._read_json())), HTTPStatus.CREATED)
                     return
                 if path == "/api/providers":
-                    self._json(state.save_provider_profile(self._read_json()), HTTPStatus.CREATED)
+                    self._json(state.save_provider_profile(scoped(self._read_json())), HTTPStatus.CREATED)
                     return
                 if path == "/api/providers/secrets/revoke":
-                    self._json(state.revoke_provider_secret(self._read_json()))
+                    self._json(state.revoke_provider_secret(scoped(self._read_json())))
                     return
                 if path == "/api/craft/plans":
-                    self._json(state.craft_plan(self._read_json()), HTTPStatus.CREATED)
+                    self._json(state.craft_plan(scoped(self._read_json())), HTTPStatus.CREATED)
                     return
                 if path == "/api/extensions/taiwei/run":
                     self._json(state.submit_taiwei_design_run(
-                        self._read_json()), HTTPStatus.CREATED)
+                        scoped(self._read_json()), owner_id=session.user_id,
+                        include_legacy=session.legacy_access), HTTPStatus.CREATED)
                     return
                 match = re.fullmatch(r"/api/extensions/edacraft/([^/]+)/smoke", path)
                 if match:
                     self._json(state.submit_edacraft_smoke(
-                        unquote(match.group(1))), HTTPStatus.CREATED)
+                        unquote(match.group(1)), owner_id=session.user_id), HTTPStatus.CREATED)
                     return
                 if path == "/api/extensions/rtlscout/runs":
-                    self._json(state.submit_rtlscout(self._read_json()), HTTPStatus.CREATED)
+                    self._json(state.submit_rtlscout(
+                        scoped(self._read_json()), owner_id=session.user_id), HTTPStatus.CREATED)
                     return
                 match = re.fullmatch(r"/api/optimization/studies/([^/]+)/recommend", path)
                 if match:
+                    study_id = unquote(match.group(1))
+                    state.get_optimization_study(
+                        study_id, owner_id=session.user_id,
+                        include_legacy=session.legacy_access,
+                    )
                     self._json(state.create_recommendation(
-                        unquote(match.group(1)), self._read_json()), HTTPStatus.CREATED)
+                        study_id, scoped(self._read_json())), HTTPStatus.CREATED)
                     return
                 match = re.fullmatch(r"/api/optimization/studies/([^/]+)/calibrate", path)
                 if match:
-                    self._json(state.calibrate_study(unquote(match.group(1))))
+                    study_id = unquote(match.group(1))
+                    state.get_optimization_study(
+                        study_id, owner_id=session.user_id,
+                        include_legacy=session.legacy_access,
+                    )
+                    self._json(state.calibrate_study(study_id))
                     return
                 match = re.fullmatch(r"/api/recommendations/([^/]+)/decision", path)
                 if match:
                     self._json(state.decide_recommendation(
-                        unquote(match.group(1)), self._read_json()), HTTPStatus.CREATED)
+                        unquote(match.group(1)), scoped(self._read_json())), HTTPStatus.CREATED)
                     return
                 match = re.fullmatch(r"/api/runtime/runs/([^/]+)/collect-learning", path)
                 if match:
                     self._json(state.collect_runtime_learning(
-                        unquote(match.group(1)), self._read_json()), HTTPStatus.CREATED)
+                        unquote(match.group(1)), scoped(self._read_json())), HTTPStatus.CREATED)
                     return
                 match = re.fullmatch(r"/api/spec/sessions/([^/]+)/turn", path)
                 if match:
-                    self._json(state.add_spec_turn(unquote(match.group(1)), self._read_json()))
+                    self._json(state.add_spec_turn(
+                        unquote(match.group(1)), scoped(self._read_json())))
                     return
                 match = re.fullmatch(r"/api/spec/sessions/([^/]+)/execute", path)
                 if match:
                     self._json(state.execute_spec_session(
-                        unquote(match.group(1)), self._read_json()), HTTPStatus.CREATED)
+                        unquote(match.group(1)), scoped(self._read_json())), HTTPStatus.CREATED)
                     return
                 if path == "/api/campaigns/stage-aware":
-                    self._json(state.create_stage_campaign(self._read_json()), HTTPStatus.CREATED)
+                    self._json(state.create_stage_campaign(scoped(self._read_json())), HTTPStatus.CREATED)
                     return
                 match = re.fullmatch(r"/api/campaigns/([^/]+)/collect-learning", path)
                 if match:
                     self._json(state.collect_campaign_learning(
-                        unquote(match.group(1)), self._read_json()), HTTPStatus.CREATED)
+                        unquote(match.group(1)), scoped(self._read_json())), HTTPStatus.CREATED)
                     return
                 if path == "/api/designs/generate":
                     payload = self._read_json()
                     self._json(
-                        state.designs.generate(str(payload.get("description") or "")),
+                        state.designs.generate(
+                            str(payload.get("description") or ""), owner_id=session.user_id),
                         HTTPStatus.CREATED,
                     )
                     return
@@ -1425,19 +1724,27 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                         filename=str(payload.get("filename") or "design.v"),
                         source=str(payload.get("rtl_source") or ""),
                         description=_optional_string(payload.get("description")),
+                        owner_id=session.user_id,
                     ), HTTPStatus.CREATED)
                     return
                 match = re.fullmatch(r"/api/runs/([^/]+)/cancel", path)
                 if match:
-                    self._json(state.cancel_run(unquote(match.group(1))))
+                    run_id = unquote(match.group(1))
+                    state.get_run(run_id, owner_id=session.user_id,
+                                  include_legacy=session.legacy_access)
+                    self._json(state.cancel_run(run_id))
                     return
                 match = re.fullmatch(r"/api/runtime/runs/([^/]+)/cancel", path)
                 if match:
-                    self._json(state.cancel_runtime_run(unquote(match.group(1))))
+                    self._json(state.cancel_runtime_run(
+                        unquote(match.group(1)), owner_id=session.user_id,
+                        include_legacy=session.legacy_access))
                     return
                 match = re.fullmatch(r"/api/campaigns/([^/]+)/cancel", path)
                 if match:
-                    self._json(state.cancel_campaign(unquote(match.group(1))))
+                    self._json(state.cancel_campaign(
+                        unquote(match.group(1)), owner_id=session.user_id,
+                        include_legacy=session.legacy_access))
                     return
                 self._error(HTTPStatus.NOT_FOUND, "route not found")
             except (ValueError, json.JSONDecodeError) as exc:
@@ -1462,9 +1769,51 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                 raise ValueError("JSON body must be an object")
             return payload
 
-        def _json(self, payload: Any, status: HTTPStatus = HTTPStatus.OK) -> None:
+        def _session_token(self) -> str | None:
+            cookie = SimpleCookie()
+            try:
+                cookie.load(self.headers.get("Cookie", ""))
+            except Exception:
+                return None
+            item = cookie.get("orp_session")
+            return item.value if item else None
+
+        def _auth_session(self) -> AuthSession | None:
+            return state.auth.resolve(self._session_token())
+
+        def _session_cookie(self, token: str, *, expire: bool = False) -> str:
+            parts = [f"orp_session={token}", "Path=/", "HttpOnly", "SameSite=Lax"]
+            forwarded = self.headers.get("X-Forwarded-Proto", "").lower()
+            if forwarded == "https":
+                parts.append("Secure")
+            parts.append("Max-Age=0" if expire else f"Max-Age={7 * 24 * 3600}")
+            return "; ".join(parts)
+
+        def _auth_key(self) -> str:
+            forwarded = self.headers.get("CF-Connecting-IP") or self.headers.get("X-Forwarded-For")
+            return (forwarded.split(",", 1)[0].strip() if forwarded else self.client_address[0])
+
+        def _auth_rate_limited(self) -> bool:
+            cutoff = time.time() - 300
+            key = self._auth_key()
+            with auth_failure_lock:
+                recent = [item for item in auth_failures.get(key, []) if item >= cutoff]
+                auth_failures[key] = recent
+                return len(recent) >= 8
+
+        def _record_auth_failure(self) -> None:
+            with auth_failure_lock:
+                auth_failures.setdefault(self._auth_key(), []).append(time.time())
+
+        def _clear_auth_failures(self) -> None:
+            with auth_failure_lock:
+                auth_failures.pop(self._auth_key(), None)
+
+        def _json(self, payload: Any, status: HTTPStatus = HTTPStatus.OK,
+                  *, headers: dict[str, str] | None = None) -> None:
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-            self._bytes(body, "application/json; charset=utf-8", status)
+            self._bytes(body, "application/json; charset=utf-8", status,
+                        headers=headers)
 
         def _text(
             self,
@@ -1474,11 +1823,14 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
         ) -> None:
             self._bytes(value.encode("utf-8"), content_type, status)
 
-        def _bytes(self, body: bytes, content_type: str, status: HTTPStatus) -> None:
+        def _bytes(self, body: bytes, content_type: str, status: HTTPStatus,
+                   *, headers: dict[str, str] | None = None) -> None:
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self._security_headers()
+            for name, value in (headers or {}).items():
+                self.send_header(name, value)
             self.end_headers()
             self.wfile.write(body)
 
@@ -1508,6 +1860,14 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("X-Frame-Options", "DENY")
             self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+            self.send_header(
+                "Content-Security-Policy",
+                "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+                "script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+            )
+            if self.headers.get("X-Forwarded-Proto", "").lower() == "https":
+                self.send_header("Strict-Transport-Security", "max-age=31536000")
 
         def log_message(self, format: str, *args: Any) -> None:
             sys.stderr.write("[web] %s - %s\n" % (self.address_string(), format % args))
@@ -1546,6 +1906,7 @@ def main(argv: list[str] | None = None) -> int:
         default=Path(os.environ.get("OPENROAD_PLATFORM_OPTIMIZATION_DB",
                                     local_state / "optimization.db")),
     )
+    parser.add_argument("--auth-db", type=Path, default=ROOT / "var" / "web-auth.db")
     parser.add_argument(
         "--orfs-root",
         type=Path,
@@ -1568,6 +1929,7 @@ def main(argv: list[str] | None = None) -> int:
         runtime_db_path=args.runtime_db,
         campaign_db_path=args.campaign_db,
         optimization_db_path=args.optimization_db,
+        auth_db_path=args.auth_db,
         byok_transport_secure=byok_transport_secure,
     )
     server = build_server(args.host, args.port, state)

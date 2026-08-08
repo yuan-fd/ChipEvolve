@@ -105,22 +105,33 @@ class DesignService:
         """Return audited synthesizable examples used by the web workspace."""
         return [dict(item) for item in DESIGN_EXAMPLES]
 
-    def list(self, limit: int = 30) -> list[dict[str, Any]]:
+    def list(self, limit: int = 30, *, owner_id: str | None = None,
+             include_legacy: bool = False) -> list[dict[str, Any]]:
         manifests = []
         for path in self.root.glob("design-*/manifest.json"):
             try:
-                manifests.append(json.loads(path.read_text(encoding="utf-8")))
+                item = json.loads(path.read_text(encoding="utf-8"))
+                if owner_id is not None and not self._owned(
+                    item, owner_id, include_legacy=include_legacy
+                ):
+                    continue
+                manifests.append(item)
             except (OSError, ValueError):
                 continue
         manifests.sort(key=lambda item: item.get("created_at", 0), reverse=True)
         return manifests[:max(1, min(limit, 100))]
 
-    def get(self, design_id: str, *, include_source: bool = False) -> dict[str, Any]:
+    def get(self, design_id: str, *, include_source: bool = False,
+            owner_id: str | None = None, include_legacy: bool = False) -> dict[str, Any]:
         directory = self._directory(design_id)
         manifest_path = directory / "manifest.json"
         if not manifest_path.is_file():
             raise KeyError(f"Unknown design: {design_id}")
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if owner_id is not None and not self._owned(
+            manifest, owner_id, include_legacy=include_legacy
+        ):
+            raise KeyError(f"Unknown design: {design_id}")
         netlist_path = directory / manifest["netlist_file"]
         refreshed_analysis = summarize_netlist(netlist_path)
         if refreshed_analysis != manifest.get("analysis"):
@@ -135,19 +146,22 @@ class DesignService:
             )
         return manifest
 
-    def rtl_path(self, design_id: str) -> Path:
-        manifest = self.get(design_id)
+    def rtl_path(self, design_id: str, *, owner_id: str | None = None,
+                 include_legacy: bool = False) -> Path:
+        manifest = self.get(design_id, owner_id=owner_id, include_legacy=include_legacy)
         return self._directory(design_id) / manifest["rtl_file"]
 
-    def source(self, design_id: str, kind: str) -> str:
-        manifest = self.get(design_id)
+    def source(self, design_id: str, kind: str, *, owner_id: str | None = None,
+               include_legacy: bool = False) -> str:
+        manifest = self.get(design_id, owner_id=owner_id, include_legacy=include_legacy)
         key = "rtl_file" if kind == "rtl" else "netlist_file"
         return (self._directory(design_id) / manifest[key]).read_text(
             encoding="utf-8", errors="replace"
         )
 
-    def schematic(self, design_id: str) -> str:
-        manifest = self.get(design_id)
+    def schematic(self, design_id: str, *, owner_id: str | None = None,
+                  include_legacy: bool = False) -> str:
+        manifest = self.get(design_id, owner_id=owner_id, include_legacy=include_legacy)
         netlist_path = self._directory(design_id) / manifest["netlist_file"]
         return self._render_schematic(netlist_path)
 
@@ -157,6 +171,7 @@ class DesignService:
         filename: str,
         source: str,
         description: str | None = None,
+        owner_id: str | None = None,
     ) -> dict[str, Any]:
         if not source.strip():
             raise ValueError("RTL source is empty")
@@ -175,12 +190,13 @@ class DesignService:
                 origin="upload",
                 rtl_path=rtl_path,
                 netlist_path=netlist_path,
+                owner_id=owner_id,
             )
         except Exception:
             shutil.rmtree(directory, ignore_errors=True)
             raise
 
-    def generate(self, description: str) -> dict[str, Any]:
+    def generate(self, description: str, *, owner_id: str | None = None) -> dict[str, Any]:
         description = description.strip()
         if not description:
             raise ValueError("description is empty")
@@ -231,6 +247,7 @@ class DesignService:
             rtl_path=copied_rtl,
             netlist_path=copied_netlist,
             generation_log=result.stdout[-12000:],
+            owner_id=owner_id,
         )
 
     def _synthesize(self, rtl_path: Path, module: str, directory: Path) -> Path:
@@ -271,6 +288,7 @@ class DesignService:
         rtl_path: Path,
         netlist_path: Path,
         generation_log: str | None = None,
+        owner_id: str | None = None,
     ) -> dict[str, Any]:
         analysis = summarize_netlist(netlist_path)
         schematic_path = directory / "schematic.svg"
@@ -286,6 +304,8 @@ class DesignService:
             "schematic_file": schematic_path.name,
             "analysis": analysis,
         }
+        if owner_id:
+            manifest["owner_id"] = owner_id
         if generation_log:
             log_path = directory / "generation.log"
             log_path.write_text(generation_log, encoding="utf-8")
@@ -313,6 +333,12 @@ class DesignService:
         if not SAFE_ID.fullmatch(design_id):
             raise KeyError(f"Invalid design id: {design_id}")
         return self.root / design_id
+
+    @staticmethod
+    def _owned(manifest: dict[str, Any], owner_id: str,
+               *, include_legacy: bool) -> bool:
+        recorded = str(manifest.get("owner_id") or "")
+        return recorded == owner_id or (include_legacy and not recorded)
 
     def _new_directory(self) -> tuple[str, Path]:
         design_id = f"design-{int(time.time())}-{uuid.uuid4().hex[:8]}"

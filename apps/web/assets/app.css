@@ -432,9 +432,33 @@ footer { height: 56px; padding: 0 24px; display: flex; justify-content: space-be
 
 /* Interactive design workspaces: deliberately follows one compact vertical task path. */
 .header-controls { justify-self: end; display: flex; align-items: center; gap: 12px; }
+.account-button { height: 30px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 5px; background: white; color: var(--heading); font-size: 9px; font-weight: 650; white-space: nowrap; }
+.account-button.authenticated { border-color: var(--green); background: var(--green-soft); color: var(--green); }
 .language-switch { display: flex; padding: 2px; border: 1px solid var(--line-strong); border-radius: 5px; background: var(--surface-subtle); }
 .language-switch button { min-width: 38px; height: 25px; padding: 0 8px; border: 0; border-radius: 3px; background: transparent; color: var(--muted); font-size: 9px; font-weight: 600; }
 .language-switch button.active { background: white; color: var(--heading); box-shadow: 0 1px 2px rgba(16, 24, 40, .08); }
+.auth-modal { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 20px; background: rgba(17, 24, 39, .42); }
+.auth-modal[hidden] { display: none; }
+.auth-card { width: min(430px, 100%); padding: 28px; position: relative; border: 1px solid var(--line-strong); border-radius: 8px; background: white; }
+.auth-card h2 { margin: 4px 0 7px; color: var(--heading); font-size: 23px; }
+.auth-card > p:not(.eyebrow, .message) { margin: 0 0 20px; color: var(--muted); font-size: 10px; }
+.auth-card label { margin-top: 12px; display: grid; gap: 5px; color: var(--heading); font-size: 9px; font-weight: 600; }
+.auth-card input { height: 40px; padding: 0 11px; border: 1px solid var(--line-strong); border-radius: 5px; background: white; color: var(--heading); }
+.auth-card input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+.auth-actions { margin-top: 18px; display: flex; gap: 8px; }
+.auth-card > small { display: block; margin-top: 14px; color: var(--muted); font-size: 8px; line-height: 1.6; }
+.auth-close { position: absolute; top: 12px; right: 12px; width: 28px; height: 28px; border: 0; background: transparent; color: var(--muted); font-size: 20px; }
+
+.api-auth-section { padding: 56px 0; background: var(--bg); border-top: 1px solid var(--line); }
+.api-auth-grid { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: var(--radius); background: white; overflow: hidden; }
+.api-auth-grid article { min-height: 155px; padding: 18px; border-right: 1px solid var(--line); }
+.api-auth-grid article:last-child { border-right: 0; }
+.api-auth-grid article > span { color: var(--accent); font: 9px var(--mono); }
+.api-auth-grid b { display: block; margin-top: 20px; color: var(--heading); font-size: 12px; }
+.api-auth-grid p { margin: 6px 0 0; color: var(--muted); font-size: 9px; line-height: 1.65; }
+.api-auth-note { margin-top: 12px; padding: 14px 16px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 14px; border: 1px solid var(--line); border-radius: var(--radius); background: white; }
+.api-auth-note b { color: var(--amber); font-size: 9px; text-transform: uppercase; }
+.api-auth-note span { color: var(--muted); font-size: 9px; }
 .workspace-page { background: #fff; }
 .workspace-wrap { width: min(880px, calc(100% - 32px)); margin-inline: auto; }
 .workspace-head { padding: 34px 0 17px; border-bottom: 1px solid var(--line); }
@@ -622,6 +646,9 @@ html[lang="zh-CN"] .workspace-head h1::after { content: " — 交互演示"; }
   .site-header { grid-template-columns: auto 1fr auto; padding-inline: 14px; }
   .health { display: none; }
   .header-controls { gap: 5px; }
+  .api-auth-grid { grid-template-columns: repeat(2, 1fr); }
+  .api-auth-grid article:nth-child(2) { border-right: 0; }
+  .api-auth-grid article:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
 }
 
 @media (max-width: 720px) {
@@ -646,4 +673,8 @@ html[lang="zh-CN"] .workspace-head h1::after { content: " — 交互演示"; }
   .qor-report-card.featured { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
   .layout-report-grid { grid-template-columns: 1fr; }
   .timing-values { flex-direction: column; }
+  .api-auth-grid { grid-template-columns: 1fr; }
+  .api-auth-grid article { min-height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  .api-auth-grid article:last-child { border-bottom: 0; }
+  .api-auth-note { grid-template-columns: 1fr; }
 }

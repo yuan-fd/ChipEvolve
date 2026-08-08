@@ -33,9 +33,10 @@ class PlatformReadModel:
         self.tenant_learning_store = tenant_learning_store
         self.extension_catalog = extension_catalog
 
-    def snapshot(self) -> dict[str, Any]:
-        results = self.results()
-        evolution = self.evolution()
+    def snapshot(self, *, owner_id: str | None = None, include_legacy: bool = False,
+                 public: bool = False) -> dict[str, Any]:
+        results = self.results(owner_id=owner_id, include_legacy=include_legacy)
+        evolution = self.evolution(owner_id=owner_id, include_legacy=include_legacy)
         return {
             "schema_version": 1,
             "product": {
@@ -71,19 +72,28 @@ class PlatformReadModel:
                 },
             ],
             "counts": {
-                "designs": results["counts"]["designs"],
-                "runtime_runs": results["counts"]["runtime_runs"],
-                "campaigns": results["counts"]["campaigns"],
+                "designs": 0 if public else results["counts"]["designs"],
+                "runtime_runs": 0 if public else results["counts"]["runtime_runs"],
+                "campaigns": 0 if public else results["counts"]["campaigns"],
                 "knowledge_sources": evolution["counts"]["knowledge_sources"],
-                "optimization_studies": evolution["counts"]["optimization_studies"],
+                "optimization_studies": 0 if public else evolution["counts"]["optimization_studies"],
             },
         }
 
-    def results(self, limit: int = 50) -> dict[str, Any]:
-        designs = self.designs.list(limit=limit)
-        runtime_runs = self.runtime_store.list_runs(limit=limit)
-        campaigns = self.campaign_store.list()
+    def results(self, limit: int = 50, *, owner_id: str | None = None,
+                include_legacy: bool = False) -> dict[str, Any]:
+        designs = self.designs.list(
+            limit=limit, owner_id=owner_id, include_legacy=include_legacy
+        )
+        all_runs = self.runtime_store.list_runs(limit=max(limit, 200))
+        runtime_runs = [run for run in all_runs if _owned_task(
+            run.task_spec, owner_id, include_legacy=include_legacy
+        )][:limit]
+        campaigns = [item for item in self.campaign_store.list()
+                     if _owned_campaign(self.campaign_store, item["campaign_id"],
+                                        owner_id, include_legacy=include_legacy)]
         records = []
+        design_names = {item["id"]: item.get("module") or item["id"] for item in designs}
         for design in designs:
             records.append({
                 "id": design["id"],
@@ -106,8 +116,8 @@ class PlatformReadModel:
                 "id": run.run_id,
                 "record_type": "runtime_run",
                 "project_type": _project_type(plugin),
-                "name": run.task_spec.design_id,
-                "summary": plugin,
+                "name": design_names.get(run.task_spec.design_id, _friendly_design_name(run.task_spec.design_id)),
+                "summary": _project_type(plugin),
                 "status": run.status.value,
                 "created_at": run.created_at,
                 "detail_url": f"/api/runtime/runs/{run.run_id}",
@@ -125,12 +135,17 @@ class PlatformReadModel:
             "authority": "Runtime/database projection; no browser-owned process state",
         }
 
-    def evolution(self) -> dict[str, Any]:
-        studies = self.optimization_store.list()
+    def evolution(self, *, owner_id: str | None = None,
+                  include_legacy: bool = False) -> dict[str, Any]:
+        design_ids = {item["id"] for item in self.designs.list(
+            limit=100, owner_id=owner_id, include_legacy=include_legacy
+        )}
+        studies = [item for item in self.optimization_store.list()
+                   if owner_id is None or item.get("design_id") in design_ids]
         sources = self.knowledge_registry.list_sources()
         benchmarks = self.knowledge_registry.list_benchmarks()
-        recommendations = self.recommendation_store.list("local-user")
-        observations = self.tenant_learning_store.list("local-user", "openroad-platform")
+        recommendations = self.recommendation_store.list(owner_id or "local-user")
+        observations = self.tenant_learning_store.list(owner_id or "local-user", "openroad-platform")
         return {
             "counts": {
                 "knowledge_sources": len(sources),
@@ -174,3 +189,27 @@ def _project_type(plugin_id: str) -> str:
     if plugin_id == "dplevolve":
         return "Code evolution"
     return "Digital physical design"
+
+
+def _friendly_design_name(design_id: str) -> str:
+    if design_id.startswith("rtlscout-"):
+        return design_id.removeprefix("rtlscout-").replace("_", " ")
+    return "Linked design"
+
+
+def _owned_task(task: Any, owner_id: str | None, *, include_legacy: bool) -> bool:
+    if owner_id is None:
+        return True
+    recorded = str((task.labels or {}).get("owner_id") or "")
+    return recorded == owner_id or (include_legacy and not recorded)
+
+
+def _owned_campaign(store: Any, campaign_id: str, owner_id: str | None,
+                    *, include_legacy: bool) -> bool:
+    if owner_id is None:
+        return True
+    members = store.members(campaign_id)
+    if not members:
+        return include_legacy
+    return any(_owned_task(item.task_spec, owner_id, include_legacy=include_legacy)
+               for item in members)

@@ -8,12 +8,16 @@ const state = {
   resultFilter: "all", extensions: [], selectedExtension: null,
   rtlscoutStatus: null, providerProfile: null, selectedRtlscoutRun: null,
   requestedExtension: null, rtlscoutPoll: null, runtimePoll: null, healthPoll: null,
-  health: null, locale: "en",
+  health: null, auth: null, workspaceLoaded: false, locale: "en",
 };
 const stages = ["synth", "floorplan", "place", "cts", "route", "finish"];
 const ZH = {
   "nav.overview": "平台概览", "nav.frontend": "前端设计", "nav.backend": "后端实现",
   "nav.projects": "项目与结果", "nav.evolution": "自演化",
+  "auth.personal": "个人工作区", "auth.title": "登录后开始设计",
+  "auth.help": "账户会将你的设计、任务、报告、学习记录和模型配置与其他用户分开。",
+  "auth.username": "用户名", "auth.password": "密码", "auth.login": "登录",
+  "auth.register": "创建账户", "auth.note": "本研究预览站开放注册。密码经加盐哈希保存，浏览器会话七天后失效。",
   "overview.eyebrow": "开源智能芯片设计基础设施", "overview.tagline": "从设计意图到可验证的芯片证据。",
   "overview.cap1": "由自然语言创建设计，经人工审查 RTL 后完成可复现的物理实现。",
   "overview.cap2.name": "EDA 智能助手", "overview.cap2": "通过自然语言控制流程、解读报告、定位问题并给出修复建议。",
@@ -53,8 +57,15 @@ const ZH = {
   "tutorial.6.title": "创建 Agent 引导的搜索计划", "tutorial.6.help": "使用 Agent 引导模式进行受监控实验和有界纠错；内部编排不会成为额外的用户操作入口。",
   "tutorial.agent.status": "计划创建已可用 · 执行前需要明确批准", "tutorial.7.title": "查看固定版本的 3D IC 工作流",
   "tutorial.7.help": "打开 TaiWei 支线，查看双层布局、跨层指标、3D 视图与重放证据。",
-  "tutorial.8.title": "检查结果并收集验证经验", "tutorial.8.help": "对比版图与 QoR，再将成功 Runtime 证据明确收集到学习库；公开论文与 benchmark 元数据已按来源登记。",
+  "tutorial.8.title": "检查结果并收集验证经验", "tutorial.8.help": "对比版图与 QoR，再将成功执行证据明确收集到学习库；公开论文与 benchmark 元数据已按来源登记。",
   "tutorial.learning.status": "学习入库需明确触发，避免失败或未验证结果成为事实", "tutorial.results.action": "打开结果管理 →",
+  "api.eyebrow": "模型 API 认证", "api.title": "连接自己的模型，不把凭据交给项目。",
+  "api.help": "平台登录与模型 API 认证彼此独立：登录负责隔离 EDA 工作；模型 API Key 用于可选的大模型生成和探索功能。",
+  "api.login.title": "登录个人工作区", "api.login.help": "创建简单的平台账户。登录后只显示你自己的设计、任务、报告和学习记录。",
+  "api.provider.title": "选择模型 Provider", "api.provider.help": "在前端设计页填写 HTTPS 的 OpenAI-compatible 地址、模型名称和自己的 API Key。",
+  "api.secret.title": "API Key 仅保留在会话中", "api.secret.help": "Key 只在当前服务会话的内存中使用，不写入项目文件、设计数据库、产物或 Git。",
+  "api.run.title": "只启动你明确选择的功能", "api.run.help": "连接 Provider 不会自动启动任务。只有主动运行大模型 Spec-to-RTL 或 RTL 探索时才会调用 API。",
+  "api.required": "需要 API Key", "api.required.help": "大模型 Spec-to-RTL、完整 RTLScout 探索和 Tool-Evolve。基线 RTL-to-GDS、报告查看、内置验证示例和确定性分析不需要模型 Key。",
   "switch.frontend": "前端设计", "switch.backend": "后端实现", "switch.results": "运行结果",
   "frontend.kicker": "交互式设计工作区", "frontend.title": "前端设计",
   "frontend.subtitle": "按清晰顺序创建或导入 RTL、完成综合并查看电路结果。",
@@ -80,11 +91,11 @@ const ZH = {
   "backend.util": "核心利用率 · %", "backend.density": "布局密度", "backend.target": "目标阶段",
   "backend.objective": "优化目标", "backend.objective.balanced": "综合平衡", "backend.objective.timing": "时序优先",
   "backend.objective.area": "面积优先", "backend.objective.power": "功耗优先", "backend.mode": "流程模式",
-  "backend.run.title": "运行 RTL-to-GDS 并监控阶段", "backend.run.subtitle": "Runtime 记录进度、恢复状态、指标和产物。",
-  "backend.run.select": "Runtime 任务", "backend.run.action": "开始 RTL-to-GDS", "backend.run.compare": "比较历史任务",
+  "backend.run.title": "运行 RTL-to-GDS 并监控阶段", "backend.run.subtitle": "查看当前设计的进度、恢复状态、指标和生成文件。",
+  "backend.run.select": "设计任务", "backend.run.action": "开始 RTL-to-GDS", "backend.run.compare": "比较该设计的历史任务",
   "backend.run.empty": "尚未选择任务", "backend.run.empty.help": "排队、运行和已完成的记录会显示在这里。",
   "backend.evidence.title": "版图、QoR 与实现证据", "backend.evidence.subtitle": "查看版图、时序、面积、功耗、DRC、报告和下载产物。",
-  "backend.evidence.empty": "运行证据将在这里显示。", "backend.evidence.empty.help": "选择已完成的 Runtime 任务以读取版图和报告。",
+  "backend.evidence.empty": "设计结果将在这里显示。", "backend.evidence.empty.help": "选择当前设计已完成的任务以读取版图和报告。",
   "backend.extensions.title": "可选研究支线", "backend.extensions.subtitle": "自动继承当前设计和成功主线；只有扩展输入兼容时才能运行。",
   "backend.extensions.digital": "物理设计支线", "backend.extensions.device": "器件与电路支线",
   "backend.extensions.contract": "当前设计 → 成功主线 → 兼容扩展",
@@ -103,11 +114,11 @@ const LOOSE_ZH = {
   "Recommended tutorial": "推荐教程", "Your first reproducible design.": "完成第一个可复现设计。",
   "Choose a frontend input": "选择前端输入", "Review the circuit": "检查电路", "Configure the physical flow": "配置物理设计流程", "Inspect and reuse the evidence": "检查并复用证据",
   "Projects & results": "项目与结果", "A clear record": "清晰记录", "for every design.": "每一个设计。",
-  "All records": "全部记录", "Designs": "设计", "Runtime runs": "Runtime 任务", "Refresh": "刷新",
+  "All records": "全部记录", "Designs": "设计", "Design tasks": "设计任务", "Refresh": "刷新",
   "Self-evolution": "自演化", "Learning from": "从可验证的", "verified design experience.": "设计经验中学习。",
   "Learning workflow": "学习流程", "How experience becomes a better next run.": "如何把经验转化为更好的下一次运行。",
-  "Knowledge": "知识", "Research & RAG": "论文与 RAG", "Experience": "经验", "Runtime observations": "Runtime 观测",
-  "Models": "模型", "Decision": "决策", "Human review": "人工审查", "Action": "执行", "Campaign & Runtime": "Campaign 与 Runtime",
+  "Knowledge": "知识", "Research & RAG": "论文与 RAG", "Experience": "经验", "Verified observations": "验证观测",
+  "Models": "模型", "Decision": "决策", "Human review": "人工审查", "Action": "执行", "Reviewed experiment": "已审查实验",
   "Current learning record": "当前学习记录", "Recommendations remain inspectable and controllable.": "所有建议都保持可检查、可控制。",
   "How RTLScout works": "RTLScout 如何工作", "Agent loop": "智能体循环",
   "The agent may edit RTL, but it cannot declare success. Verilator and Yosys produce the recorded result.": "智能体可以修改 RTL，但不能自行宣布成功；最终结果由 Verilator 和 Yosys 验证。",
@@ -123,7 +134,7 @@ const LOOSE_ZH = {
   "Connect Provider": "连接 Provider", "3. Start optimization": "3. 开始优化", "RTLScout run dashboard": "RTLScout 运行仪表盘",
   "Current step": "当前步骤", "Evaluated candidates": "已评估候选", "Legal candidates": "合法候选", "Best cost": "最优成本",
   "Improvement": "优化幅度", "Runtime": "运行时间", "Candidate history": "候选历史", "Best candidate and changes": "最优候选与改动",
-  "Baseline flow": "基线流程", "Stage-aware Campaign": "阶段感知批量实验", "Agent-guided search": "Agent 引导搜索",
+  "Baseline flow": "基线流程", "Stage-aware batch": "阶段感知批量实验", "Agent-guided search": "Agent 引导搜索",
   "Finish · GDS": "完成 · GDS", "Routing": "布线", "Clock tree": "时钟树", "Placement": "布局", "Floorplan": "布局规划", "Synthesis": "逻辑综合",
   "Execution ready": "执行就绪", "Console ready": "控制台就绪", "API unavailable": "API 不可用", "Connecting": "连接中",
   "Platform API status": "平台 API 状态"
@@ -179,6 +190,71 @@ async function api(path, options = {}) {
 }
 
 const post = (path, body) => api(path, {method: "POST", body: JSON.stringify(body)});
+
+function renderAuth() {
+  const signedIn = state.auth?.authenticated === true;
+  const button = $("#accountButton");
+  button.textContent = signedIn ? state.auth.user.username : ui("Sign in", "登录");
+  button.classList.toggle("authenticated", signedIn);
+}
+
+function openAuth(note = "") {
+  if (state.auth?.authenticated) return;
+  $("#authModal").hidden = false;
+  message("#authMessage", note);
+  setTimeout(() => $("#authUsername").focus(), 0);
+}
+
+function closeAuth() { $("#authModal").hidden = true; message("#authMessage", ""); }
+
+async function loadAuth() {
+  try { state.auth = await api("/api/auth/session"); }
+  catch (_) { state.auth = {authenticated: false}; }
+  renderAuth();
+  return state.auth;
+}
+
+async function submitAuth(mode) {
+  const username = $("#authUsername").value.trim();
+  const password = $("#authPassword").value;
+  if (!username || !password) return message("#authMessage", ui("Enter a username and password.", "请输入用户名和密码。"), true);
+  $("#authLogin").disabled = true;
+  $("#authRegister").disabled = true;
+  message("#authMessage", mode === "register" ? ui("Creating your isolated workspace…", "正在创建隔离工作区……") : ui("Signing in…", "正在登录……"));
+  try {
+    state.auth = await post(`/api/auth/${mode}`, {username, password});
+    $("#authPassword").value = "";
+    renderAuth();
+    closeAuth();
+    await loadAuthenticatedWorkspace();
+    route("frontend");
+  } catch (error) {
+    message("#authMessage", error.message, true);
+  } finally {
+    $("#authLogin").disabled = false;
+    $("#authRegister").disabled = false;
+  }
+}
+
+async function logout() {
+  try { await post("/api/auth/logout", {}); } catch (_) { /* clear local view anyway */ }
+  state.auth = {authenticated: false};
+  state.workspaceLoaded = false;
+  state.designs = []; state.runs = []; state.results = [];
+  state.selectedDesign = null; state.selectedRun = null;
+  if (state.runtimePoll) clearTimeout(state.runtimePoll);
+  if (state.rtlscoutPoll) clearTimeout(state.rtlscoutPoll);
+  renderAuth(); resetDesignResult(); resetRunResult(); route("overview");
+}
+
+async function loadAuthenticatedWorkspace() {
+  if (!state.auth?.authenticated) return;
+  await Promise.all([loadRtlscoutStatus(), loadExamples()]);
+  await loadDesigns();
+  await loadRuns();
+  state.workspaceLoaded = true;
+}
+
 function message(selector, value, error = false) {
   const element = $(selector);
   if (!element) return;
@@ -188,6 +264,10 @@ function message(selector, value, error = false) {
 
 function route(name, options = {}) {
   if (!$(`#page-${name}`)) name = "overview";
+  if (name !== "overview" && !state.auth?.authenticated) {
+    openAuth(ui("Sign in to open your personal workspace.", "请先登录个人工作区。"));
+    name = "overview";
+  }
   $$(".page").forEach(page => page.classList.toggle("active", page.id === `page-${name}`));
   $$(".tab").forEach(tab => tab.classList.toggle("active", tab.dataset.route === name));
   history.replaceState(null, "", `#${name}`);
@@ -233,7 +313,7 @@ function buildExtensions(platform) {
       source_commit: platform.extensions.source_commit,
       status_label: slug === "implcraft" ? "Main-flow adapter" : "Input adapter required",
       input: inputs[slug] || "Component-specific research input",
-      workflow: ["Inherit the current project context", "Validate the component-specific input", "Submit an isolated Runtime task", "Register artifacts, metrics, versions, and status"],
+      workflow: ["Inherit the current project context", "Validate the component-specific input", "Submit an isolated design task", "Register artifacts, metrics, versions, and status"],
     };
   });
   return [...special, ...craft];
@@ -250,7 +330,7 @@ async function loadPlatform() {
   } catch (error) {
     $("#healthDot").className = "bad";
     $("#healthText").textContent = ui("API unavailable", "API 不可用");
-    if ($("#workerState")) $("#workerState").textContent = ui("Worker status unavailable", "无法读取 Worker 状态");
+    if ($("#workerState")) $("#workerState").textContent = ui("Execution status unavailable", "无法读取执行状态");
   }
   if (state.healthPoll) clearTimeout(state.healthPoll);
   state.healthPoll = setTimeout(loadHealth, 5000);
@@ -266,13 +346,13 @@ async function loadHealth() {
 function renderWorkerHealth(health) {
   const ready = health.ok && health.runtime_worker_ready;
   $("#healthDot").className = ready ? "ok" : "bad";
-  $("#healthText").textContent = ready ? ui("Worker ready", "Worker 在线") : ui("Worker offline", "Worker 离线");
+  $("#healthText").textContent = ready ? ui("System ready", "系统就绪") : ui("Service offline", "服务离线");
   const indicator = $("#workerIndicator");
   if (indicator) {
     indicator.classList.toggle("ready", ready);
     $("#workerState").textContent = ready
-      ? (health.runtime_worker_status === "running" ? ui("Worker running", "Worker 运行中") : ui("Worker ready", "Worker 已就绪"))
-      : ui("Worker offline · runs cannot start", "Worker 离线 · 任务无法开始");
+      ? (health.runtime_worker_status === "running" ? ui("Execution in progress", "正在执行任务") : ui("Execution service ready", "执行服务就绪"))
+      : ui("Execution service offline", "执行服务离线");
   }
 }
 
@@ -284,7 +364,7 @@ async function loadRtlscoutStatus() {
     $("#rtlscoutBenchmark").innerHTML = benchmarks.map(name => `<option value="${esc(name)}">${esc(name)}</option>`).join("");
     $("#runRtlscout").disabled = !status.ready;
     if (!status.byok?.input_enabled) {
-      $("#providerState").textContent = ui("HTTPS worker required", "需要 HTTPS Worker");
+      $("#providerState").textContent = ui("Secure HTTPS connection required", "需要安全 HTTPS 连接");
       $("#providerHint").textContent = ui("The offline demo needs no API key. Custom-provider profiles are accepted only through HTTPS; keys remain memory-only and never enter the project database.", "离线演示不需要 API Key。自定义 Provider 仅通过 HTTPS 接收，密钥只保存在内存中，不写入项目数据库。");
     }
     if (!status.ready) message("#rtlscoutMessage", `${ui("RTLScout is unavailable", "RTLScout 当前不可用")}: ${status.reason}`, true);
@@ -392,6 +472,7 @@ async function selectDesign(id) {
   $("#downloadRtl").href = `/api/designs/${encodeURIComponent(id)}/source?kind=rtl`;
   $("#downloadNetlist").href = `/api/designs/${encodeURIComponent(id)}/source?kind=netlist`;
   await renderDesignView();
+  await loadRuns();
   if (state.selectedExtension) selectExtension(state.selectedExtension);
 }
 
@@ -453,6 +534,12 @@ async function createSpec() {
   message("#specMessage", "Creating a reviewable specification session…");
   try {
     const payload = {message: prompt, provider: "deterministic"};
+    if (state.providerProfile?.secret?.handle) {
+      payload.provider = "openai-compatible-byok";
+      payload.profile_id = state.providerProfile.profile_id;
+      payload.secret_handle = state.providerProfile.secret.handle;
+      payload.model = state.providerProfile.model;
+    }
     if (state.selectedDesign) payload.design_id = state.selectedDesign.id;
     const result = await post("/api/spec/sessions", payload);
     message("#specMessage", ui(`Specification session created · ${result.status}. Review and confirmation are recorded separately.`, `规格会话已创建 · ${result.status}。审查与确认将分别记录。`));
@@ -467,7 +554,7 @@ async function saveProvider() {
   const key = $("#providerKey").value;
   if (!key) return message("#rtlscoutMessage", "Enter an API key before connecting the provider.", true);
   try {
-    const result = await post("/api/providers", {owner_id: "local-user", session_id: `web-${Date.now()}`, profile_id: `web-provider-${Date.now()}`, base_url: $("#providerUrl").value, model: $("#providerModel").value, api_key: key});
+    const result = await post("/api/providers", {profile_id: `web-provider-${Date.now()}`, base_url: $("#providerUrl").value, model: $("#providerModel").value, api_key: key});
     $("#providerKey").value = "";
     state.providerProfile = result;
     $("#providerState").textContent = `${ui("Connected", "已连接")} · ${result.model || $("#providerModel").value || ui("custom model", "自定义模型")}`;
@@ -486,23 +573,23 @@ function updateRtlscoutControls() {
   const byok = mode === "byok";
   if (!state.providerProfile) {
     $("#providerState").textContent = byok
-      ? (state.rtlscoutStatus?.byok?.input_enabled ? ui("Not connected", "尚未连接") : ui("HTTPS worker required", "需要 HTTPS Worker"))
+      ? (state.rtlscoutStatus?.byok?.input_enabled ? ui("Not connected", "尚未连接") : ui("Secure HTTPS connection required", "需要安全 HTTPS 连接"))
       : ui("Not required for offline demo", "离线演示无需 Provider");
   }
   $("#rtlscoutModeNote").textContent = byok
-    ? ui("Custom-provider execution is disabled on this HTTP review site. It requires HTTPS and the Runtime worker secret bridge.", "当前 HTTP 验收站禁用自定义 Provider 执行，需要 HTTPS 与 Runtime Worker 密钥桥接。")
+    ? ui("Custom-provider execution is not enabled in this preview. HTTPS accepts a session-only key, while full agent execution still requires the secure model bridge.", "当前预览站尚未启用自定义 Provider 的完整执行。HTTPS 可接收仅限会话的密钥，完整 Agent 执行仍需安全模型桥接。")
     : ui("The offline demo uses the official deterministic model while real Verilator and Yosys verify and score every generated candidate.", "离线演示使用官方确定性模型，真实 Verilator 与 Yosys 负责验证和评分。") ;
   $("#rtlscoutLaunchSummary").textContent = state.locale === "zh" ? `${byok ? "自定义 Provider" : "离线验证演示"} · ${benchmark} · 最小化 ${cost.replaceAll("_", " ")} · ${steps} 步` : `${byok ? "Custom provider" : "Offline verified demo"} · ${benchmark} · minimize ${cost.replaceAll("_", " ")} · ${steps} steps`;
-  $("#runRtlscout").textContent = byok ? ui("Secure Worker Required", "需要安全 Worker") : ui("Run Offline Demo →", "运行离线演示 →");
+  $("#runRtlscout").textContent = byok ? ui("Unavailable in Preview", "预览站暂不可用") : ui("Run Offline Demo →", "运行离线演示 →");
   $("#runRtlscout").disabled = byok || state.rtlscoutStatus?.ready === false;
 }
 
 async function submitRtlscout() {
   const mode = $("#rtlscoutMode").value;
-  if (mode === "byok") return message("#rtlscoutMessage", "BYOK execution is intentionally blocked on HTTP. Connect through HTTPS with a configured Runtime worker.", true);
+  if (mode === "byok") return message("#rtlscoutMessage", ui("Full BYOK exploration is not enabled in this preview. Use the verified offline demo.", "当前预览站尚未启用完整 BYOK 探索，请使用可验证的离线演示。"), true);
   const button = $("#runRtlscout");
   button.disabled = true;
-  message("#rtlscoutMessage", "Submitting the verified RTLScout experiment to Workflow Runtime…");
+  message("#rtlscoutMessage", ui("Saving the verified RTLScout experiment…", "正在保存可验证的 RTLScout 实验……"));
   try {
     const result = await post("/api/extensions/rtlscout/runs", {
       mode,
@@ -512,7 +599,7 @@ async function submitRtlscout() {
     });
     const runId = result.run?.run?.run_id;
     state.selectedRtlscoutRun = runId || null;
-    message("#rtlscoutMessage", ui("The new RTLScout run is queued. Its live status appears below.", "新的 RTLScout 任务已进入队列，实时状态显示在下方。"));
+    message("#rtlscoutMessage", ui("The RTLScout task is saved. Its live status appears below.", "RTLScout 任务已保存，实时状态显示在下方。"));
     await loadRuns(runId);
     $("#rtlscoutDashboard").scrollIntoView({behavior: "smooth", block: "start"});
   } catch (error) {
@@ -525,8 +612,9 @@ async function submitRtlscout() {
 async function loadRuns(preferred = null) {
   try {
     state.runs = (await api("/api/runtime/runs")).runs || [];
-    const physicalRuns = state.runs.filter(run => ["orfs", "taiwei-pin-3d", "implcraft"].includes(run.plugin_id));
-    $("#runSelect").innerHTML = `<option value="">${ui("Choose a Runtime run", "选择 Runtime 任务")}</option>` + physicalRuns.map((run, index) => `<option value="${esc(run.run_id)}">${ui("Run", "任务")} ${String(index + 1).padStart(2, "0")} · ${esc(designModule(run.design_id))} · ${esc(run.status)}</option>`).join("");
+    const selectedDesignId = state.selectedDesign?.id;
+    const physicalRuns = state.runs.filter(run => selectedDesignId && run.design_id === selectedDesignId && ["orfs", "taiwei-pin-3d", "implcraft"].includes(run.plugin_id));
+    $("#runSelect").innerHTML = `<option value="">${selectedDesignId ? ui("Choose a design task", "选择该设计的任务") : ui("Select a design first", "请先选择设计")}</option>` + physicalRuns.map((run, index) => `<option value="${esc(run.run_id)}">${ui("Task", "任务")} ${String(index + 1).padStart(2, "0")} · ${esc(humanStatus(run.status))}</option>`).join("");
     const preferredPhysical = physicalRuns.find(run => run.run_id === preferred)?.run_id;
     const selectedPhysical = physicalRuns.find(run => run.run_id === state.selectedRun?.run?.run_id)?.run_id;
     const id = preferredPhysical || selectedPhysical;
@@ -546,9 +634,30 @@ function designModule(designId) {
 }
 
 function runDisplayName(runId) {
-  const physical = state.runs.filter(run => ["orfs", "taiwei-pin-3d", "implcraft"].includes(run.plugin_id));
+  const physical = state.runs.filter(run => run.design_id === state.selectedDesign?.id && ["orfs", "taiwei-pin-3d", "implcraft"].includes(run.plugin_id));
   const index = physical.findIndex(run => run.run_id === runId);
   return `${ui("Run", "任务")} ${String(index >= 0 ? index + 1 : 1).padStart(2, "0")}`;
+}
+
+function humanStatus(status) {
+  const labels = {
+    queued: ["Waiting", "等待中"], preparing: ["Starting", "正在启动"],
+    running: ["In progress", "运行中"], retry_wait: ["Retry scheduled", "等待重试"],
+    cancel_requested: ["Stopping", "正在停止"], cancelled: ["Stopped", "已停止"],
+    succeeded: ["Completed", "已完成"], failed: ["Needs attention", "需要处理"],
+  };
+  const value = labels[status] || [status, status];
+  return ui(value[0], value[1]);
+}
+
+function waitText(wait) {
+  const people = Number(wait?.people_ahead || 0);
+  const seconds = Number(wait?.estimated_wait_seconds || 0);
+  const estimate = seconds < 60 ? ui("under a minute", "不到 1 分钟")
+    : seconds < 3600 ? ui(`about ${Math.max(1, Math.round(seconds / 60))} min`, `约 ${Math.max(1, Math.round(seconds / 60))} 分钟`)
+      : ui(`about ${(seconds / 3600).toFixed(1)} h`, `约 ${(seconds / 3600).toFixed(1)} 小时`);
+  if (!people) return ui("No one is ahead · expected to start shortly", "前面无人 · 预计很快开始");
+  return ui(`${people} ${people === 1 ? "person" : "people"} ahead · estimated wait ${estimate}`, `前面有 ${people} 位用户 · 预计等待 ${estimate}`);
 }
 
 function resetRunResult() {
@@ -604,7 +713,7 @@ async function renderRtlscoutDashboard() {
   const started = run.started_at ? new Date(run.started_at).getTime() : null;
   const ended = run.ended_at ? new Date(run.ended_at).getTime() : Date.now();
   $("#rtlscoutRuntime").textContent = started ? `${Math.max(0, (ended - started) / 1000).toFixed(1)} s` : "Waiting";
-  $("#rtlscoutCurrentStep").textContent = status === "queued" ? "Waiting for worker" : status === "running" ? "Agent evaluation" : status === "succeeded" ? "Complete" : "Stopped";
+  $("#rtlscoutCurrentStep").textContent = status === "queued" ? ui("Waiting to start", "等待开始") : status === "running" ? ui("Agent evaluation", "Agent 评估") : status === "succeeded" ? ui("Complete", "完成") : ui("Stopped", "已停止");
   setRtlscoutProgress(status);
 
   const artifacts = attemptArtifacts(detail);
@@ -644,10 +753,10 @@ async function renderRtlscoutDashboard() {
     $("#rtlscoutBestCost").textContent = "—";
     $("#rtlscoutImprovement").textContent = "—";
     $("#rtlscoutCandidateRows").className = "candidate-empty";
-    $("#rtlscoutCandidateRows").textContent = status === "failed" ? "The run stopped before verified candidate evidence was registered." : "Waiting for candidate evidence from the Runtime worker.";
+    $("#rtlscoutCandidateRows").textContent = status === "failed" ? ui("The task stopped before verified candidate evidence was registered.", "任务在登记候选验证证据前停止。") : ui("Waiting for verified candidate evidence.", "正在等待候选验证证据。" );
     const attempts = (detail.stages || []).flatMap(stage => stage.attempts || []);
     const failure = attempts.at(-1)?.failure;
-    $("#rtlscoutBestSummary").textContent = failure?.message || (status === "queued" ? "The durable task is queued; start a separate Runtime worker to execute it." : "Verified artifacts will appear after the run completes.");
+    $("#rtlscoutBestSummary").textContent = failure?.message || (status === "queued" ? ui("The task is saved and waiting to start.", "任务已保存，正在等待开始。") : ui("Verified artifacts will appear after the task completes.", "任务完成后会显示验证产物。"));
   }
   if (state.rtlscoutPoll) clearTimeout(state.rtlscoutPoll);
   if (["queued", "running", "cancel_requested"].includes(status)) {
@@ -683,7 +792,7 @@ async function selectRun(id) {
   state.selectedRun = detail;
   const run = detail.run;
   const task = run.task_spec || {};
-  $("#runHeading").innerHTML = `<div><b>${esc(runDisplayName(run.run_id))} · ${esc(designModule(task.design_id))}</b><span>${esc(task.plugin_id)} · ${esc(task.parameters?.target_stage || ui("extension task", "扩展任务"))} · ${esc(formatDate(run.created_at))}</span></div><span class="status ${esc(run.status)}">${esc(run.status)}</span>`;
+  $("#runHeading").innerHTML = `<div><b>${esc(runDisplayName(run.run_id))} · ${esc(designModule(task.design_id))}</b><span>${esc(task.parameters?.target_stage || ui("extension task", "扩展任务"))} · ${esc(formatDate(run.created_at))}</span></div><span class="status ${esc(run.status)}">${esc(humanStatus(run.status))}</span>`;
   const values = new Map();
   (detail.events || []).forEach(event => {
     const name = event.payload?.tool_stage;
@@ -695,7 +804,7 @@ async function selectRun(id) {
   const attempt = attempts.at(-1);
   if (!attempt) {
     const workerReady = $("#workerIndicator")?.classList.contains("ready");
-    $("#backendEvidence").innerHTML = `<div class="empty"><span>⋯</span><h3>${workerReady ? ui("Waiting for the Runtime worker.", "正在等待 Runtime Worker。") : ui("Runtime worker is offline.", "Runtime Worker 当前离线。")}</h3><p>${workerReady ? ui("The task is queued and will start when its turn arrives.", "任务已入队，将在轮到它时开始运行。") : ui("The task is recorded, but it cannot run until the independent worker is started.", "任务已登记，但必须启动独立 Worker 后才能执行。")}</p></div>`;
+    $("#backendEvidence").innerHTML = `<div class="empty"><span>⋯</span><h3>${workerReady ? esc(waitText(detail.wait)) : ui("Execution service is temporarily offline.", "执行服务暂时离线。")}</h3><p>${workerReady ? ui("This page will update automatically when your design starts.", "设计开始后，本页面会自动更新。") : ui("Your task is saved and will continue after the service recovers.", "任务已经保存，服务恢复后会继续执行。")}</p></div>`;
     if (["queued", "preparing", "running", "retry_wait", "cancel_requested"].includes(run.status)) state.runtimePoll = setTimeout(() => loadRuns(run.run_id), 3000);
     return;
   }
@@ -817,12 +926,12 @@ async function submitFlow() {
   button.disabled = true;
   const mode = $("#flowMode").value;
   const objective = $('input[name="flowObjective"]:checked')?.value || "balanced";
-  message("#flowMessage", mode === "baseline" ? ui("Submitting a recoverable Runtime task…", "正在提交可恢复的 Runtime 任务……") : ui("Creating a bounded campaign plan for review…", "正在创建有界批量实验计划，等待审查……"));
+  message("#flowMessage", mode === "baseline" ? ui("Saving the design task…", "正在保存设计任务……") : ui("Creating a bounded experiment plan for review…", "正在创建有界实验计划，等待审查……"));
   try {
     const base = {design_id: id, clock: $("#flowClock").value.trim() || null, clock_period_ns: Number($("#flowPeriod").value), core_utilization_pct: Number($("#flowUtil").value), place_density: Number($("#flowDensity").value), target_stage: $("#flowTarget").value, objective, flow_mode: mode};
     if (mode === "baseline") {
       const detail = await post("/api/runtime/runs/from-design", base);
-      message("#flowMessage", ui("A new run is queued. Live worker and stage status appear below.", "新任务已进入队列，Worker 与阶段状态显示在下方。"));
+      message("#flowMessage", ui("The design task is saved. Its position, estimated wait, and live stage status appear below.", "设计任务已保存；下方会显示前面人数、预计等待时间和实时阶段状态。"));
       await loadRuns(detail.run.run_id);
     } else {
       const util = Number($("#flowUtil").value);
@@ -835,7 +944,7 @@ async function submitFlow() {
           : objective === "power" ? {place_density: [Math.max(.01, density - .05), density, Math.min(1, density + .05)]}
             : {core_utilization_pct: [Math.max(1, util - 5), util, Math.min(99, util + 5)]};
       const campaign = await post("/api/campaigns/stage-aware", {...base, name: `${mode}-${objective}-${id}`, parameter_grid: parameterGrid, max_parallel: 1, objective_metric: objectiveMetric, direction: objective === "timing" ? "max" : "min", top_k: 2, max_repairs: mode === "agent" ? 2 : 0, max_total_runs: 6});
-      message("#flowMessage", ui(`Campaign plan created with ${campaign.members.length} candidates. It has not been submitted for execution.`, `批量实验计划已创建，共 ${campaign.members.length} 个候选；尚未提交执行。`));
+      message("#flowMessage", ui(`Batch experiment plan created with ${campaign.members.length} candidates. It has not been submitted for execution.`, `批量实验计划已创建，共 ${campaign.members.length} 个候选；尚未提交执行。`));
     }
   } catch (error) {
     message("#flowMessage", error.message, true);
@@ -848,13 +957,17 @@ async function submitFlow() {
 function updateFlowMode() {
   const mode = $("#flowMode").value;
   const baseline = mode === "baseline";
-  $("#submitFlow").textContent = baseline ? ui("Start RTL-to-GDS", "开始 RTL-to-GDS") : ui("Create Campaign Plan", "创建批量实验计划");
+  $("#submitFlow").textContent = baseline ? ui("Start RTL-to-GDS", "开始 RTL-to-GDS") : ui("Create Batch Plan", "创建批量实验计划");
   $("#flowModeNote").textContent = baseline
-    ? ui("Baseline submits one Runtime run using the values above.", "基线模式会按照上方参数提交一个 Runtime 任务。")
-    : ui("Campaign modes create three bounded candidates for review; they do not execute automatically.", "批量模式会创建三个有界候选供审查，不会自动执行。")
+    ? ui("Baseline starts one design task using the values above.", "基线模式会按照上方参数启动一个设计任务。")
+    : ui("Batch modes create three bounded candidates for review; they do not execute automatically.", "批量模式会创建三个有界候选供审查，不会自动执行。")
 }
 
 function openExtension(id) {
+  if (!state.auth?.authenticated) return openAuth(ui(
+    "Sign in and select a design before opening an extension.",
+    "请先登录并选择设计，再打开扩展。"
+  ));
   state.requestedExtension = id;
   route("backend");
   if (state.extensions.length) selectExtension(id);
@@ -913,10 +1026,10 @@ async function submitTaiweiExtension(designId, baselineRunId) {
   const button = $('[data-run-taiwei]', $("#embeddedExtensionDetail"));
   if (!window.confirm(ui("This is a long-running pinned 3D acceptance flow. Start it for the selected gcd project?", "这是耗时较长的固定 3D 验收流程。确认对当前 gcd 项目启动吗？"))) return;
   button.disabled = true;
-  message("#extensionMessage", ui("Submitting the linked 3D task to Runtime…", "正在向 Runtime 提交关联 3D 任务……"));
+  message("#extensionMessage", ui("Saving the linked 3D task…", "正在保存关联 3D 任务……"));
   try {
     const detail = await post("/api/extensions/taiwei/run", {design_id: designId, baseline_run_id: baselineRunId});
-    message("#extensionMessage", ui("The linked 3D task is queued. Its project, 2D baseline, and 3D evidence remain connected.", "关联 3D 任务已进入队列；项目、2D 基线与 3D 证据会保持关联。"));
+    message("#extensionMessage", ui("The linked 3D task is saved. Its project, 2D baseline, and 3D evidence remain connected.", "关联 3D 任务已保存；项目、2D 基线与 3D 证据会保持关联。"));
     await loadRuns(detail.run?.run_id);
   } catch (error) {
     message("#extensionMessage", error.message, true);
@@ -936,7 +1049,7 @@ async function loadResults() {
 
 function renderResults() {
   const records = state.results.filter(record => state.resultFilter === "all" || record.record_type === state.resultFilter);
-  $("#resultList").innerHTML = records.length ? records.map(record => `<button class="result-row" data-result="${esc(record.id)}"><span class="record-kind">${esc(record.project_type)}</span><div><b>${esc(resultDisplayName(record))} · ${esc(record.name)}</b><span>${esc(record.summary)} · ${esc(record.status)}</span></div><time>${formatDate(record.created_at)}</time><i>→</i></button>`).join("") : '<div class="empty"><span>○</span><h3>No matching records.</h3><p>Results appear after a design or Runtime task is registered.</p></div>';
+  $("#resultList").innerHTML = records.length ? records.map(record => `<button class="result-row" data-result="${esc(record.id)}"><span class="record-kind">${esc(record.project_type)}</span><div><b>${esc(resultDisplayName(record))} · ${esc(record.name)}</b><span>${esc(record.summary)} · ${esc(humanStatus(record.status))}</span></div><time>${formatDate(record.created_at)}</time><i>→</i></button>`).join("") : `<div class="empty"><span>○</span><h3>${ui("No work recorded yet.", "还没有设计记录。")}</h3><p>${ui("Create or import a design to begin your personal workspace.", "创建或导入一个设计，开始使用个人工作区。")}</p></div>`;
   $$('[data-result]').forEach(button => button.addEventListener("click", () => selectResult(button.dataset.result)));
 }
 
@@ -979,7 +1092,7 @@ async function collectLearning(runId, task) {
   message("#collectLearningMessage", ui("Collecting verified metrics with provenance…", "正在连同来源信息收集验证指标……"));
   try {
     const receipt = await post(`/api/runtime/runs/${encodeURIComponent(runId)}/collect-learning`, {
-      tenant_id: "local-user", project_id: task.project_id || "openroad-platform",
+      project_id: task.project_id || "openroad-platform",
       pdk_id: task.parameters?.platform || "registered-platform",
       toolchain_id: `${task.plugin_id || "runtime"}@${task.plugin_version || "registered"}`,
       metric_parser_version: "web-evidence-v1",
@@ -1016,12 +1129,12 @@ async function loadEvolution() {
 async function decideRecommendation(id, action) {
   const buttons = $$(`[data-recommendation-id="${id}"]`);
   buttons.forEach(button => { button.disabled = true; });
-  message("#evolutionActionMessage", action === "accepted" ? "Creating a reviewed Campaign…" : "Recording rejection…");
+  message("#evolutionActionMessage", action === "accepted" ? ui("Creating a reviewed experiment plan…", "正在创建已审查的实验计划……") : ui("Recording rejection…", "正在记录拒绝决定……"));
   try {
-    const result = await post(`/api/recommendations/${encodeURIComponent(id)}/decision`, {owner_id: "local-user", action, create_campaign: action === "accepted", submit: false});
+    const result = await post(`/api/recommendations/${encodeURIComponent(id)}/decision`, {action, create_campaign: action === "accepted", submit: false});
     await loadEvolution();
     if (result.campaign_created) {
-      $("#evolutionActionMessage").innerHTML = `Campaign plan is created and remains idle. <button class="button small" id="submitApprovedCampaign">Confirm Runtime Submission</button>`;
+      $("#evolutionActionMessage").innerHTML = `${ui("The experiment plan is ready and has not started.", "实验计划已经就绪，尚未开始执行。")} <button class="button small" id="submitApprovedCampaign">${ui("Confirm execution", "确认执行")}</button>`;
       $("#submitApprovedCampaign").addEventListener("click", () => submitApprovedRecommendation(id));
     } else message("#evolutionActionMessage", "Decision recorded; no execution was started.");
   } catch (error) {
@@ -1034,10 +1147,10 @@ async function decideRecommendation(id, action) {
 async function submitApprovedRecommendation(id) {
   const button = $("#submitApprovedCampaign");
   if (button) button.disabled = true;
-  message("#evolutionActionMessage", "Submitting the approved Campaign to Runtime…");
+  message("#evolutionActionMessage", ui("Starting the approved experiment…", "正在启动已批准的实验……"));
   try {
-    const result = await post(`/api/recommendations/${encodeURIComponent(id)}/decision`, {owner_id: "local-user", action: "accepted", create_campaign: true, submit: true});
-    message("#evolutionActionMessage", `Runtime queued ${result.run_ids.length} run.`);
+    const result = await post(`/api/recommendations/${encodeURIComponent(id)}/decision`, {action: "accepted", create_campaign: true, submit: true});
+    message("#evolutionActionMessage", ui(`${result.run_ids.length} design task started.`, `已启动 ${result.run_ids.length} 个设计任务。`));
     await loadRuns();
   } catch (error) {
     message("#evolutionActionMessage", error.message, true);
@@ -1056,6 +1169,18 @@ $$('[data-input-mode]').forEach(button => button.addEventListener("click", () =>
 $$('[data-design-view]').forEach(button => button.addEventListener("click", () => { state.designView = button.dataset.designView; renderDesignView(); }));
 $$('[data-open-extension]').forEach(button => button.addEventListener("click", () => openExtension(button.dataset.openExtension)));
 $("#watchDemo").addEventListener("click", () => { $("#demoNotice").textContent = "The demo area is ready; the project video will be connected here when uploaded."; $(".showcase-section").scrollIntoView({behavior: "smooth"}); });
+$("#accountButton").addEventListener("click", () => state.auth?.authenticated
+  ? (window.confirm(ui("Sign out of this workspace?", "确认退出当前工作区？")) && logout())
+  : openAuth());
+$("#authClose").addEventListener("click", closeAuth);
+$("#authLogin").addEventListener("click", () => submitAuth("login"));
+$("#authRegister").addEventListener("click", () => submitAuth("register"));
+$("#authPassword").addEventListener("keydown", event => { if (event.key === "Enter") submitAuth("login"); });
+$("#apiAuthAction").addEventListener("click", () => {
+  if (!state.auth?.authenticated) return openAuth(ui("Sign in first, then configure your model provider.", "请先登录，再配置模型 Provider。"));
+  route("frontend");
+  setTimeout(() => $("#providerConfiguration")?.scrollIntoView({behavior: "smooth", block: "center"}), 100);
+});
 $("#exampleSelect").addEventListener("change", updateExampleDescription);
 $("#useExample").addEventListener("click", useExample);
 $("#rtlFile").addEventListener("change", event => { const file = event.target.files?.[0]; if (!file) return; $("#rtlFilename").value = file.name; const reader = new FileReader(); reader.onload = () => { $("#rtlSource").value = String(reader.result || ""); }; reader.readAsText(file); });
@@ -1081,9 +1206,8 @@ let initialLocale = "en";
 try { initialLocale = new URLSearchParams(location.search).get("lang") || localStorage.getItem("openroad-platform-locale") || "en"; } catch (_) { /* storage may be disabled */ }
 applyLocale(initialLocale);
 updateFlowMode();
-route(location.hash.slice(1) || "overview");
 (async () => {
-  await Promise.all([loadPlatform(), loadRtlscoutStatus(), loadExamples()]);
-  await loadDesigns();
-  await loadRuns();
+  await Promise.all([loadPlatform(), loadAuth()]);
+  route(location.hash.slice(1) || "overview");
+  if (state.auth?.authenticated) await loadAuthenticatedWorkspace();
 })();
