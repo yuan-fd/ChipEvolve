@@ -447,6 +447,18 @@ footer { height: 56px; padding: 0 24px; display: flex; justify-content: space-be
 .auth-card input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
 .auth-actions { margin-top: 18px; display: flex; gap: 8px; }
 .auth-card > small { display: block; margin-top: 14px; color: var(--muted); font-size: 8px; line-height: 1.6; }
+
+.spec-review, .batch-plan-review { margin-top: 14px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.spec-review[hidden], .batch-plan-review[hidden] { display: none; }
+.spec-review > div:first-child { color: var(--muted); font-size: 10px; line-height: 1.55; }
+.spec-review pre { max-height: 260px; margin: 12px 0; padding: 14px; overflow: auto; border: 1px solid var(--line); border-radius: 4px; background: #fff; color: #171717; font: 11px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre; }
+.spec-review pre:empty { display: none; }
+.spec-review-actions { display: flex; gap: 8px; margin-top: 10px; }
+.batch-plan-review { display: grid; gap: 12px; }
+.batch-candidate { display: grid; grid-template-columns: 42px 1fr; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.batch-candidate:last-child { border-bottom: 0; }
+.batch-candidate span { color: var(--muted); font-size: 9px; }
+.batch-candidate b { color: var(--heading); font-size: 10px; font-weight: 600; }
 .auth-close { position: absolute; top: 12px; right: 12px; width: 28px; height: 28px; border: 0; background: transparent; color: var(--muted); font-size: 20px; }
 
 .api-auth-section { padding: 56px 0; background: var(--bg); border-top: 1px solid var(--line); }

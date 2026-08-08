@@ -696,7 +696,21 @@ class ApiState:
         ):
             raise KeyError(f"Unknown campaign: {campaign_id}")
         try:
-            return self.stage_campaigns.describe(campaign_id)
+            result = self.stage_campaigns.describe(campaign_id)
+            members = {
+                item.member_id: item for item in self.campaign_store.members(campaign_id)
+            }
+            result["members"] = [
+                {
+                    **item,
+                    "design_id": members[item["member_id"]].task_spec.design_id,
+                    "parameters": dict(
+                        members[item["member_id"]].task_spec.parameters
+                    ),
+                }
+                for item in result["members"]
+            ]
+            return result
         except KeyError:
             pass
         campaign = self.campaign_store.get(campaign_id)
@@ -1083,7 +1097,9 @@ class ApiState:
         )
         if owner_id:
             self.auth.bind_resource("campaign", campaign_id, owner_id)
-        return self.stage_campaigns.describe(campaign_id)
+        return self.get_campaign(
+            campaign_id, owner_id=owner_id, include_legacy=include_legacy,
+        )
 
     def create_spec_session(self, payload: dict[str, Any]) -> dict[str, Any]:
         owner_id = _optional_string(payload.get("owner_id"))
@@ -1131,6 +1147,37 @@ class ApiState:
         return SpecConversationManager(self.spec_store, provider).turn(
             session_id, str(payload.get("message") or ""), design_context=design,
         )
+
+    def register_spec_design(self, session_id: str,
+                             payload: dict[str, Any]) -> dict[str, Any]:
+        if payload.get("confirmed") is not True:
+            raise ValueError("Explicit RTL approval is required")
+        owner_id = _optional_string(payload.get("owner_id"))
+        include_legacy = payload.get("include_legacy") is True
+        session = self.get_spec_session(
+            session_id, owner_id=owner_id, include_legacy=include_legacy,
+        )
+        if session.get("design_id"):
+            design = self._owned_design(
+                str(session["design_id"]), owner_id, include_legacy=include_legacy,
+            )
+            return {"session": session, "design": design, "created": False}
+        rtl = session["state"].get("rtl_source")
+        top = str(session["state"].get("top") or "design")
+        if not isinstance(rtl, str) or not rtl.strip():
+            raise ValueError("The specification has no generated RTL to register")
+        design = self.designs.import_rtl(
+            filename=f"{top}.v", source=rtl,
+            description=session["state"].get("functionality"), owner_id=owner_id,
+        )
+        self.spec_store.bind_design(session_id, design["id"])
+        return {
+            "session": self.get_spec_session(
+                session_id, owner_id=owner_id, include_legacy=include_legacy,
+            ),
+            "design": design,
+            "created": True,
+        }
 
     def execute_spec_session(self, session_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         owner_id = _optional_string(payload.get("owner_id"))
@@ -1210,6 +1257,18 @@ class ApiState:
                 self.runtime_store.request_cancel(member.run_id)
         return self.get_campaign(campaign_id, owner_id=owner_id,
                                  include_legacy=include_legacy)
+
+    def submit_campaign(self, campaign_id: str, *, owner_id: str | None = None,
+                        include_legacy: bool = False) -> dict[str, Any]:
+        self.get_campaign(campaign_id, owner_id=owner_id, include_legacy=include_legacy)
+        run_ids = self.stage_campaigns.ensure_runs(campaign_id)
+        return {
+            "campaign": self.get_campaign(
+                campaign_id, owner_id=owner_id, include_legacy=include_legacy,
+            ),
+            "run_ids": list(run_ids),
+            "execution_started": True,
+        }
 
     def submit_design_run(self, payload: dict[str, Any]) -> dict[str, Any]:
         owner_id = _optional_string(payload.get("owner_id"))
@@ -1702,6 +1761,12 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                     self._json(state.execute_spec_session(
                         unquote(match.group(1)), scoped(self._read_json())), HTTPStatus.CREATED)
                     return
+                match = re.fullmatch(r"/api/spec/sessions/([^/]+)/register-rtl", path)
+                if match:
+                    self._json(state.register_spec_design(
+                        unquote(match.group(1)), scoped(self._read_json())),
+                        HTTPStatus.CREATED)
+                    return
                 if path == "/api/campaigns/stage-aware":
                     self._json(state.create_stage_campaign(scoped(self._read_json())), HTTPStatus.CREATED)
                     return
@@ -1709,6 +1774,14 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                 if match:
                     self._json(state.collect_campaign_learning(
                         unquote(match.group(1)), scoped(self._read_json())), HTTPStatus.CREATED)
+                    return
+                match = re.fullmatch(r"/api/campaigns/([^/]+)/submit", path)
+                if match:
+                    self._read_json()
+                    self._json(state.submit_campaign(
+                        unquote(match.group(1)), owner_id=session.user_id,
+                        include_legacy=session.legacy_access,
+                    ), HTTPStatus.CREATED)
                     return
                 if path == "/api/designs/generate":
                     payload = self._read_json()

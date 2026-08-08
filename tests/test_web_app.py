@@ -283,6 +283,10 @@ def test_natural_language_api_returns_preview_without_submitting(tmp_path):
     })
     assert len(campaign["members"]) == 2
     assert campaign["stage_policy"]["stage_budgets"] == {"place": 120.0}
+    assert campaign["members"][0]["parameters"]["core_utilization_pct"] == 20
+    started = state.submit_campaign(campaign["campaign_id"])
+    assert started["execution_started"] is True
+    assert len(started["run_ids"]) == 2
 
 
 def test_design_import_creates_netlist_schematic_and_analysis(tmp_path):

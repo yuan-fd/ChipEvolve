@@ -9,6 +9,7 @@ const state = {
   rtlscoutStatus: null, providerProfile: null, selectedRtlscoutRun: null,
   requestedExtension: null, rtlscoutPoll: null, runtimePoll: null, healthPoll: null,
   health: null, auth: null, workspaceLoaded: false, locale: "en",
+  specSession: null, pendingCampaign: null,
 };
 const stages = ["synth", "floorplan", "place", "cts", "route", "finish"];
 const ZH = {
@@ -45,9 +46,9 @@ const ZH = {
   "tutorial.eyebrow": "端到端使用教程", "tutorial.title": "依次走完平台的各条工作流。",
   "tutorial.help": "建议先使用小型设计完成一次验收；所有可选支线都会明确标注，且不会自动启动。",
   "tutorial.1.title": "从规格生成并审查 RTL", "tutorial.1.help": "连接模型 Provider，描述功能与端口，在确认前检查生成的 RTL。",
-  "tutorial.key.required": "内置规则演示无需 Key · LLM 生成使用用户自己的 API Key", "tutorial.frontend.action": "打开前端设计 →",
+  "tutorial.key.required": "上传 RTL 和使用示例无需 Key · LLM Spec-to-RTL 使用用户自己的 API Key", "tutorial.frontend.action": "打开前端设计 →",
   "tutorial.2.title": "运行可验证的 RTL 自探索", "tutorial.2.help": "RTLScout 提出 RTL 改动，由 Verilator 与 Yosys 独立验证并评价每个候选。",
-  "tutorial.key.optional": "内置验证演示无需 Key · 完整探索使用用户自己的 API Key",
+  "tutorial.key.optional": "可验证离线演示无需 Key · 当前预览站尚未启用完整自定义 Provider 探索",
   "tutorial.3.title": "检查器件或电路研究支线", "tutorial.3.help": "选择主线设计后，平台会继承项目上下文，并明确列出 TCAD、互连电磁或 SPICE 还需要的专业输入。",
   "tutorial.device.requirement": "需要器件结构、互连端口或晶体管级网表；不使用固定示例冒充当前设计结果",
   "tutorial.key.none": "无需 API Key", "tutorial.device.action": "打开器件支线 →",
@@ -55,8 +56,8 @@ const ZH = {
   "tutorial.backend.action": "打开后端实现 →", "tutorial.5.title": "创建阶段感知批量实验",
   "tutorial.5.help": "切换到阶段感知批量模式，审查有界参数候选，只提交用户批准的实验。",
   "tutorial.6.title": "创建 Agent 引导的搜索计划", "tutorial.6.help": "使用 Agent 引导模式进行受监控实验和有界纠错；内部编排不会成为额外的用户操作入口。",
-  "tutorial.agent.status": "计划创建已可用 · 执行前需要明确批准", "tutorial.7.title": "查看固定版本的 3D IC 工作流",
-  "tutorial.7.help": "打开 TaiWei 支线，查看双层布局、跨层指标、3D 视图与重放证据。",
+  "tutorial.agent.status": "计划审查与用户确认后的执行均已可用", "tutorial.7.title": "查看固定版本的 3D IC 工作流",
+  "tutorial.7.help": "对于官方 gcd 验收设计，可打开 TaiWei 支线查看双层布局、跨层指标、3D 视图与重放证据。",
   "tutorial.8.title": "检查结果并收集验证经验", "tutorial.8.help": "对比版图与 QoR，再将成功执行证据明确收集到学习库；公开论文与 benchmark 元数据已按来源登记。",
   "tutorial.learning.status": "学习入库需明确触发，避免失败或未验证结果成为事实", "tutorial.results.action": "打开结果管理 →",
   "api.eyebrow": "模型 API 认证", "api.title": "连接自己的模型，不把凭据交给项目。",
@@ -65,7 +66,7 @@ const ZH = {
   "api.provider.title": "选择模型 Provider", "api.provider.help": "在前端设计页填写 HTTPS 的 OpenAI-compatible 地址、模型名称和自己的 API Key。",
   "api.secret.title": "API Key 仅保留在会话中", "api.secret.help": "Key 只在当前服务会话的内存中使用，不写入项目文件、设计数据库、产物或 Git。",
   "api.run.title": "只启动你明确选择的功能", "api.run.help": "连接 Provider 不会自动启动任务。只有主动运行大模型 Spec-to-RTL 或 RTL 探索时才会调用 API。",
-  "api.required": "需要 API Key", "api.required.help": "大模型 Spec-to-RTL、完整 RTLScout 探索和 Tool-Evolve。基线 RTL-to-GDS、报告查看、内置验证示例和确定性分析不需要模型 Key。",
+  "api.required": "需要 API Key", "api.required.help": "大模型 Spec-to-RTL 与 Tool-Evolve 使用用户自己的 Key。完整自定义 Provider RTLScout 探索尚未在当前预览站启用。基线 RTL-to-GDS、报告、示例和确定性分析无需模型 Key。",
   "switch.frontend": "前端设计", "switch.backend": "后端实现", "switch.results": "运行结果",
   "frontend.kicker": "交互式设计工作区", "frontend.title": "前端设计",
   "frontend.subtitle": "按清晰顺序创建或导入 RTL、完成综合并查看电路结果。",
@@ -75,7 +76,7 @@ const ZH = {
   "frontend.rtl.source": "RTL 源码", "frontend.upload.action": "导入并综合",
   "frontend.spec.title": "根据自然语言生成 RTL", "frontend.spec.help": "描述功能和接口，在物理实现前先审查生成结果。",
   "frontend.spec.label": "自然语言规格", "frontend.spec.placeholder": "设计一个带使能和高电平复位的四位同步计数器。",
-  "frontend.spec.action": "创建规格会话", "frontend.spec.note": "模型生成需要连接用户自己的 Provider。",
+  "frontend.spec.action": "创建规格会话", "frontend.spec.note": "Spec-to-RTL 需要连接模型 Provider；未连接时，规则助手只能为已有设计配置流程，不会编造 RTL。",
   "frontend.examples.title": "选择经过审计的 RTL 示例", "frontend.examples.subtitle": "包含基础逻辑、ALU、控制器、UART 和教学用 RISC-V。",
   "frontend.examples.selected": "当前示例", "frontend.examples.action": "综合该示例",
   "frontend.results.title": "综合结果", "frontend.results.subtitle": "查看门级统计、电路图、Verilog 源码和综合网表。",
@@ -137,7 +138,9 @@ const LOOSE_ZH = {
   "Baseline flow": "基线流程", "Stage-aware batch": "阶段感知批量实验", "Agent-guided search": "Agent 引导搜索",
   "Finish · GDS": "完成 · GDS", "Routing": "布线", "Clock tree": "时钟树", "Placement": "布局", "Floorplan": "布局规划", "Synthesis": "逻辑综合",
   "Execution ready": "执行就绪", "Console ready": "控制台就绪", "API unavailable": "API 不可用", "Connecting": "连接中",
-  "Platform API status": "平台 API 状态"
+  "Platform API status": "平台 API 状态",
+  "Clarification": "补充说明", "Update specification": "更新规格", "Approve and register RTL": "批准并登记 RTL",
+  "Approve and start selected plan": "批准并启动该计划"
 };
 const originalText = new WeakMap();
 const originalPlaceholders = new WeakMap();
@@ -242,6 +245,7 @@ async function logout() {
   state.workspaceLoaded = false;
   state.designs = []; state.runs = []; state.results = [];
   state.selectedDesign = null; state.selectedRun = null;
+  state.specSession = null; state.pendingCampaign = null;
   if (state.runtimePoll) clearTimeout(state.runtimePoll);
   if (state.rtlscoutPoll) clearTimeout(state.rtlscoutPoll);
   renderAuth(); resetDesignResult(); resetRunResult(); route("overview");
@@ -461,6 +465,10 @@ function renderDesignChips() {
 
 async function selectDesign(id) {
   if (!id) return;
+  if (state.selectedDesign?.id && state.selectedDesign.id !== id) {
+    state.pendingCampaign = null;
+    if ($("#batchPlanReview")) $("#batchPlanReview").hidden = true;
+  }
   const design = await api(`/api/designs/${encodeURIComponent(id)}`);
   state.selectedDesign = design;
   $("#frontendDesign").value = id;
@@ -542,12 +550,57 @@ async function createSpec() {
     }
     if (state.selectedDesign) payload.design_id = state.selectedDesign.id;
     const result = await post("/api/spec/sessions", payload);
-    message("#specMessage", ui(`Specification session created · ${result.status}. Review and confirmation are recorded separately.`, `规格会话已创建 · ${result.status}。审查与确认将分别记录。`));
+    state.specSession = result;
+    renderSpecReview(result);
+    message("#specMessage", ui("Specification draft created. Review the structured result below.", "规格草案已创建，请在下方审查结构化结果。"));
   } catch (error) {
     message("#specMessage", error.message, true);
   } finally {
     button.disabled = false;
   }
+}
+
+function renderSpecReview(session) {
+  const root = $("#specReview");
+  const proposal = session?.state || {};
+  root.hidden = false;
+  const questions = proposal.clarification_questions || [];
+  const assumptions = proposal.assumptions || [];
+  $("#specReviewSummary").innerHTML = `<b>${esc(proposal.top || ui("Top module pending", "顶层模块待确认"))}</b><br>${esc(proposal.functionality || proposal.objective || "")}<br>${assumptions.length ? `${ui("Assumptions", "假设")}: ${esc(assumptions.join("; "))}` : ""}${questions.length ? `<br>${ui("Questions", "待确认问题")}: ${esc(questions.join("; "))}` : ""}`;
+  $("#specRtlPreview").textContent = proposal.rtl_source || "";
+  const needsClarification = session.status === "clarification_required";
+  $("#specClarificationLabel").hidden = !needsClarification;
+  $("#continueSpec").hidden = !needsClarification;
+  $("#approveSpecRtl").hidden = !(proposal.ready_for_execution && proposal.rtl_source && !session.design_id);
+}
+
+async function continueSpec() {
+  const answer = $("#specClarification").value.trim();
+  if (!state.specSession || !answer) return message("#specMessage", ui("Answer the clarification question first.", "请先回答待确认问题。"), true);
+  const button = $("#continueSpec");
+  button.disabled = true;
+  try {
+    const result = await post(`/api/spec/sessions/${encodeURIComponent(state.specSession.session_id)}/turn`, {message: answer});
+    state.specSession = result;
+    $("#specClarification").value = "";
+    renderSpecReview(result);
+    message("#specMessage", ui("Specification updated. Review it again before approval.", "规格已更新，请再次审查后确认。"));
+  } catch (error) { message("#specMessage", error.message, true); }
+  finally { button.disabled = false; }
+}
+
+async function approveSpecRtl() {
+  if (!state.specSession) return;
+  const button = $("#approveSpecRtl");
+  button.disabled = true;
+  try {
+    const result = await post(`/api/spec/sessions/${encodeURIComponent(state.specSession.session_id)}/register-rtl`, {confirmed: true});
+    state.specSession = result.session;
+    renderSpecReview(result.session);
+    message("#specMessage", ui(`${result.design.module} is registered and synthesized. Continue in Backend Design when ready.`, `${result.design.module} 已登记并完成综合；准备好后可进入后端设计。`));
+    await loadDesigns(result.design.id);
+  } catch (error) { message("#specMessage", error.message, true); }
+  finally { button.disabled = false; }
 }
 
 async function saveProvider() {
@@ -925,6 +978,10 @@ async function submitFlow() {
   const button = $("#submitFlow");
   button.disabled = true;
   const mode = $("#flowMode").value;
+  if (mode === "baseline") {
+    state.pendingCampaign = null;
+    $("#batchPlanReview").hidden = true;
+  }
   const objective = $('input[name="flowObjective"]:checked')?.value || "balanced";
   message("#flowMessage", mode === "baseline" ? ui("Saving the design task…", "正在保存设计任务……") : ui("Creating a bounded experiment plan for review…", "正在创建有界实验计划，等待审查……"));
   try {
@@ -944,6 +1001,8 @@ async function submitFlow() {
           : objective === "power" ? {place_density: [Math.max(.01, density - .05), density, Math.min(1, density + .05)]}
             : {core_utilization_pct: [Math.max(1, util - 5), util, Math.min(99, util + 5)]};
       const campaign = await post("/api/campaigns/stage-aware", {...base, name: `${mode}-${objective}-${id}`, parameter_grid: parameterGrid, max_parallel: 1, objective_metric: objectiveMetric, direction: objective === "timing" ? "max" : "min", top_k: 2, max_repairs: mode === "agent" ? 2 : 0, max_total_runs: 6});
+      state.pendingCampaign = campaign;
+      renderBatchPlan(campaign);
       message("#flowMessage", ui(`Batch experiment plan created with ${campaign.members.length} candidates. It has not been submitted for execution.`, `批量实验计划已创建，共 ${campaign.members.length} 个候选；尚未提交执行。`));
     }
   } catch (error) {
@@ -952,6 +1011,32 @@ async function submitFlow() {
     button.disabled = false;
     updateFlowMode();
   }
+}
+
+function renderBatchPlan(campaign) {
+  const root = $("#batchPlanReview");
+  root.hidden = false;
+  $("#batchPlanCandidates").innerHTML = (campaign.members || []).map((member, index) => {
+    const parameters = Object.entries(member.parameters || {})
+      .filter(([name]) => ["clock_period_ns", "core_utilization_pct", "place_density", "target_stage"].includes(name))
+      .map(([name, value]) => `${name.replaceAll("_", " ")} = ${value}`).join(" · ");
+    return `<div class="batch-candidate"><span>${String(index + 1).padStart(2, "0")}</span><b>${esc(parameters || ui("Inherited baseline parameters", "继承基线参数"))}</b></div>`;
+  }).join("");
+}
+
+async function approveBatchPlan() {
+  if (!state.pendingCampaign) return;
+  const button = $("#approveBatchPlan");
+  button.disabled = true;
+  message("#flowMessage", ui("Starting the approved batch experiment…", "正在启动已批准的批量实验……"));
+  try {
+    const result = await post(`/api/campaigns/${encodeURIComponent(state.pendingCampaign.campaign_id)}/submit`, {});
+    $("#batchPlanReview").hidden = true;
+    state.pendingCampaign = null;
+    message("#flowMessage", ui(`${result.run_ids.length} design tasks started. Progress is shown below one task at a time.`, `已启动 ${result.run_ids.length} 个设计任务；下方会逐个显示当前任务进度。`));
+    await loadRuns(result.run_ids[0] || null);
+  } catch (error) { message("#flowMessage", error.message, true); }
+  finally { button.disabled = false; }
 }
 
 function updateFlowMode() {
@@ -1188,6 +1273,8 @@ $("#frontendDesign").addEventListener("change", event => selectDesign(event.targ
 $("#backendDesign").addEventListener("change", event => selectDesign(event.target.value));
 $("#importRtl").addEventListener("click", importRtl);
 $("#createSpec").addEventListener("click", createSpec);
+$("#continueSpec").addEventListener("click", continueSpec);
+$("#approveSpecRtl").addEventListener("click", approveSpecRtl);
 $("#saveProvider").addEventListener("click", saveProvider);
 $("#rtlscoutMode").addEventListener("change", updateRtlscoutControls);
 $("#rtlscoutBenchmark").addEventListener("change", updateRtlscoutControls);
@@ -1196,6 +1283,7 @@ $("#rtlscoutSteps").addEventListener("input", updateRtlscoutControls);
 $("#runRtlscout").addEventListener("click", submitRtlscout);
 $("#runSelect").addEventListener("change", event => selectRun(event.target.value));
 $("#submitFlow").addEventListener("click", submitFlow);
+$("#approveBatchPlan").addEventListener("click", approveBatchPlan);
 $("#flowMode").addEventListener("change", updateFlowMode);
 $$('[data-locale]').forEach(button => button.addEventListener("click", () => { applyLocale(button.dataset.locale); updateFlowMode(); if (!state.selectedRun) renderStageRail(new Map()); }));
 $("#refreshResults").addEventListener("click", loadResults);

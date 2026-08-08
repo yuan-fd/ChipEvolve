@@ -355,6 +355,24 @@ class SpecConversationStore:
                 (run_id, design_id, now, session_id),
             )
 
+    def bind_design(self, session_id: str, design_id: str) -> None:
+        """Register reviewed generated RTL without starting physical implementation."""
+        now = _now()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT design_id FROM spec_sessions WHERE session_id = ?", (session_id,)
+            ).fetchone()
+            if row is None:
+                raise KeyError(f"Unknown spec session: {session_id}")
+            if row["design_id"] and row["design_id"] != design_id:
+                raise ValueError("Spec session is already bound to another design")
+            connection.execute(
+                """UPDATE spec_sessions SET design_id = ?, status = 'design_registered',
+                   updated_at = ? WHERE session_id = ?""",
+                (design_id, now, session_id),
+            )
+
     @staticmethod
     def _check_budget(row: sqlite3.Row, *, llm: bool = False, eda: bool = False) -> None:
         age = time.time() - datetime.fromisoformat(row["created_at"]).timestamp()

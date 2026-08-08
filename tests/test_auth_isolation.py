@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from apps.api.app import ApiState, build_server
+from openroad_platform_scheduler import SpecProposal
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -97,6 +98,49 @@ def test_public_overview_login_and_two_user_design_run_isolation(tmp_path: Path)
         assert status == 201 and profile["api_key"] is None
         assert len(request(alice, base, "/api/providers")[1]["profiles"]) == 1
         assert request(bob, base, "/api/providers")[1]["profiles"] == []
+
+        spec_id = state.spec_store.create(
+            project_id="openroad-platform", design_id=None,
+            provider="test-provider", model="test-model",
+        )
+        state.spec_store.append_exchange(spec_id, "Generate an inverter", SpecProposal(
+            objective="Generate inverter RTL", functionality="y is the inverse of a",
+            top="generated_top", clock=None, reset=None,
+            target_platform="nangate45", target_stage="finish",
+            clock_period_ns=10.0, core_utilization_pct=20.0,
+            place_density=0.5,
+            rtl_source=("module generated_top(input a, output y); "
+                        "assign y = ~a; endmodule\n"),
+            missing_fields=(), assumptions=(), clarification_questions=(),
+            ready_for_execution=True,
+        ), provider="test-provider", model="test-model")
+        state.auth.bind_resource("spec_session", spec_id, alice_session["user"]["id"])
+        status, registered = request(
+            alice, base, f"/api/spec/sessions/{spec_id}/register-rtl",
+            method="POST", body={"confirmed": True},
+        )
+        assert status == 201 and registered["design"]["module"] == "generated_top"
+        assert registered["session"]["status"] == "design_registered"
+        assert request(bob, base, f"/api/designs/{registered['design']['id']}")[0] == 404
+
+        status, campaign = request(
+            alice, base, "/api/campaigns/stage-aware", method="POST", body={
+                "design_id": design["id"], "flow_mode": "campaign",
+                "target_stage": "synth",
+                "parameter_grid": {"core_utilization_pct": [20, 30]},
+            },
+        )
+        assert status == 201 and len(campaign["members"]) == 2
+        assert campaign["members"][0]["parameters"]["target_stage"] == "synth"
+        campaign_id = campaign["campaign_id"]
+        assert request(bob, base, f"/api/campaigns/{campaign_id}")[0] == 404
+        status, started = request(
+            alice, base, f"/api/campaigns/{campaign_id}/submit",
+            method="POST", body={},
+        )
+        assert status == 201 and len(started["run_ids"]) == 2
+        assert started["execution_started"] is True
+        assert request(bob, base, "/api/runtime/runs")[1]["runs"] == []
 
         assert request(alice, base, "/api/auth/logout", method="POST", body={})[0] == 200
         assert request(alice, base, "/api/designs")[0] == 401
