@@ -82,7 +82,10 @@ def test_rtlscout_web_task_is_bounded_and_contains_no_credential(tmp_path: Path)
     )
     status = state.rtlscout_status()
     assert status["ready"] is True
-    assert status["offline_demo"]["benchmarks"] == ["simple_adder"]
+    benchmarks = status["offline_demo"]["benchmarks"]
+    assert "simple_adder" in benchmarks
+    assert benchmarks
+    assert all(not name.endswith("_spirehdl") for name in benchmarks)
     assert status["offline_demo"]["api_key_required"] is False
 
     submitted = state.submit_rtlscout({
@@ -98,8 +101,18 @@ def test_rtlscout_web_task_is_bounded_and_contains_no_credential(tmp_path: Path)
 
     with pytest.raises(ValueError, match="secure worker secret bridge"):
         state.submit_rtlscout({"mode": "byok"})
-    with pytest.raises(ValueError, match="simple_adder"):
+    with pytest.raises(ValueError, match="available RTLScout benchmarks"):
         state.submit_rtlscout({"benchmark": "unbounded-benchmark"})
+    with pytest.raises(ValueError, match="available RTLScout benchmarks"):
+        state.submit_rtlscout({"benchmark": "turbo_rtl_spirehdl"})
+
+    if "alu8" in benchmarks:
+        submitted_alu8 = state.submit_rtlscout({
+            "mode": "offline_demo", "benchmark": "alu8",
+            "cost_metric": "yosys_cells", "max_steps": 3,
+        })
+        task_alu8 = submitted_alu8["run"]["run"]["task_spec"]
+        assert task_alu8["inputs"]["benchmark"] == "alu8"
 
 
 def test_backend_modes_keep_single_run_and_campaign_semantics_distinct(tmp_path: Path) -> None:

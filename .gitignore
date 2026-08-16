@@ -7,6 +7,14 @@ dist/
 build/
 *.egg-info/
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.*
+.mypy_cache/
+.ruff_cache/
+node_modules/
 .external-src/
 .tools/
 
@@ -15,3 +23,6 @@ var/
 runs/
 artifacts/
 *.log
+
+# Internal research planning documents (not public)
+plan/
