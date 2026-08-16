@@ -1,340 +1,193 @@
-# OpenROAD Self-Evolving EDA Platform
+# OpenROAD Self-Evolving EDA Platform / 自演化开放芯片设计平台
 
-An evidence-first control plane for reproducible digital-design experiments.
-The platform turns design intent or RTL into durable 2D/3D implementation
-tasks, isolates EDA tools behind versioned adapters, hashes every registered
-artifact, and admits only verified observations into its learning loop.
+> 一个面向芯片设计自动化的开放平台：2D / 3D 物理设计 + AI 自演化学习。
+> An open platform for chip-design automation: 2D / 3D physical design with an AI self-evolution loop.
 
-OpenROAD Self-Evolving EDA Platform 是一个“证据优先”的可复现 EDA 控制平面。
-平台将设计意图或 RTL 转换为持久化的 2D/3D 实现任务，通过版本化适配器隔离
-工具链，对登记产物计算哈希，并且只允许经过验证的运行结果进入自演化闭环。
+---
 
-> Research status: this repository is a local research platform, not a
-> sign-off service. A successful run means that the configured open-source
-> workflow and its artifact gates passed; it is not a tape-out guarantee.
+## 平台定位 / What is this
 
-## Why this platform / 平台定位
+把「芯片设计」从手工流程变成 **自动化 + 会学习** 的开放平台：
 
-The project separates control, execution, evidence, and learning so that an
-LLM or UI message can propose work but cannot declare physical-design success.
+- **自动跑通**：输入 RTL 图纸，自动完成 2D / 3D 芯片物理设计（综合 → 布局 → 布线 → 版图），全程留档可回溯；
+- **会学习**：每次成功经验自动沉淀进知识库，AI 参考历史给出下一步参数建议（自演化闭环）；
+- **开放扩展**：插件式架构，新 EDA 工具只需按接口写一个适配器即可接入，互不干扰。
 
-- **Core flow / 核心流程**: reviewed Spec-to-RTL, registered RTL, durable
-  TaskSpecs, six-stage 2D ORFS, independent TaiWei 3D, run comparison, and
-  hashed implementation evidence.
-- **Extension ecosystem / 扩展生态**: RTLScout, AgenticPD, TaiWei,
-  ImplCraft/Tool-Evolve, and EDACraft adapters use the same bounded plugin
-  protocol; optional branches do not become dependencies of the core flow.
-- **Learning system / 学习系统**: public knowledge and tenant observations are
-  kept separate; explicit collection, provenance checks, recommendations, and
-  human decisions form an observed-only feedback loop.
+一句话：**图纸进去，版图出来，经验留下，越用越聪明。**
 
-核心原则是：模型可以提出候选方案，用户可以批准任务，但 Runtime 和真实工具产物
-才是状态、指标和成功结论的权威来源。失败运行和诊断证据不会被成功文案覆盖。
+---
 
-## Product surfaces / 功能界面
+## 功能清单 / Feature Status
 
-The current Web application has five top-level routes. Model-provider settings
-are embedded in the Overview and Frontend surfaces rather than presented as a
-sixth route.
-
-| Surface | Purpose | 中文说明 |
+| 功能 | 状态 | 说明 |
 | --- | --- | --- |
-| Overview | Platform health, capability map, tutorial, optional branches | 平台状态、能力地图、教程和可选支线 |
-| Frontend Design | Upload/generate RTL, review synthesis and schematics, run bounded RTL exploration | 上传或生成 RTL、查看综合与原理图、运行有界 RTL 探索 |
-| Backend Design | Submit 2D ORFS, batch/search plans, or independent TaiWei 3D tasks | 提交 2D ORFS、批量/搜索计划或独立 TaiWei 3D 任务 |
-| Projects & Results | Inspect designs, runs, metrics, views, artifacts, and hashes | 查看设计、任务、指标、视图、产物及哈希 |
-| Self-Evolution | Inspect knowledge, collect verified observations, review recommendations | 查看知识、收集验证观测、审核推荐 |
+| 2D 物理设计（ORFS 六阶段） | ✅ 已跑通 | Nangate45 RTL→GDS 全流程真实验证 |
+| 3D 物理设计（TaiWei） | ✅ 已跑通 | 3 种工艺库 × 任意设计，3 个真实变体验证 |
+| 网页工作台（六页） | ✅ 已可用 | Overview / Frontend / Backend / Projects / Extensions / Self-Evolution |
+| 自然语言生成 RTL | ✅ 已可用 | Spec-to-RTL，需人工确认后登记 |
+| 自演化学习（知识入库 + AI 建议） | ✅ 已可用 | 入库链路实测通过（admitted）；建议采用 GP/BO + 行为克隆 |
+| 插件生态 | ✅ 架构就绪 | TaiWei / RTLScout / AgenticPD / EDACraft / ImplCraft / DPLEvolve |
+| 免登录内部模式 | ✅ 已可用 | `OPENROAD_PLATFORM_NO_AUTH=1` 跳过注册，共享工作区 |
+| 批量实验（Campaign / Agent 搜索） | 🚧 部分可用 | 创建候选计划并人工确认后执行 |
+| LLM 在线优化（需模型服务） | 🚧 需配置 | BYOK 或共享模型，凭据仅存内存 |
 
-Authentication provides per-user designs, runs, reports, learning records, and
-provider profiles. Provider secrets are session-only and must never be stored
-in TaskSpecs, SQLite evidence, artifacts, logs, or Git.
+> 完整能力地图见网页 Overview 页与 [教程 01](docs/tutorials/01_openroad_platform_overview.html)。
 
-## Architecture / 架构
+---
 
-```mermaid
-flowchart LR
-    UI[Web UI / CLI]
-    API[API and application services]
-    Q[SQLite Runtime and Campaign stores]
-    W[Independent Runtime worker]
-    R[Workflow Runtime]
-    P[Plugin registry and ProcessAdapter]
-    T[ORFS / OpenROAD / Yosys / TaiWei / extensions]
-    E[Hashed artifacts, metrics, events]
-    L[Observed-only learning and recommendations]
-    H[Human review]
-
-    UI --> API --> Q
-    Q --> W --> R --> P --> T
-    T --> P --> E
-    E --> API --> UI
-    E --> L --> H
-    H -->|approve a new bounded task| API
-```
-
-Key invariants / 关键不变量：
-
-- The API submits and queries work; it does not own EDA subprocesses.
-- Every Runtime attempt has a separate workspace, lease, event history, and
-  terminal result. Timeout/cancellation targets the process group.
-- `TaskSpec`, `PluginManifest`, and adapter result envelopes are versioned and
-  validated. Artifact paths must remain inside the attempt workspace.
-- Success requires a zero process result plus all required, non-empty
-  artifacts. Runtime records artifact size and SHA-256 after validation.
-- Live Runtime SQLite/WAL files belong on node-local storage such as `/tmp`;
-  large workspaces and preserved evidence remain outside Git.
-- API 只提交和查询任务，不直接持有 EDA 子进程；成功状态必须同时通过进程结果、
-  协议校验和必需产物校验。
-
-### Code map / 代码职责
-
-| Path | Responsibility |
-| --- | --- |
-| `apps/api/` | HTTP server, authentication, design/application services, Runtime submission |
-| `apps/web/` | Dependency-light browser workspace and bilingual UI strings |
-| `packages/contracts/` | Versioned task, manifest, result, event, evidence, and learning contracts |
-| `packages/scheduler/` | Runtime store, leases, attempts, campaigns, model/spec orchestration |
-| `packages/execution/` | Plugin registry, process isolation, ORFS and extension adapters |
-| `packages/analysis/` | Netlist/physical analysis, evidence export, learning and recommendations |
-| `packages/visualization/` | Graphviz schematics, KLayout views, sampled 3D layer rendering |
-| `integrations/` | Declarative manifests, source/environment locks, license audits, adapter shims |
-| `workflows/` | Cross-component workflow semantics and operating notes |
-| `scripts/` | Demo, worker, toolchain build, acceptance, backup, and safety utilities |
-| `tests/` | Contract, API, Runtime, adapter, analysis, visualization, and regression tests |
-| `docs/` | Architecture, operations, evidence, reports, ADRs, and migration material |
-| `var/` | Ignored user designs and durable application evidence; never clean casually |
-
-<details>
-<summary>Repository tree / 仓库目录树</summary>
+## 目录树 / Repository Layout
 
 ```text
 openroad-platform/
 ├── apps/
-│   ├── api/                 # HTTP shell and application services
-│   └── web/                 # browser UI and static assets
+│   ├── api/                 # 后台服务：HTTP 接口、设计/任务/学习服务
+│   └── web/                 # 前端网页（六页工作台，中英双语）
 ├── packages/
-│   ├── contracts/           # versioned control/evidence contracts
-│   ├── scheduler/           # Runtime, stores, campaigns, orchestration
-│   ├── execution/           # plugin and EDA execution plane
-│   ├── analysis/            # analysis and learning plane
-│   └── visualization/       # schematic, layout, and 3D rendering
-├── integrations/            # manifests, locks, audits, adapter shims
-├── workflows/               # spec, optimization, 3D, tool-evolve guides
-├── scripts/                 # worker, demo, acceptance, backup, safety
-├── tests/                   # automated regression suite and fixtures
-├── docs/                    # architecture, operations, ADRs, evidence
-├── project_kb/              # reviewed decisions, pitfalls, specifications
-├── knowledge/               # public-knowledge source material
-├── tasks/                   # reviewed task definitions
-├── demos/                   # demo inputs
-├── plan/                    # planning and research documents
-├── memory_snapshots/        # preserved project-state snapshots
-├── .external-src/           # ignored pinned upstream source checkouts
-├── .tools/                  # ignored local toolchains and acceptance tools
-├── var/                     # ignored live designs and application evidence
-├── runs/                    # ignored immutable run workspaces
-└── artifacts/               # ignored generated acceptance artifacts
+│   ├── contracts/           # 数据契约：任务单(TaskSpec)/插件声明/产物规则
+│   ├── scheduler/           # 调度：SQLite 队列、Runtime、worker、campaign
+│   ├── execution/           # 执行：插件注册表、2D/3D 适配器、进程隔离
+│   ├── analysis/            # 分析+学习：指标分析、知识入库、GP/BO、AI 建议
+│   └── visualization/       # 可视化：原理图(Graphviz)、版图(KLayout)、3D 视图
+├── integrations/            # 插件声明与固定源码审计（taiwei/rtlscout/...）
+├── workflows/               # 标准流程说明（spec-to-gds / three_d / ...）
+├── scripts/                 # 启动、worker、验收、工具链构建脚本
+├── tests/                   # 自动测试（pytest）
+├── docs/                    # 文档：架构、教程(HTML)、操作、插件指南
+├── knowledge/               # 公开知识语料
+├── project_kb/              # 技术决策与经验记录
+├── var/                     # 运行证据（git 忽略，勿删）
+└── .tools/  .external-src/  # 本地工具链 / 固定第三方源码（git 忽略）
 ```
 
-</details>
+---
 
-Workflow guides:
+## 开发模式 / Development Model
 
-- [`workflows/spec_to_gds/README.md`](workflows/spec_to_gds/README.md)
-- [`workflows/flow_optimization/README.md`](workflows/flow_optimization/README.md)
-- [`workflows/three_d/README.md`](workflows/three_d/README.md)
-- [`workflows/tool_evolve/README.md`](workflows/tool_evolve/README.md)
+- **插件式并行开发**：每个插件是独立的 `xxx_plugin.py` + `xxx_adapter.py` 文件对，
+  插件之间零依赖；新插件只需 ①新建自己的文件对 ②在 `execution/__init__.py` 导出
+  ③在 `app.py` 挂载 manifest。张三改 TaiWei、李四改 RTLScout，互不冲突。
+- **分支流程**：功能分支开发 → 本地提交 → 跑全量测试 → 合入 main（内部直接 push）。
+- **测试**：`python3 -m pytest -q`（当前 215 passed / 2 failed，2 个为环境性）。
 
-## Requirements / 环境依赖
+> 插件开发详细指南见 [docs/PLUGINS.md](docs/PLUGINS.md) 与 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-The verified host profile is ARM64 openEuler with Python 3.9. The contracts and
-most unit tests are portable, but real physical flows require the pinned local
-EDA installations.
+---
 
-| Component | Verified/default location | Notes |
-| --- | --- | --- |
-| Python | 3.9+ | `setuptools` compatibility entry point is retained in `setup.py` |
-| 2D ORFS | `../OpenROAD-flow-scripts` | Fixed ORFS/OpenROAD/Yosys installation required for real 2D runs |
-| 2D binaries | `../bin/openroad`, `../bin/yosys` | Override with `OPENROAD_BIN` and `YOSYS_BIN` where supported |
-| TaiWei 3D | `.tools/taiwei-official-3d` | Pinned private local toolchain; see the environment lock and license audit |
-| Visualization | KLayout `pya`, Graphviz, Matplotlib, NumPy | Install with the `visualization` extra when not already provisioned |
-| Runtime DB | `/tmp/openroad-platform-<uid>/` | API and worker must use identical Runtime/Campaign/Optimization paths |
+## 接口与插件说明 / API & Plugins
 
-TaiWei uses its own ORFS-Research/OpenROAD/Yosys profile. Its manifest builds
-`PATH` and `LD_LIBRARY_PATH` from `.tools/taiwei-official-3d/dependencies/lib`,
-`.tools/taiwei-official-3d/dependencies/lib64`, and the openEuler GCC 12 runtime
-directory. Do not overwrite the shared 2D toolchain with 3D binaries. See
-[`integrations/taiwei_pin_3d/environment.lock.json`](integrations/taiwei_pin_3d/environment.lock.json)
-and [`scripts/build_taiwei_official_toolchain.sh`](scripts/build_taiwei_official_toolchain.sh).
+平台对外提供 REST API（网页全部功能均可通过 API 调用）：
 
-Common environment variables:
-
-| Variable | Purpose |
+| 接口 | 作用 |
 | --- | --- |
-| `HOST`, `PORT` | Local Web bind address and port (`run_demo.sh` / API defaults apply) |
-| `ORFS_ROOT` | 2D OpenROAD Flow Scripts root |
-| `OPENROAD_BIN`, `YOSYS_BIN` | Real 2D binary locations checked by `run_demo.sh` |
-| `OPENROAD_PLATFORM_LOCAL_STATE` | Parent directory for default node-local Runtime databases |
-| `OPENROAD_PLATFORM_RUNTIME_DB` | Explicit Workflow Runtime SQLite path |
-| `OPENROAD_PLATFORM_CAMPAIGN_DB` | Explicit Campaign SQLite path |
-| `OPENROAD_PLATFORM_OPTIMIZATION_DB` | Explicit optimization SQLite path |
-| `OPENROAD_PLATFORM_RUNTIME_WORKER_HEARTBEAT` | Worker heartbeat JSON path |
-| `ICCAD_ROOT` | Optional legacy design/generator adapter root |
-| `OPENROAD_PLATFORM_EXTERNAL_URL` | External URL used when evaluating whether provider transport is secure |
+| `/api/auth/*` | 登录注册（免登录模式可跳过） |
+| `/api/designs/*` | 设计登记 / 导入 / 生成 |
+| `/api/runtime/runs/*` | 2D/3D 任务提交、进度、取消、产物 |
+| `/api/extensions/taiwei/run` | 3D 任务提交（工艺库/参数） |
+| `/api/extensions/edacraft/*` | 专业小工具（TCAD/SPICE 等） |
+| `/api/platform/results` | 项目与结果列表 |
+| `/api/runtime/runs/<id>/collect-learning` | 知识入库 |
+| `/api/learning/observations` | 查看已入库知识 |
+| `/api/recommendations/*` | AI 建议与人工决策 |
 
-Prefer explicit CLI paths in production-like local runs so the API and worker
-cannot accidentally resolve different state directories.
+**插件三件套**：① `plugin.json`（身份证：能力/工具/产物规则）② `xxx_plugin.py`
+（任务单生成器）③ `xxx_adapter.py`（机器操作员：翻译任务单→跑工具→收产物）。
+符合契约即插即用，详见 [docs/PLUGINS.md](docs/PLUGINS.md)。
 
-### Python installation
+---
 
-```bash
-cd /path/to/openroad-platform
-python3 -m pip install -e '.[test,visualization]'
-```
+## 快速启动 / Quick Start
 
-On a provisioned/offline server, the repository can also run directly with the
-package source roots:
+### 方式一：同一服务器（无需 clone）
+
+仓库已在 `~/openroad-platform`，直接启动：
 
 ```bash
-export PYTHONPATH="$PWD/packages/contracts/src:$PWD/packages/execution/src:$PWD/packages/scheduler/src:$PWD/packages/analysis/src:$PWD/packages/visualization/src"
-```
-
-## Quick start / 快速启动
-
-First verify that the default ORFS and binary paths exist. Then start the local
-Web process and Runtime worker together:
-
-```bash
-cd /path/to/openroad-platform
+cd ~/openroad-platform
+# 启动 worker（执行 EDA 任务）和 web（网页服务）
 HOST=127.0.0.1 PORT=8000 ./scripts/run_demo.sh
+# 免登录内部模式（可选）：export OPENROAD_PLATFORM_NO_AUTH=1 后再启动
 ```
 
-Open `http://127.0.0.1:8000`. For a remote host, keep the service bound to
-loopback and use an SSH tunnel from your workstation:
+浏览器打开 `http://127.0.0.1:8000`（远程机器用 SSH 隧道）：
 
 ```bash
-ssh -N -L 8000:127.0.0.1:8000 user@eda-host
+ssh -N -L 8000:127.0.0.1:8000 <用户名>@<服务器>
 ```
 
-Then open `http://127.0.0.1:8000` in the workstation browser. The built-in
-server is for a trusted research environment; it is not a TLS reverse proxy.
+### 方式二：新机器 clone
 
-### Start API and worker separately
+```bash
+git clone https://github.com/CODA-Team/ChipEvolve.git
+cd ChipEvolve
+python3 -m pip install -e '.[test,visualization]'   # 安装平台本体（可选依赖）
+./scripts/run_demo.sh                                # 启动
+```
 
-Choose one node-local state directory and pass the same files to both
-processes. This prevents a stale or unrelated worker from consuming a task.
+### 分别启动 worker 和 web（推荐）
 
 ```bash
 export PLATFORM_STATE=/tmp/openroad-platform-$UID
 mkdir -p "$PLATFORM_STATE"
 
+# 终端 1：worker
 python3 scripts/run_runtime_worker.py \
-  --db var/platform.db \
-  --orfs-root ../OpenROAD-flow-scripts \
-  --runtime-db "$PLATFORM_STATE/runtime.db" \
-  --campaign-db "$PLATFORM_STATE/campaign.db" \
-  --optimization-db "$PLATFORM_STATE/optimization.db" \
-  --heartbeat "$PLATFORM_STATE/runtime-worker.heartbeat.json"
+  --db var/platform.db --orfs-root ../OpenROAD-flow-scripts \
+  --runtime-db "$PLATFORM_STATE/runtime.db" --campaign-db "$PLATFORM_STATE/campaign.db"
+
+# 终端 2：web
+python3 apps/api/app.py --host 127.0.0.1 --port 8000 \
+  --db var/platform.db --orfs-root ../OpenROAD-flow-scripts \
+  --runtime-db "$PLATFORM_STATE/runtime.db" --campaign-db "$PLATFORM_STATE/campaign.db"
 ```
 
-In another terminal:
+### 5 分钟上手
 
-```bash
-export PLATFORM_STATE=/tmp/openroad-platform-$UID
-python3 apps/api/app.py \
-  --host 127.0.0.1 --port 8000 \
-  --db var/platform.db \
-  --orfs-root ../OpenROAD-flow-scripts \
-  --runtime-db "$PLATFORM_STATE/runtime.db" \
-  --campaign-db "$PLATFORM_STATE/campaign.db" \
-  --optimization-db "$PLATFORM_STATE/optimization.db"
-```
+1. 打开网页 → 导入一个 RTL 设计（或用内置示例）；
+2. Backend 页 → 选设计 → **Start RTL-to-GDS**（2D）；
+3. Backend 页 → TaiWei 3D 面板 → 选工艺库/参数 → **Generate 3D**；
+4. Projects 页 → 查看版图、指标、产物；
+5. Projects 页 → **Collect verified run** → 经验入库 → Self-Evolution 页看建议。
 
-Readiness checks:
+> 完整上手教程见下方「教程入口」。
 
-```bash
-curl -fsS http://127.0.0.1:8000/api/health
-python3 scripts/check_tracked_secrets.py
-python3 -m pytest -q
-```
+---
 
-## End-to-end use / 从零使用
+## 环境与依赖 / Requirements
 
-1. **Sign in / 登录**: create a local account. Designs, tasks, reports, and
-   learning observations are owner-scoped.
-2. **Register RTL / 登记 RTL**: in Frontend Design, upload `.v`/`.sv`, select an
-   audited example, or create a specification session. Review generated RTL
-   before approving registration.
-3. **Run 2D / 运行 2D**: select the design in Backend Design, choose clock,
-   period, utilization, density, and target stage, then start Baseline flow.
-   The worker executes synthesis, floorplan, placement, CTS, routing, and final
-   evidence gates as applicable.
-4. **Run 3D / 运行 3D**: open TaiWei 3D for the registered design. Select the 3D
-   platform, utilization, core count, CTS layer, partition iterations, clock,
-   and cross-tier controls. The 3D branch starts independently; a succeeded 2D
-   run is optional comparison metadata, not an execution prerequisite.
-5. **Inspect evidence / 查看证据**: Projects & Results shows Runtime status,
-   stages, attempts, metrics, layout/3D views, artifact names, sizes, and hashes.
-   Treat only `succeeded` attempts with verified artifacts as completed runs.
-6. **Collect learning / 收集经验**: explicitly invoke collection for a
-   succeeded run, inspect admitted/rejected evidence, and review recommendations
-   in Self-Evolution. Recommendation acceptance creates a reviewed plan; it
-   does not silently rewrite historical evidence.
+| 组件 | 说明 | 详情 |
+| --- | --- | --- |
+| 系统 | ARM64 / openEuler 22.03（已验证），Python ≥ 3.9 | — |
+| 平台本体 | **零运行时依赖**；可视化可选：KLayout(pya)/Graphviz/Matplotlib/NumPy；测试：pytest | [docs/ENVIRONMENT_BASELINE.md](docs/ENVIRONMENT_BASELINE.md) |
+| 2D 工具链 | ORFS + OpenROAD + Yosys（`../OpenROAD-flow-scripts`） | 同上 |
+| 3D 工具链 | TaiWei 专用 ORFS-Research/OpenROAD/Yosys（`.tools/taiwei-official-3d`，含 LD_LIBRARY_PATH 配置） | [integrations/taiwei_pin_3d/environment.lock.json](integrations/taiwei_pin_3d/environment.lock.json) |
+| 插件工具 | RTLScout：verilator+yosys；AgenticPD：python；DPLEvolve：bash/git/python3 | [docs/PLUGINS.md](docs/PLUGINS.md) |
 
-Detailed learning tutorial and failure analysis:
-[`docs/self_evolution_report.md`](docs/self_evolution_report.md). Operational
-backup, recovery, cancellation, and toolchain upgrade guidance:
-[`docs/OPERATIONS.md`](docs/OPERATIONS.md).
+**环境管理方式**：平台使用 `.tools/` 目录做工具链与 Python 虚拟环境隔离
+（每个插件独立 venv + 固定 commit 工具链），通过 `PYTHONPATH` 注入包路径；
+git 忽略 `.tools/`、`.external-src/`、`var/`，保证仓库干净、工具链不上传。
 
-## Plugin interface / 插件接口
+> 完整依赖与配置见 [docs/ENVIRONMENT_BASELINE.md](docs/ENVIRONMENT_BASELINE.md)。
 
-Plugins are process-isolated adapters, not imports into the Runtime's trust
-boundary. A minimal contribution contains:
+---
 
-1. a validated `PluginManifest` with identity, adapter command, capabilities,
-   architecture, required tools, timeout, environment allowlist, and artifact
-   rules;
-2. a `TaskSpec` builder that allowlists inputs and parameters and records
-   immutable source references;
-3. an adapter that reads `adapter_request.json`, runs only inside its attempt
-   workspace, and writes a versioned `adapter_result.json`;
-4. required artifact declarations plus tests for success, missing/empty output,
-   non-zero exit, timeout, cancellation, and path escape;
-5. source/environment locks and a license audit for third-party code.
+## 教程入口 / Tutorials
 
-The Runtime rejects absolute or escaping artifact paths, unknown artifact
-kinds, empty files, missing required kinds, malformed result envelopes, and a
-claimed success from a non-zero adapter process. See
-[`docs/PLUGINS.md`](docs/PLUGINS.md) and the runnable echo example in
-[`integrations/examples/`](integrations/examples/).
+| 教程 | 内容 | 链接 |
+| --- | --- | --- |
+| 平台总览 | 定位、目录树、接口、协作、知识入库 | [01_openroad_platform_overview.html](docs/tutorials/01_openroad_platform_overview.html) |
+| TaiWei 3D 原理 | 3D 芯片怎么工作、20 道工序、输入输出 | [02_taiwei_3d_how_it_works.html](docs/tutorials/02_taiwei_3d_how_it_works.html) |
+| 自演化问题详解 | 知识入库流程、问题根因 | [03_self_evolution_issue.html](docs/tutorials/03_self_evolution_issue.html) |
+| 多人协作开发 | Git 流程、模块分工、加新插件 | [04_collaboration_guide.html](docs/tutorials/04_collaboration_guide.html) |
+| 为什么可以自演化 | GP/BO、离线 RL 的原理答疑 | [05_why_self_evolution.html](docs/tutorials/05_why_self_evolution.html) |
+| AI for EDA 对照 | 参考 Si2 标准的数据对照 | [06_ai_for_eda_si2_mapping.html](docs/tutorials/06_ai_for_eda_si2_mapping.html) |
 
-## Development and collaboration / 开发与协作
+> HTML 教程为通俗讲解，双击即可本地打开；也可直接在 GitHub 页面点击查看源码。
 
-- Create a focused branch and keep control-plane contracts backward compatible
-  or version them explicitly.
-- Mark claims as observed fact, documented external claim, or hypothesis. Do
-  not turn model prose or file presence into a success assertion.
-- Keep credentials, live SQLite/WAL files, PDK data, `.tools/`,
-  `.external-src/`, `var/`, `runs/`, and `artifacts/` out of Git.
-- Run focused tests while developing, then `python3 -m pytest -q`,
-  `python3 scripts/check_tracked_secrets.py`, and `git diff --check`.
-- Do not push, deploy, mutate shared workers, or replace shared toolchains as a
-  side effect of validation. Record the exact command, commit, DB, run ID,
-  metrics, and artifact hashes for real-flow claims.
+---
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the contribution checklist and
-review expectations.
+## 更多文档 / More Docs
 
-## Repository hygiene and licensing / 仓库卫生与许可
-
-`.gitignore` excludes reproducible caches and local evidence stores, including
-`__pycache__`, `.pytest_cache`, `.external-src`, `.tools`, `var`, `runs`, and
-`artifacts`. Those ignored evidence/tool directories may still be essential to
-local replay; never remove them with a broad cleanup command.
-
-This repository currently has **no top-level `LICENSE` file**. No project-wide
-license is implied. Before public redistribution or accepting external code,
-the maintainers must choose and add an explicit license. Third-party components
-retain their own licenses and restrictions; review the lock and `LICENSE_AUDIT`
-files under `integrations/`. In particular, the local ASAP7 3D data is not
-claimed redistributable and must not be committed.
+- [docs/PLUGINS.md](docs/PLUGINS.md) — 插件开发完整指南
+- [docs/OPERATIONS.md](docs/OPERATIONS.md) — 运维：备份/恢复/取消/工具链升级
+- [docs/self_evolution_report.md](docs/self_evolution_report.md) — 自演化入库审计报告（技术底稿）
+- [CONTRIBUTING.md](CONTRIBUTING.md) — 贡献规范
