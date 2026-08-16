@@ -99,9 +99,9 @@ const ZH = {
   "backend.evidence.empty": "设计结果将在这里显示。", "backend.evidence.empty.help": "选择当前设计已完成的任务以读取版图和报告。",
   "backend.extensions.title": "可选研究支线", "backend.extensions.subtitle": "自动继承当前设计和成功主线；只有扩展输入兼容时才能运行。",
   "backend.extensions.digital": "物理设计支线", "backend.extensions.device": "器件与电路支线",
-  "backend.extensions.contract": "当前设计 → 成功主线 → 兼容扩展",
-  "backend.extensions.contract.help": "平台不会把固定示例冒充当前设计的处理结果。器件、互连电磁和 SPICE 支线会在执行前明确说明额外输入。",
-  "backend.ext.flow": "批量实验、参数搜索、状态监控和有界纠错。", "backend.ext.3d": "双层实现、HBT、跨层指标与 3D 视图。",
+  "backend.extensions.contract": "当前设计 → 选择 2D 或 3D 分支 → 验证证据",
+  "backend.extensions.contract.help": "2D 与 3D 都从已登记 RTL 独立启动；可选的 2D 基线只用于结果对比。其他扩展会在执行前明确额外输入。",
+  "backend.ext.flow": "批量实验、参数搜索、状态监控和有界纠错。", "backend.ext.3d": "从已登记 RTL 独立启动双层实现，产出 HBT、跨层指标与 3D 视图。",
   "backend.ext.evolve": "可选的 OpenROAD 源码候选优化长任务。", "backend.ext.tcad": "三维半导体器件结构与有界物理仿真。",
   "backend.ext.mom": "互连电磁分析与 S 参数提取。", "backend.ext.ckt": "SPICE 级模拟与射频电路仿真。"
 };
@@ -1090,10 +1090,9 @@ function extensionCompatibility(id, design, baseline) {
   const inherited = Boolean(design);
   if (id === "taiwei-3d") {
     if (!design) return {tone: "blocked", label: ui("Choose a design", "请先选择设计"), reason: ui("Select a registered design in step ① before opening 3D implementation.", "请先在步骤①选择已登记设计，再打开 3D 实现。")};
-    if (!baseline) return {tone: "blocked", label: ui("Main flow required", "需要成功主线"), reason: ui("Complete one successful 2D baseline run for this same design first.", "请先为同一设计完成一次成功的 2D 基线任务。")};
-    if (design.module !== "gcd") return {tone: "blocked", label: ui("Platform adapter currently validated for gcd", "平台适配层目前仅验收 gcd"), reason: ui("This is a limitation in our adapter, not in the TaiWei engine: design configuration, RTL/SDC mapping, and result post-processing are still fixed to the audited official gcd flow. General RTL requires a generated 3D design configuration and design-independent post-processing.", "这是我们平台适配层的限制，不是 TaiWei 引擎只能处理 gcd：当前设计配置、RTL/SDC 映射及结果后处理仍固定为已验收的官方 gcd 流程。任意 RTL 还需要通用 3D 配置生成器和去 gcd 化后处理。")};
     if (!state.health?.taiwei_3d_ready) return {tone: "blocked", label: ui("Toolchain unavailable", "工具链不可用"), reason: state.health?.taiwei_3d_reason || ui("The pinned 3D toolchain is not ready.", "固定 3D 工具链尚未就绪。")};
-    return {tone: "ready", label: ui("Ready for linked 3D run", "可以启动关联 3D 任务"), reason: ui("The selected gcd project and its successful 2D baseline will be recorded on the pinned official 3D acceptance run.", "当前 gcd 项目及其成功 2D 基线会共同登记到官方固定 3D 验收任务中。"), action: "taiwei"};
+    const baselineNote = baseline ? ui("A successful 2D baseline for this design will be associated for comparison.", "该设计的成功 2D 基线会作为对比证据关联。") : ui("No 2D baseline required: the 3D flow runs its own synthesis and 2D partition internally.", "无需 2D 基线：3D 流程内部自带综合与 2D 分层阶段。");
+    return {tone: "ready", label: ui("Ready for standalone 3D run", "可以启动独立 3D 任务"), reason: baselineNote, action: "taiwei"};
   }
   if (id === "edacraft-tcadcraft") return {tone: "ready", label: ui("Device structure validation available", "器件结构验证可用"), reason: ui("Enter device dimensions below to run upstream TCADCraft geometry and physics-invariant checks. The pinned upstream full PDE solver does not compile because its implementation and header declarations disagree, so full TCAD convergence is not claimed.", "在下方输入器件尺寸即可运行上游 TCADCraft 几何与物理一致性检查。固定上游版本的完整 PDE 求解器因实现与头文件声明不一致而无法编译，因此这里不宣称完整 TCAD 收敛仿真。"), action: "tcadcraft"};
   if (id === "edacraft-momcraft") return {tone: "ready", label: ui("S-parameter solver available", "S 参数求解可用"), reason: ui("Enter microstrip geometry, effective permittivity, mesh size, and frequency. The compiled upstream MoM solver will produce a real Touchstone result. Automatic GDS interconnect extraction is a separate future adapter.", "输入微带几何、有效介电常数、网格数和频率后，平台会调用已编译的上游 MoM 求解器并生成真实 Touchstone 结果。GDS 互连自动提取属于后续独立适配器。"), action: "momcraft"};
@@ -1113,16 +1112,48 @@ function selectExtension(id) {
   const compatibility = extensionCompatibility(id, design, baseline);
   const designLabel = design ? `${ui("Design", "设计")} · ${design.module}` : ui("No design selected", "尚未选择设计");
   const baselineLabel = baseline ? `${runDisplayName(baseline.run_id)} · ${ui("2D baseline succeeded", "2D 基线成功")}` : ui("No successful 2D baseline for this design", "当前设计尚无成功 2D 基线");
-  const action = compatibility.action === "taiwei" ? `<button class="button primary" data-run-taiwei>${ui("Start linked 3D run", "启动关联 3D 任务")} <span>→</span></button>` : specialistExtensionForm(compatibility.action);
+  let action = "";
+  if (compatibility.action === "taiwei") {
+    action = `<button class="button primary" data-run-taiwei>${ui("Generate 3D", "生成 3D")} <span>→</span></button>`;
+  } else if (compatibility.action === "taiwei-disabled") {
+    action = `<button class="button primary" disabled title="${esc(compatibility.reason)}">${ui("Generate 3D", "生成 3D")} <span>→</span></button>`;
+  } else {
+    action = specialistExtensionForm(compatibility.action);
+  }
+  const taiweiSupport = id === "taiwei-3d" ? `<div style="margin-top:10px;padding:9px 11px;border:1px dashed var(--line-strong);display:grid;gap:4px"><span style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em">${ui("Supported scope", "支持范围")}</span><b style="color:var(--heading);font-size:11px">${ui("Registered design + 3D platform; 2D baseline optional", "已登记设计 + 3D 工艺库；2D 基线可选")}</b></div>` : "";
   root.innerHTML = `<div class="embedded-extension-head"><div><small>${esc(extension.layer)}</small><b>${esc(extension.name)}</b><span>${esc(extension.summary)}</span></div><button type="button" aria-label="Close extension detail" id="closeExtensionDetail">×</button></div>
-    <div class="embedded-extension-body"><div class="extension-context"><div><span>${ui("Current design", "当前设计")}</span><b>${esc(designLabel)}</b></div><div><span>${ui("Main-flow evidence", "主线证据")}</span><b>${esc(baselineLabel)}</b></div></div><div class="extension-meta"><div><span>${ui("Required component input", "扩展所需输入")}</span><b>${esc(extension.input)}</b></div><div><span>${ui("Execution", "执行方式")}</span><b>${esc(extension.execution_class)}</b></div></div>
-    <div class="compatibility ${esc(compatibility.tone)}"><span>${ui("Compatibility", "兼容性")}</span><b>${esc(compatibility.label)}</b><p>${esc(compatibility.reason)}</p></div>${action ? `<div class="extension-actions">${action}</div>` : ""}<p class="message" id="extensionMessage"></p></div>`;
+    <div class="embedded-extension-body"><div class="extension-context"><div><span>${ui("Current design", "当前设计")}</span><b>${esc(designLabel)}</b></div><div><span>${ui("Main-flow evidence", "主线证据")}</span><b>${esc(baselineLabel)}</b></div></div>${taiweiSupport}<div class="extension-meta"><div><span>${ui("Required component input", "扩展所需输入")}</span><b>${esc(extension.input)}</b></div><div><span>${ui("Execution", "执行方式")}</span><b>${esc(extension.execution_class)}</b></div></div>
+    <div class="compatibility ${esc(compatibility.tone)}"><span>${ui("Compatibility", "兼容性")}</span><b>${esc(compatibility.label)}</b><p>${esc(compatibility.reason)}</p></div>${id === "taiwei-3d" ? taiwei3dConfigForm() : ""}${action ? `<div class="extension-actions">${action}</div>` : ""}<p class="message" id="extensionMessage"></p></div>`;
   $("#closeExtensionDetail").addEventListener("click", () => { root.innerHTML = ""; state.selectedExtension = null; });
   const taiwei = $('[data-run-taiwei]', root);
-  if (taiwei) taiwei.addEventListener("click", () => submitTaiweiExtension(design.id, baseline.run_id));
+  if (taiwei) taiwei.addEventListener("click", () => submitTaiweiExtension(design.id, baseline?.run_id || ""));
   const specialist = $('[data-run-specialist]', root);
   if (specialist) specialist.addEventListener("click", () => submitSpecialistExtension(compatibility.action, design?.id));
   root.scrollIntoView({behavior: "smooth", block: "nearest"});
+}
+
+function taiwei3dConfigForm() {
+  const period = $("#flowPeriod")?.value || "10";
+  const clock = $("#flowClock")?.value?.trim() || "clk";
+  return `<div class="specialist-form taiwei3d-form" style="margin-top:12px;display:grid;gap:9px">
+    <b style="color:var(--heading);font-size:12px">${ui("3D implementation configuration", "3D 实现配置")}</b>
+    <div class="form-grid three">
+      <label><span>${ui("3D platform", "3D 工艺库")}</span><select id="taiweiTech"><option value="asap7_3D">ASAP7 3D</option><option value="nangate45_3D">Nangate45 3D</option><option value="asap7_nangate45_3D">ASAP7 · Nangate45 3D</option></select></label>
+      <label><span>${ui("Core utilization · %", "核心利用率 · %")}</span><input id="taiweiUtil" type="number" min="1" max="99" value="60"></label>
+      <label><span>${ui("Parallel cores", "并行核数")}</span><input id="taiweiCores" type="number" min="1" max="256" value="32"></label>
+      <label><span>${ui("CTS layer", "CTS 层")}</span><select id="taiweiCtsLayer"><option value="bottom">Bottom</option><option value="upper">Upper</option></select></label>
+      <label><span>${ui("Outer iterations", "分层迭代次数")}</span><input id="taiweiOuter" type="number" min="1" max="16" value="1"></label>
+      <label><span>${ui("Clock period · ns", "时钟周期 · ns")}</span><input id="taiweiPeriod" type="number" min="0.01" step="0.1" value="${esc(period)}"></label>
+    </div>
+    <div class="form-grid">
+      <label><span>${ui("Clock port", "时钟端口")}</span><input id="taiweiClock" value="${esc(clock)}"></label>
+      <label><span>${ui("Skip engine 2D partition", "跳过引擎 2D 分层")}</span><input id="taiweiSkip2d" type="checkbox" style="width:auto;justify-self:start"></label>
+      <label><span>${ui("Split-net flow", "跨层网络切分")}</span><input id="taiweiSplitNet" type="checkbox" checked style="width:auto;justify-self:start"></label>
+      <label><span>${ui("Allow-net flow", "允许跨层网络")}</span><input id="taiweiAllowNet" type="checkbox" checked style="width:auto;justify-self:start"></label>
+      <label><span>${ui("ABC area mode", "ABC 面积模式")}</span><input id="taiweiAbcArea" type="checkbox" checked style="width:auto;justify-self:start"></label>
+    </div>
+    <small style="color:var(--muted)">${ui("These engine-native knobs map to CORE_UTILIZATION / NUM_CORES / CTS_LAYER / OUTER_ITERATIONS / SKIP_2D_PART / PIN3D_* / ABC_AREA and are carried into the pinned 3D toolchain.", "这些引擎原生参数将映射为 CORE_UTILIZATION / NUM_CORES / CTS_LAYER / OUTER_ITERATIONS / SKIP_2D_PART / PIN3D_* / ABC_AREA 并注入固定 3D 工具链。")}</small>
+  </div>`;
 }
 
 function specialistExtensionForm(action) {
@@ -1150,12 +1181,40 @@ async function submitSpecialistExtension(slug, designId) {
 
 async function submitTaiweiExtension(designId, baselineRunId) {
   const button = $('[data-run-taiwei]', $("#embeddedExtensionDetail"));
-  if (!window.confirm(ui("This is a long-running pinned 3D acceptance flow. Start it for the selected gcd project?", "这是耗时较长的固定 3D 验收流程。确认对当前 gcd 项目启动吗？"))) return;
+  if (!window.confirm(ui("This is a long-running 3D implementation flow. Start it for the selected design with the configured 3D platform?", "这是耗时较长的 3D 实现流程。确认按当前 3D 工艺库配置对所选设计启动吗？"))) return;
   button.disabled = true;
-  message("#extensionMessage", ui("Saving the linked 3D task…", "正在保存关联 3D 任务……"));
+  message("#extensionMessage", ui("Saving the 3D task…", "正在保存 3D 任务……"));
+  const payload = {design_id: designId};
+  if (baselineRunId) payload.baseline_run_id = baselineRunId;
+  const tech = $("#taiweiTech")?.value;
+  if (tech) payload.tech = tech;
+  const clock = $("#taiweiClock")?.value?.trim();
+  if (clock) payload.clock = clock;
+  const period = Number($("#taiweiPeriod")?.value);
+  if (Number.isFinite(period) && period > 0) payload.clock_period_ns = period;
+  const util = Number($("#taiweiUtil")?.value);
+  if (Number.isFinite(util) && util >= 1 && util <= 99) payload.core_utilization_pct = util;
+  const cores = Number($("#taiweiCores")?.value);
+  if (Number.isInteger(cores) && cores >= 1 && cores <= 256) payload.num_cores = cores;
+  const cts = $("#taiweiCtsLayer")?.value;
+  if (cts) payload.cts_layer = cts;
+  const outer = Number($("#taiweiOuter")?.value);
+  if (Number.isInteger(outer) && outer >= 1 && outer <= 16) payload.outer_iterations = outer;
+  const skip = $("#taiweiSkip2d")?.checked;
+  if (typeof skip === "boolean") payload.skip_2d_part = skip;
+  const split = $("#taiweiSplitNet")?.checked;
+  if (typeof split === "boolean") payload.pin3d_split_net_flow = split;
+  const allow = $("#taiweiAllowNet")?.checked;
+  if (typeof allow === "boolean") payload.pin3d_allow_net_flow = allow;
+  const abc = $("#taiweiAbcArea")?.checked;
+  if (typeof abc === "boolean") payload.abc_area = abc;
   try {
-    const detail = await post("/api/extensions/taiwei/run", {design_id: designId, baseline_run_id: baselineRunId});
-    message("#extensionMessage", ui("The linked 3D task is saved. Its project, 2D baseline, and 3D evidence remain connected.", "关联 3D 任务已保存；项目、2D 基线与 3D 证据会保持关联。"));
+    const detail = await post("/api/extensions/taiwei/run", payload);
+    if (detail?.status === "guidance_required") {
+      message("#extensionMessage", state.locale === "zh" ? (detail.message_zh || detail.message) : detail.message, true);
+      return;
+    }
+    message("#extensionMessage", ui("The 3D task is saved. Configured parameters and evidence remain recorded with the run.", "3D 任务已保存；配置参数与运行证据会随任务记录。"));
     await loadRuns(detail.run?.run_id);
   } catch (error) {
     message("#extensionMessage", error.message, true);

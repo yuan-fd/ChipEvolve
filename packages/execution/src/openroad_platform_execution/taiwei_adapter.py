@@ -1,4 +1,12 @@
-"""Workspace-isolated protocol adapter for the official TaiWei gcd ORD flow."""
+"""Workspace-isolated protocol adapter for the official TaiWei ORD 3D flow.
+
+Generalised from the original gcd-only acceptance adapter:
+- flow/tech/case come from task.inputs (not hard-coded gcd/asap7_3D),
+- engine-native flow knobs from task.parameters are exported into the
+  engine environment (CORE_UTILIZATION, NUM_CORES, CTS_LAYER, ...),
+- artifact discovery, metrics parsing and post-processing use the
+  requested tech/case paths instead of asap7_3D/gcd literals.
+"""
 
 from __future__ import annotations
 
@@ -25,6 +33,20 @@ from openroad_platform_execution.taiwei_postprocess import (  # noqa: E402
     write_json,
 )
 
+# Engine-native knobs carried through task.parameters; each maps 1:1 to a
+# variable the TaiWei Makefile / launcher already understands.
+_PARAMETER_ENV = {
+    "core_utilization_pct": ("CORE_UTILIZATION", int),
+    "num_cores": ("NUM_CORES", int),
+    "cts_layer": ("CTS_LAYER", str),
+    "outer_iterations": ("OUTER_ITERATIONS", int),
+    "skip_2d_part": ("SKIP_2D_PART", lambda v: "1" if v else "0"),
+    "pin3d_allow_net_flow": ("PIN3D_ALLOW_NET_FLOW", lambda v: "on" if v else "off"),
+    "pin3d_split_net_flow": ("PIN3D_SPLIT_NET_FLOW", lambda v: "on" if v else "off"),
+    "abc_area": ("ABC_AREA", lambda v: "1" if v else "0"),
+    "start_from": ("START_FROM", str),
+}
+
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -36,11 +58,17 @@ def main() -> int:
     try:
         request = json.loads(args.request.read_text(encoding="utf-8"))
         task = request["task"]
-        if task["inputs"] != {"flow": "ord", "tech": "asap7_3D", "case": "gcd"}:
-            return _fail(args.result, started, "policy_rejected", "Only ord/asap7_3D/gcd is allowed")
+        flow = str(task["inputs"].get("flow", "ord"))
+        tech = str(task["inputs"].get("tech", "asap7_3D"))
+        case = str(task["inputs"].get("case", "gcd"))
+        if flow != "ord":
+            return _fail(args.result, started, "policy_rejected",
+                         f"TaiWei adapter only supports the ord flow, got {flow!r}")
         source = Path(os.environ["TAIWEI_SOURCE"]).resolve()
         staged = args.result.parent / "taiwei-source"
         _archive(source, staged)
+        _ensure_case_configured(staged, tech, case, task)
+        top_cell = _design_name(staged, tech, case)
         module_root = args.result.parent / "modulefiles"
         module_root.mkdir()
         (module_root / "cadence").write_text(
@@ -58,17 +86,26 @@ def main() -> int:
             "yosys_version": _version([os.environ["YOSYS_EXE"], "-V"]),
             "openroad_sha256": _sha256(Path(os.environ["OPENROAD_EXE"])),
             "yosys_sha256": _sha256(Path(os.environ["YOSYS_EXE"])),
+            "flow": flow, "tech": tech, "case": case, "top_cell": top_cell,
+            "parameters": dict(task.get("parameters") or {}),
         }
         snapshot_path = args.result.parent / "toolchain_snapshot.json"
-        _write(snapshot_path, snapshot)
         env = os.environ.copy()
         env.update({"ORFS_DIR": os.environ["TAIWEI_ORFS_ROOT"],
                     "FLOW_HOME": str(staged), "WORK_DIR": str(staged),
                     "MODULEPATH": os.pathsep.join(filter(None, (
                         str(module_root), env.get("MODULEPATH", "")))),
                     "NUM_CORES": env.get("TAIWEI_NUM_CORES", "8")})
-        command = [sys.executable, "run_experiments.py", "--flow", "ord",
-                   "--tech", "asap7_3D", "--case", "gcd", "--run-only",
+        for key, (env_name, converter) in _PARAMETER_ENV.items():
+            if key in (task.get("parameters") or {}):
+                env[env_name] = str(converter(task["parameters"][key]))
+        snapshot["engine_environment"] = {
+            env_name: env[env_name] for env_name, _ in _PARAMETER_ENV.values()
+            if env_name in env
+        }
+        _write(snapshot_path, snapshot)
+        command = [sys.executable, "run_experiments.py", "--flow", flow,
+                   "--tech", tech, "--case", case, "--run-only",
                    "--status-interval", "5"]
         with log.open("w", encoding="utf-8") as stream:
             completed = subprocess.run(command, cwd=staged, env=env,
@@ -77,9 +114,21 @@ def main() -> int:
             log.write_text("TaiWei command completed without console output.\n", encoding="utf-8")
         if completed.returncode:
             return _fail(args.result, started, "upstream_failure",
-                         "TaiWei gcd flow returned non-zero", completed.returncode)
-        _postprocess(staged)
-        artifacts = _discover(args.result.parent, staged)
+                         f"TaiWei {case} flow returned non-zero", completed.returncode)
+        status_path = staged / "run_logs" / "status" / f"{flow}__{tech}__{case}.json"
+        if status_path.is_file():
+            status = json.loads(status_path.read_text(encoding="utf-8"))
+            if status.get("status") != "ok":
+                code = status.get("dispatch_rc")
+                return _fail(
+                    args.result, started, "upstream_failure",
+                    f"TaiWei {case} flow failed: {status.get('message') or status.get('status')}",
+                    code if isinstance(code, int) and code else 1,
+                )
+        _postprocess(staged, tech, case, top_cell)
+        artifacts = _discover(args.result.parent, staged, tech, case)
+        # Verified artifacts for the configured case/tech before streaming.
+        # Fall back to shallow prebuilt fixtures only for unit fixtures.
         required = {"three_d_eval", "three_d_summary", "gds", "def", "odb", "netlist"}
         missing = required - {item["kind"] for item in artifacts}
         if missing:
@@ -87,7 +136,7 @@ def main() -> int:
                          f"TaiWei outputs missing: {sorted(missing)}")
         artifacts.extend([{"kind": "toolchain_snapshot", "path": snapshot_path.name},
                           {"kind": "log", "path": log.name}])
-        metrics = _metrics(staged)
+        metrics = _metrics(staged, tech, case)
         _write(args.result, {"schema_version": 1, "status": "succeeded", "exit_code": 0,
                             "started_at": started, "ended_at": _now(), "metrics": metrics,
                             "artifacts": artifacts, "failure": None,
@@ -110,31 +159,145 @@ def _archive(source: Path, destination: Path) -> None:
         raise RuntimeError("Cannot stage immutable TaiWei source snapshot")
 
 
-def _discover(workspace: Path, staged: Path) -> list[dict]:
+# 2D platform used by the engine's internal 2D partition stage for each 3D
+# platform (config2d.mk sets PLATFORM to the 2D base process).
+_2D_PLATFORM = {
+    "asap7_3D": "asap7",
+    "nangate45_3D": "nangate45",
+    "asap7_nangate45_3D": "asap7_nangate45",
+}
+
+_CASE_TEMPLATE = "gcd"  # shipped reference case whose config is copied.
+
+
+def _design_name(staged: Path, tech: str, case: str) -> str:
+    """Resolve the implementation top cell from the selected case config."""
+    config = staged / "designs" / tech / case / "config.mk"
+    if not config.is_file():
+        raise FileNotFoundError(f"TaiWei design config missing: {config}")
+    match = re.search(
+        r"^\s*(?:export\s+)?DESIGN_NAME\s*(?::|\?)?=\s*([^#\s]+)",
+        config.read_text(encoding="utf-8", errors="replace"),
+        re.M,
+    )
+    if not match:
+        raise ValueError(f"TaiWei design config has no DESIGN_NAME: {config}")
+    return match.group(1)
+
+
+def _ensure_case_configured(staged: Path, tech: str, case: str,
+                            task: dict) -> None:
+    """Use the shipped engine case when present; otherwise generate a dynamic
+    case configuration from the platform-registered RTL.
+
+    The engine dispatches through ``test/<tech>/<case>/ord/run.sh`` and reads
+    the design from ``designs/<tech>/<case>/{config,config2d}.mk`` plus
+    ``designs/src/<case>/*.v`` (via config2d.mk's wildcard).  For cases the
+    engine does not ship (user designs registered in the platform), we write
+    those files from the shipped gcd template and the task's RTL reference.
+    """
+    run_script = staged / "test" / tech / case / "ord" / "run.sh"
+    if run_script.is_file():
+        return  # official engine case; nothing to generate
+    if tech not in _2D_PLATFORM:
+        raise ValueError(f"No 2D base platform mapped for 3D platform {tech!r}")
+    rtl = task.get("inputs", {}).get("rtl") if isinstance(task.get("inputs"), dict) else None
+    if not isinstance(rtl, dict) or not rtl.get("path"):
+        raise ValueError(
+            f"TaiWei case {case!r} is not shipped by the engine; a platform "
+            "RTL reference (inputs.rtl.path) is required to generate it")
+
+    design_dir = staged / "designs" / tech / case
+    design_dir.mkdir(parents=True, exist_ok=True)
+    src_dir = staged / "designs" / "src" / case
+    src_dir.mkdir(parents=True, exist_ok=True)
+
+    # Copy the shipped gcd config as the design-specific template.
+    template_dir = staged / "designs" / tech / _CASE_TEMPLATE
+    for name in ("config.mk", "config2d.mk"):
+        template = template_dir / name
+        if not template.is_file():
+            raise FileNotFoundError(f"TaiWei case template missing: {template}")
+        target = design_dir / name
+        text = template.read_text(encoding="utf-8")
+        text = re.sub(r"^export DESIGN_NAME\s*=.*$",
+                      f"export DESIGN_NAME = {case}", text, count=1, flags=re.M)
+        # config2d.mk points VERILOG_FILES at designs/src/<case> via a
+        # wildcard; only DESIGN_NAME must change.  config.mk's PLATFORM stays
+        # the requested tech because the template belongs to the same tech.
+        target.write_text(text, encoding="utf-8")
+
+    # SDC: generate from the task clock inputs when provided, otherwise keep a
+    # clock-free constraint file (engine defaults apply).
+    clock = str(task.get("inputs", {}).get("clock") or "").strip()
+    period = task.get("inputs", {}).get("clock_period_ns")
+    sdc = design_dir / "constraint.sdc"
+    if clock and period:
+        sdc.write_text(
+            "current_design %s\n\n"
+            "set clk_name core_clock\n"
+            "set clk_port_name %s\n"
+            "set clk_period %s\n"
+            "set clk_io_pct 0.2\n\n"
+            "set clk_port [get_ports $clk_port_name]\n"
+            "create_clock -name $clk_name -period $clk_period $clk_port\n\n"
+            "set non_clock_inputs [all_inputs -no_clocks]\n"
+            "set_input_delay [expr $clk_period * $clk_io_pct] -clock $clk_name $non_clock_inputs\n"
+            "set_output_delay [expr $clk_period * $clk_io_pct] -clock $clk_name [all_outputs]\n"
+            % (case, clock, str(period)), encoding="utf-8")
+    else:
+        sdc.write_text("current_design %s\n" % case, encoding="utf-8")
+
+    # Stage the platform RTL into designs/src/<case>/.
+    rtl_source = Path(str(rtl["path"])).expanduser().resolve()
+    if not rtl_source.is_file():
+        raise FileNotFoundError(f"Platform RTL input missing: {rtl_source}")
+    rtl_name = rtl.get("name") or rtl_source.name
+    shutil.copy2(rtl_source, src_dir / rtl_name)
+
+    # Dispatch scripts mirror the shipped case wrappers.
+    ord_dir = staged / "test" / tech / case / "ord"
+    ord_dir.mkdir(parents=True, exist_ok=True)
+    rel = "../../../common"
+    (ord_dir / "run.sh").write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"\n'
+        f'exec bash "${{SCRIPT_DIR}}/{rel}/run_case.sh" ord "${{SCRIPT_DIR}}"\n',
+        encoding="utf-8")
+    (ord_dir / "run.sh").chmod(0o755)
+    (ord_dir / "eval.sh").write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"\n'
+        f'exec bash "${{SCRIPT_DIR}}/{rel}/eval_case.sh" ord "${{SCRIPT_DIR}}"\n',
+        encoding="utf-8")
+    (ord_dir / "eval.sh").chmod(0o755)
+
+
+def _discover(workspace: Path, staged: Path, tech: str, case: str) -> list[dict]:
     # Keep discovery inside run-output roots.  A broad **/*.gds glob would
-    # incorrectly accept Nangate's platform library GDS as the gcd result.
-    specs = (("three_d_eval", "reports/asap7_3D/gcd/*/openroad_eval.json"),
+    # incorrectly accept platform library GDS as the run result.
+    specs = (("three_d_eval", f"reports/{tech}/{case}/*/openroad_eval.json"),
              ("three_d_eval", "reports/openroad_eval.json"),
-             ("three_d_summary", "logs/asap7_3D/gcd/*/final_summary.txt"),
+             ("three_d_summary", f"logs/{tech}/{case}/*/final_summary.txt"),
              ("three_d_summary", "logs/final_summary.txt"),
-             ("gds", "results/asap7_3D/gcd/*/6_final.gds"),
+             ("gds", f"results/{tech}/{case}/*/6_final.gds"),
              ("gds", "results/final.gds"),
-             ("def", "results/asap7_3D/gcd/*/6_final.def"),
+             ("def", f"results/{tech}/{case}/*/6_final.def"),
              ("def", "results/6_final.def"),
-             ("odb", "results/asap7_3D/gcd/*/6_final.odb"),
+             ("odb", f"results/{tech}/{case}/*/6_final.odb"),
              ("odb", "results/6_final.odb"),
-             ("netlist", "results/asap7_3D/gcd/*/6_final.v"),
+             ("netlist", f"results/{tech}/{case}/*/6_final.v"),
              ("netlist", "results/6_final.v"),
-             ("sdc", "results/asap7_3D/gcd/*/6_final.sdc"),
-             ("spef", "results/asap7_3D/gcd/*/6_final.spef"),
-             ("three_d_report", "logs/asap7_3D/gcd/*/cross_tier_nets*.rpt"),
-             ("three_d_report", "logs/asap7_3D/gcd/*/cross_tier_nets*.list"),
-             ("three_d_report", "results/asap7_3D/gcd/*/streamout_provenance.json"),
-             ("three_d_report", "results/asap7_3D/gcd/*/gds_view_provenance.json"),
-             ("three_d_report", "results/asap7_3D/gcd/*/tier_view_metrics.json"),
-             ("layout_view", "results/asap7_3D/gcd/*/*2d*.png"),
-             ("three_d_view", "results/asap7_3D/gcd/*/*3d*.png"),
-             ("three_d_view", "results/asap7_3D/gcd/*/*3d*.svg"),
+             ("sdc", f"results/{tech}/{case}/*/6_final.sdc"),
+             ("spef", f"results/{tech}/{case}/*/6_final.spef"),
+             ("three_d_report", f"logs/{tech}/{case}/*/cross_tier_nets*.rpt"),
+             ("three_d_report", f"logs/{tech}/{case}/*/cross_tier_nets*.list"),
+             ("three_d_report", f"results/{tech}/{case}/*/streamout_provenance.json"),
+             ("three_d_report", f"results/{tech}/{case}/*/gds_view_provenance.json"),
+             ("three_d_report", f"results/{tech}/{case}/*/tier_view_metrics.json"),
+             ("layout_view", f"results/{tech}/{case}/*/*2d*.png"),
+             ("three_d_view", f"results/{tech}/{case}/*/*3d*.png"),
+             ("three_d_view", f"results/{tech}/{case}/*/*3d*.svg"),
              ("three_d_view", "reports/*3d*.png"))
     artifacts = []
     for kind, pattern in specs:
@@ -144,8 +307,8 @@ def _discover(workspace: Path, staged: Path) -> list[dict]:
     return artifacts
 
 
-def _postprocess(staged: Path) -> None:
-    final_defs = sorted(staged.glob("results/asap7_3D/gcd/*/6_final.def"))
+def _postprocess(staged: Path, tech: str, case: str, top_cell: str) -> None:
+    final_defs = sorted(staged.glob(f"results/{tech}/{case}/*/6_final.def"))
     if not final_defs:
         # Unit/third-party fixtures may provide a shallow prebuilt stream.
         fixture_streams = tuple(staged.glob("results/final.gds"))
@@ -155,17 +318,17 @@ def _postprocess(staged: Path) -> None:
     final_def = final_defs[-1]
     result_dir = final_def.parent
     gds = result_dir / "6_final.gds"
-    provenance = stream_out_gds(staged, final_def, gds)
+    provenance = stream_out_gds(staged, final_def, gds, tech=tech, top_cell=top_cell)
     write_json(result_dir / "streamout_provenance.json", provenance)
-    view_provenance = render_gds_views(gds, result_dir)
+    view_provenance = render_gds_views(gds, result_dir, design=case)
     write_json(result_dir / "gds_view_provenance.json", view_provenance)
-    view = result_dir / "gcd_final_3d_tiers.svg"
-    view_metrics = render_tier_view(final_def, view)
+    view = result_dir / f"{case}_final_3d_tiers.svg"
+    view_metrics = render_tier_view(final_def, view, design=top_cell)
     write_json(result_dir / "tier_view_metrics.json", view_metrics)
 
 
-def _metrics(staged: Path) -> list[dict]:
-    paths = sorted(staged.glob("reports/asap7_3D/gcd/*/openroad_eval.json"))
+def _metrics(staged: Path, tech: str, case: str) -> list[dict]:
+    paths = sorted(staged.glob(f"reports/{tech}/{case}/*/openroad_eval.json"))
     if not paths:
         return []
     payload = json.loads(paths[-1].read_text(encoding="utf-8"))
@@ -175,8 +338,9 @@ def _metrics(staged: Path) -> list[dict]:
             continue
         value = record.get("value") if isinstance(record, dict) else record
         metrics.append({"name": name, "value": value, "parser_id": "taiwei-openroad-eval",
-                        "parser_version": "1.0.0", "context": {"design": "gcd", "dimension": "3D"}})
-    summary_paths = sorted(staged.glob("logs/asap7_3D/gcd/*/final_summary.txt"))
+                        "parser_version": "1.0.0",
+                        "context": {"design": case, "dimension": "3D"}})
+    summary_paths = sorted(staged.glob(f"logs/{tech}/{case}/*/final_summary.txt"))
     if summary_paths:
         summary = summary_paths[-1].read_text(encoding="utf-8", errors="replace")
         fields = {
@@ -198,15 +362,15 @@ def _metrics(staged: Path) -> list[dict]:
                 metrics.append({"name": name, "value": value,
                                 "parser_id": "taiwei-final-summary",
                                 "parser_version": "1.0.0",
-                                "context": {"design": "gcd", "dimension": "3D"}})
-    tier_paths = sorted(staged.glob("results/asap7_3D/gcd/*/tier_view_metrics.json"))
+                                "context": {"design": case, "dimension": "3D"}})
+    tier_paths = sorted(staged.glob(f"results/{tech}/{case}/*/tier_view_metrics.json"))
     if tier_paths:
         tiers = json.loads(tier_paths[-1].read_text(encoding="utf-8"))
         for key in ("upper_instances", "bottom_instances", "hbt_named_instances"):
             if key in tiers:
                 metrics.append({"name": f"finish__placement__{key}", "value": tiers[key],
                                 "parser_id": "taiwei-tier-view", "parser_version": "1.0.0",
-                                "context": {"design": "gcd", "dimension": "3D"}})
+                                "context": {"design": case, "dimension": "3D"}})
     return metrics
 
 

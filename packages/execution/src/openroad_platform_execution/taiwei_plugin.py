@@ -1,9 +1,18 @@
-"""Pinned TaiWei-Pin-3D black-box plugin construction."""
+"""Pinned TaiWei-Pin-3D black-box plugin construction.
+
+The adapter is generalised beyond the original single gcd acceptance case:
+any official TaiWei case (gcd / ibex / aes / ariane133 / bp_quad / jpeg /
+swerv_wrapper) and any supported 3D platform (asap7_3D, nangate45_3D,
+asap7_nangate45_3D) can be selected, and engine-native flow parameters are
+carried through task.parameters into the engine environment.
+"""
 
 from __future__ import annotations
 
+import math
 import os
 import platform
+import re
 import subprocess
 import sys
 import uuid
@@ -18,6 +27,12 @@ TAIWEI_PLUGIN_VERSION = "1.0.0"
 TAIWEI_UPSTREAM_COMMIT = "db20136711ed8c0cdfed67a6123d059875764abd"
 TAIWEI_ORFS_COMMIT = "568eb04da9173695d6bfc1b10ba868e0b6b8a9fa"
 TAIWEI_OPENROAD_COMMIT = "305d3ba2ddfd00591924cc586ad408179f566afe"
+
+# Official TaiWei cases that ship a complete ord flow under test/<tech>/<case>/.
+TAIWEI_OFFICIAL_CASES = ("gcd", "ibex", "aes", "ariane133", "bp_quad", "jpeg",
+                         "swerv_wrapper")
+TAIWEI_3D_PLATFORMS = ("asap7_3D", "nangate45_3D", "asap7_nangate45_3D")
+CASE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 @dataclass(frozen=True)
@@ -50,24 +65,102 @@ class TaiWeiToolchainProfile:
 
 
 def build_taiwei_task(*, project_id: str, design_id: str = "gcd",
+                       tech: str = "asap7_3D",
                        registered_design_id: str | None = None,
+                       rtl: dict | None = None,
+                       clock: str | None = None,
+                       clock_period_ns: float | None = None,
+                       parameters: dict | None = None,
                        timeout_seconds: int = 21600,
                        task_id: str | None = None) -> TaskSpec:
-    if design_id != "gcd":
-        raise ValueError("TaiWei v1 only permits the gcd acceptance case")
+    """Build a TaiWei 3D TaskSpec for an official case and 3D platform.
+
+    ``design_id`` selects the engine case (module top name). ``tech`` selects
+    the 3D platform. ``rtl`` optionally carries a platform-registered RTL
+    artifact reference ({"path", "size_bytes", "sha256"}) for dynamic cases
+    not shipped by the engine; official cases keep their pinned engine RTL.
+    ``parameters`` carries engine-native flow knobs surfaced by the Web layer
+    (core_utilization_pct, num_cores, cts_layer, outer_iterations,
+    skip_2d_part, pin3d_allow_net_flow, pin3d_split_net_flow, abc_area,
+    start_from). gcd + asap7_3D remains the fully validated default.
+    """
+    if tech not in TAIWEI_3D_PLATFORMS:
+        raise ValueError(
+            f"Unsupported TaiWei 3D platform {tech!r}; choose from "
+            + ", ".join(TAIWEI_3D_PLATFORMS))
+    if not CASE_RE.fullmatch(design_id):
+        raise ValueError(f"Invalid TaiWei case name: {design_id!r}")
+    if rtl is not None:
+        if not isinstance(rtl, dict) or not all(
+                key in rtl for key in ("path", "size_bytes", "sha256")):
+            raise ValueError("rtl must carry path/size_bytes/sha256")
+    inputs: dict = {"flow": "ord", "tech": tech, "case": design_id}
+    if rtl is not None:
+        inputs["rtl"] = rtl
+    if clock:
+        inputs["clock"] = clock
+    if clock_period_ns is not None:
+        if (isinstance(clock_period_ns, bool)
+                or not isinstance(clock_period_ns, (int, float))
+                or not math.isfinite(clock_period_ns)
+                or clock_period_ns <= 0):
+            raise ValueError("clock_period_ns must be a positive finite number")
+        inputs["clock_period_ns"] = float(clock_period_ns)
+    allowed = _validated_parameters(parameters or {})
     task = TaskSpec(
         task_id=task_id or f"taiwei-{uuid.uuid4().hex}",
         project_id=project_id, design_id=registered_design_id or design_id,
         plugin_id=TAIWEI_PLUGIN_ID,
-        inputs={"flow": "ord", "tech": "asap7_3D", "case": "gcd"},
+        inputs=inputs,
+        parameters=allowed,
         resources={"toolchain_profile": "taiwei-official-3d"},
         timeout_seconds=timeout_seconds, max_attempts=1,
         expected_artifacts=("three_d_eval", "three_d_summary", "gds", "def", "odb", "netlist",
                             "toolchain_snapshot", "log"),
-        labels={"real_3d_required": "true", "fixed_case": design_id},
+        labels={"real_3d_required": "true", "fixed_case": design_id,
+                "fixed_tech": tech},
     )
     task.validate()
     return task
+
+
+def _validated_parameters(parameters: dict) -> dict:
+    """Allowlist engine-native flow knobs and coerce their types."""
+    if not isinstance(parameters, dict):
+        raise ValueError("TaiWei parameters must be a mapping")
+    allowed: dict = {}
+    if "core_utilization_pct" in parameters:
+        value = parameters["core_utilization_pct"]
+        if (isinstance(value, bool) or not isinstance(value, (int, float))
+                or not 1 <= value <= 100):
+            raise ValueError("core_utilization_pct must be between 1 and 100")
+        allowed["core_utilization_pct"] = int(value)
+    if "num_cores" in parameters:
+        value = parameters["num_cores"]
+        if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 256:
+            raise ValueError("num_cores must be between 1 and 256")
+        allowed["num_cores"] = value
+    if "cts_layer" in parameters:
+        value = str(parameters["cts_layer"])
+        if value not in ("bottom", "upper"):
+            raise ValueError("cts_layer must be 'bottom' or 'upper'")
+        allowed["cts_layer"] = value
+    if "outer_iterations" in parameters:
+        value = parameters["outer_iterations"]
+        if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 16:
+            raise ValueError("outer_iterations must be between 1 and 16")
+        allowed["outer_iterations"] = value
+    for key in ("skip_2d_part", "pin3d_allow_net_flow",
+                "pin3d_split_net_flow", "abc_area"):
+        if key in parameters:
+            if not isinstance(parameters[key], bool):
+                raise ValueError(f"{key} must be a boolean")
+            allowed[key] = parameters[key]
+    if "start_from" in parameters:
+        value = str(parameters["start_from"]).strip()
+        if value:
+            allowed["start_from"] = value
+    return allowed
 
 
 def taiwei_plugin_manifest(source_root: str | Path, profile: TaiWeiToolchainProfile,

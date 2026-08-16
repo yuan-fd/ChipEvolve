@@ -50,7 +50,7 @@ from openroad_platform_execution import (  # noqa: E402
     build_edacraft_task, craft_capability_matrix, craft_plan_to_task,
     edacraft_catalog, edacraft_component, edacraft_plugin_manifest,
     implcraft_plugin_manifest, orfs_plugin_manifest, rtlscout_plugin_manifest,
-    TaiWeiToolchainProfile, build_taiwei_task, taiwei_plugin_manifest,
+    TaiWeiToolchainProfile, TAIWEI_3D_PLATFORMS, build_taiwei_task, taiwei_plugin_manifest,
 )
 from openroad_platform_scheduler import (  # noqa: E402
     ALLOWED_MODELS, CampaignStore, CodexCliSpecProvider, JobStore,
@@ -79,7 +79,7 @@ def _pinned_taiwei_manifest():
     profile = TaiWeiToolchainProfile(
         orfs_root=tool_root / "orfs-research",
         openroad_bin=tool_root / "openroad-build-gcc12" / "bin" / "openroad",
-        yosys_bin=tool_root / "orfs-research" / "tools" / "yosys" / "yosys",
+        yosys_bin=tool_root / "orfs-research" / "tools" / "install" / "yosys" / "bin" / "yosys",
         runtime_library_paths=tuple(path for path in (
             tool_root / "dependencies" / "lib",
             tool_root / "dependencies" / "lib64",
@@ -87,6 +87,34 @@ def _pinned_taiwei_manifest():
         ) if path.is_dir()),
     )
     return taiwei_plugin_manifest(source, profile)
+
+
+def _taiwei_guidance(
+    *,
+    reason: str,
+    message: str,
+    message_zh: str,
+    design_id: str = "",
+    module: str = "",
+    baseline_run_id: str = "",
+) -> dict[str, Any]:
+    """Build the structured guidance response for the guided TaiWei 3D submit flow.
+
+    The Web layer returns this instead of a bare error so the frontend can drive
+    the TaiWei detail panel from a machine-readable state instead of showing an
+    unexplained failure.
+    """
+    result: dict[str, Any] = {
+        "status": "guidance_required",
+        "reason": reason,
+        "message": message,
+        "message_zh": message_zh,
+        "supported_scope": "registered-design + supported 3D platform",
+        "design_id": design_id,
+        "module": module,
+        "baseline_run_id": baseline_run_id,
+    }
+    return result
 
 
 class ApiState:
@@ -200,7 +228,7 @@ class ApiState:
                 manifests.append(_pinned_taiwei_manifest())
                 self.taiwei_readiness = {
                     "ready": True,
-                    "reason": "Pinned official gcd-only 3D toolchain is available",
+                    "reason": "Pinned official 3D toolchain is available",
                 }
             except (FileNotFoundError, ValueError) as exc:
                 self.taiwei_readiness["reason"] = str(exc)
@@ -234,7 +262,7 @@ class ApiState:
         self.runtime.registry.register(manifest)
         self.taiwei_readiness = {
             "ready": True,
-            "reason": "Pinned official gcd-only 3D toolchain is available",
+            "reason": "Pinned official 3D toolchain is available",
         }
 
     def health(self) -> dict[str, Any]:
@@ -424,31 +452,67 @@ class ApiState:
             raise ValueError(self.taiwei_readiness["reason"])
         design_id = str(payload.get("design_id") or "").strip()
         design = self._owned_design(design_id, owner_id, include_legacy=include_legacy)
-        if design.get("module") != "gcd":
+        case = str(design.get("module") or "").strip()
+        if not case:
+            raise ValueError("Registered design has no top module name")
+        tech = str(payload.get("tech") or "asap7_3D")
+        if tech not in TAIWEI_3D_PLATFORMS:
             raise ValueError(
-                "The current platform adapter is validated only for TaiWei's official gcd "
-                "configuration; this is an adapter mapping limitation, not an engine limitation"
-            )
+                "Unsupported TaiWei 3D platform %r; choose from %s"
+                % (tech, ", ".join(TAIWEI_3D_PLATFORMS)))
+        # Optional 2D baseline association: no longer a hard gate. When present
+        # it must reference a succeeded 2D ORFS run of the same registered
+        # design; when absent the 3D flow runs on its own (TaiWei runs its own
+        # internal 2D partition stage).
         baseline_run_id = str(payload.get("baseline_run_id") or "").strip()
-        baseline = self._authorize_runtime(
+        baseline = (self._authorize_runtime(
             baseline_run_id, owner_id, include_legacy=include_legacy
-        )
-        if (baseline.task_spec.design_id != design_id
+        ) if baseline_run_id else None)
+        if baseline is not None and (
+                baseline.task_spec.design_id != design_id
                 or baseline.task_spec.plugin_id != "orfs"
                 or baseline.status.value != "succeeded"):
-            raise ValueError("A succeeded 2D ORFS run for the same registered design is required")
+            return _taiwei_guidance(
+                reason="baseline_invalid",
+                message=(
+                    "The referenced 2D baseline must be a succeeded ORFS run of "
+                    "the same registered design; it is optional, so omit it to "
+                    "run the 3D flow standalone."
+                ),
+                message_zh=(
+                    "关联的 2D 基线必须是同一登记设计的成功 ORFS 运行；该基线为可选项，"
+                    "不传即可独立运行 3D 流程。"
+                ),
+                design_id=design_id,
+                module=case,
+                baseline_run_id=baseline_run_id,
+            )
+        rtl_path = self.designs.rtl_path(
+            design_id, owner_id=owner_id, include_legacy=include_legacy)
+        rtl = {
+            "path": str(rtl_path),
+            "size_bytes": rtl_path.stat().st_size,
+            "sha256": _sha256(rtl_path),
+        }
+        clock = _optional_string(payload.get("clock"))
+        clock_period_ns = _number(payload, "clock_period_ns", 10.0)
+        parameters = {
+            key: payload[key] for key in (
+                "core_utilization_pct", "num_cores", "cts_layer", "outer_iterations",
+                "skip_2d_part", "pin3d_allow_net_flow", "pin3d_split_net_flow",
+                "abc_area", "start_from",
+            ) if key in payload
+        }
         task = build_taiwei_task(
-            project_id="openroad-platform", design_id="gcd",
-            registered_design_id=design_id,
+            project_id="openroad-platform", design_id=case, tech=tech,
+            registered_design_id=design_id, rtl=rtl, clock=clock,
+            clock_period_ns=clock_period_ns, parameters=parameters,
         )
-        task = dataclasses.replace(
-            task,
-            inputs={**task.inputs, "registered_design_id": design_id,
-                    "baseline_run_id": baseline_run_id},
-            labels={**task.labels, "source": "web-linked-extension",
-                    "baseline_run_id": baseline_run_id,
-                    **({"owner_id": owner_id} if owner_id else {})},
-        )
+        labels = dict(task.labels)
+        labels.update({"source": "web-linked-extension",
+                       **({"baseline_run_id": baseline_run_id} if baseline_run_id else {}),
+                       **({"owner_id": owner_id} if owner_id else {})})
+        task = dataclasses.replace(task, labels=labels)
         run = self.runtime.submit(task, capability="eda.3d.pin3d")
         return self.get_runtime_run(run.run_id, owner_id=owner_id,
                                     include_legacy=include_legacy)
@@ -1867,9 +1931,13 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                     self._json(state.craft_plan(scoped(self._read_json())), HTTPStatus.CREATED)
                     return
                 if path == "/api/extensions/taiwei/run":
-                    self._json(state.submit_taiwei_design_run(
+                    taiwei_result = state.submit_taiwei_design_run(
                         scoped(self._read_json()), owner_id=session.user_id,
-                        include_legacy=session.legacy_access), HTTPStatus.CREATED)
+                        include_legacy=session.legacy_access)
+                    if taiwei_result.get("status") == "guidance_required":
+                        self._json(taiwei_result)
+                    else:
+                        self._json(taiwei_result, HTTPStatus.CREATED)
                     return
                 match = re.fullmatch(r"/api/extensions/edacraft/([^/]+)/smoke", path)
                 if match:

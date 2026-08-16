@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>8月16日 Debug 改动详细说明 · 大白话讲解</title>
+<style>
+  :root{
+    --bg:#faf7f2; --card:#ffffff; --ink:#3a3229; --soft:#8a7f70;
+    --line:#e8e0d4; --accent:#b34a4a; --accent2:#2a6f5c; --accent3:#3a5a8c;
+    --warn:#a05620; --ok:#2a7a4a;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--ink); font-family:"Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif; line-height:1.9; font-size:17px;}
+  .wrap{max-width:980px; margin:0 auto; padding:30px 22px 80px;}
+  header.hero{background:linear-gradient(135deg,#5a2a2a,#8a3a3a); color:#fff; border-radius:18px; padding:38px 32px; margin-bottom:26px;}
+  header.hero h1{font-size:30px; margin-bottom:10px;}
+  header.hero p{opacity:.92; font-size:18px;}
+  .toc{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:22px 26px; margin-bottom:28px;}
+  .toc h2{font-size:20px; color:var(--accent); margin-bottom:12px;}
+  .toc a{color:var(--accent2); text-decoration:none; display:block; padding:5px 0; border-bottom:1px dashed var(--line);}
+  .toc a:hover{color:var(--accent);}
+  section{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:26px 28px; margin-bottom:26px;}
+  section h2{font-size:24px; color:var(--accent); border-left:6px solid var(--accent); padding-left:12px; margin-bottom:16px;}
+  section h3{font-size:19px; color:var(--accent2); margin:20px 0 10px;}
+  p{margin-bottom:12px;}
+  .story{background:#f7ecec; border-left:5px solid var(--accent); padding:14px 18px; border-radius:8px; margin:14px 0;}
+  .story b{color:var(--accent);}
+  .ok{background:#e8f3ec; border-left:5px solid var(--ok); padding:14px 18px; border-radius:8px; margin:14px 0;}
+  .warn{background:#fdf0e3; border-left:5px solid var(--warn); padding:14px 18px; border-radius:8px; margin:14px 0;}
+  pre{background:#2e2a26; color:#e8dcc8; border-radius:10px; padding:16px 18px; overflow-x:auto; font-size:14px; line-height:1.6; margin:12px 0;}
+  code{background:#f3e9e9; color:#8a3a3a; border-radius:4px; padding:1px 6px; font-size:15px;}
+  table{width:100%; border-collapse:collapse; margin:14px 0; font-size:15.5px;}
+  th{background:#f5e9e9; color:var(--accent); text-align:left; padding:9px 12px; border:1px solid var(--line);}
+  td{padding:9px 12px; border:1px solid var(--line); vertical-align:top;}
+  tr:nth-child(even) td{background:#fcf9f4;}
+  .flow{display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:16px 0;}
+  .flow .step{background:var(--accent); color:#fff; border-radius:22px; padding:9px 16px; font-size:15px; font-weight:bold;}
+  .flow .arrow{color:var(--accent); font-size:22px; font-weight:bold;}
+  .flow .step.light{background:var(--accent3);}
+  ul,ol{margin:10px 0 10px 26px;}
+  li{margin-bottom:8px;}
+  .footer{text-align:center; color:var(--soft); font-size:14px; margin-top:30px;}
+  @media (max-width:700px){ body{font-size:16px;} header.hero h1{font-size:24px;} .wrap{padding:16px 12px 60px;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1>🔧 8月16日 Debug 改动详细说明</h1>
+  <p>这一天我们修了什么、为什么修、怎么验证的 —— 完整记录（大白话版）</p>
+</header>
+
+<div class="toc">
+  <h2>📋 目录</h2>
+  <a href="#s1">一、今天干了啥 —— 一句话总结</a>
+  <a href="#s2">二、改动清单 —— 改了哪些文件、每处改什么</a>
+  <a href="#s3">三、改动的四件事 —— 逐个讲清楚</a>
+  <a href="#s4">四、验证 —— 三个真实跑通的实验</a>
+  <a href="#s5">五、过程中发现和修复的坑</a>
+  <a href="#s6">六、测试结果</a>
+  <a href="#s7">七、还没做的（后续待办）</a>
+</div>
+
+<!-- 一 -->
+<section id="s1">
+  <h2>一、今天干了啥 —— 一句话总结</h2>
+  <div class="story">
+    <b>今天的工作：</b>把 TaiWei 3D 从"只能跑一个固定例子（gcd）的验证原型"，改造成了<b>"任意设计 + 任意工艺库 + 可调参数"的通用 3D 生产线</b>，并且真实跑通了三个不同的例子来证明它真的能用。
+  </div>
+  <p>改之前：3D 功能是个"空壳"——只能跑官方 gcd 一个设计、必须用固定参数、还得先跑 2D 才能跑 3D（错误逻辑）。</p>
+  <p>改之后：任意图纸都能跑、三种工艺库任选、参数可调、2D 可选。核心是<b>把写死的"只认 gcd"改成了"读任务单上的设计名和工艺名"</b>。</p>
+</section>
+
+<!-- 二 -->
+<section id="s2">
+  <h2>二、改动清单 —— 改了哪些文件</h2>
+  <p>一共动了 <b>7 个正式文件</b> + 更新 1 个测试文件（都在服务器 ~/openroad-platform 里）：</p>
+  <table>
+    <tr><th>文件</th><th>白话说明</th><th>改动量</th></tr>
+    <tr><td>taiwei_plugin.py</td><td>任务单生成器：支持任意设计 + 工艺库 + 参数校验</td><td>约 +98 行</td></tr>
+    <tr><td>taiwei_adapter.py</td><td>机器操作员：读设计名/工艺名，不再写死 gcd；参数传给机器；能自动给新设计生成配置</td><td>约 +214 行</td></tr>
+    <tr><td>taiwei_postprocess.py</td><td>结果后处理：按工艺库选材料、按设计名命名、via 验证按工艺适配</td><td>约 +113 行</td></tr>
+    <tr><td>app.py</td><td>后台接口：去掉"必须先跑 2D"的门槛，2D 变成可选；支持传工艺库和参数</td><td>约 +143 行</td></tr>
+    <tr><td>app.js</td><td>网页：3D 面板加了配置表单（工艺库/利用率/核数/CTS 层/时钟等）</td><td>约 +94 行</td></tr>
+    <tr><td>__init__.py</td><td>把新功能"注册"到平台（导出新常量）</td><td>小改</td></tr>
+    <tr><td>test_taiwei_plugin.py</td><td>测试更新：覆盖新功能（任意设计、参数、动态生成）</td><td>约 +163 行</td></tr>
+  </table>
+  <div class="warn"><b>说明：</b>仓库里还有几个文件（app.css、index.html、test_p22）也是"未提交"状态，但那是<b>之前就有的改动</b>，不是今天改的——今天没碰它们。</div>
+</section>
+
+<!-- 三 -->
+<section id="s3">
+  <h2>三、改动的四件事 —— 逐个讲清楚</h2>
+
+  <h3>① 放开"只认 gcd"的限制（最重要的改动）</h3>
+  <p><b>改前：</b>机器操作员（adapter）里写死了"只接受 gcd 设计、asap7_3D 工艺、ord 流程"，其它一律拒绝，报错"Only ord/asap7_3D/gcd is allowed"。</p>
+  <p><b>改后：</b>设计名、工艺名、流程名全部从<b>任务单</b>上读——你下单时写什么，机器就做什么。三种工艺库（asap7_3D / nangate45_3D / asap7_nangate45_3D）和任意设计都放行。</p>
+  <p><b>为什么能这样改：</b>TaiWei 引擎本身就支持 7 个官方设计 + 多种工艺，是平台的"翻译层"以前人为设卡，现在把卡拆了。</p>
+
+  <h3>② 参数可以传进机器了</h3>
+  <p><b>改前：</b>利用率、核数、CTS 层这些参数写死在配置里，网页上选了也传不进去。</p>
+  <p><b>改后：</b>网页表单 → 任务单 → 机器环境变量，一条线打通。支持的参数有：</p>
+  <table>
+    <tr><th>参数</th><th>大白话</th><th>对应机器里的名字</th></tr>
+    <tr><td>核心利用率</td><td>芯片想用掉多少面积（% ）</td><td>CORE_UTILIZATION</td></tr>
+    <tr><td>并行核数</td><td>用几个 CPU 一起算</td><td>NUM_CORES</td></tr>
+    <tr><td>CTS 层</td><td>时钟信号从哪层楼走</td><td>CTS_LAYER</td></tr>
+    <tr><td>分层迭代次数</td><td>两层楼摆放反复调几次</td><td>OUTER_ITERATIONS</td></tr>
+    <tr><td>跳过引擎内部 2D</td><td>省掉机器自己先做一层楼的步骤</td><td>SKIP_2D_PART</td></tr>
+    <tr><td>跨层网络开关</td><td>允许/禁止线坐电梯上下楼</td><td>PIN3D_ALLOW_NET_FLOW 等</td></tr>
+    <tr><td>时钟周期</td><td>芯片要多快的"心跳"</td><td>（生成约束文件用）</td></tr>
+  </table>
+
+  <h3>③ 任意设计能自动生成配置（动态 case）</h3>
+  <p><b>问题：</b>TaiWei 引擎自带 7 个官方设计的配置；用户自己上传的图纸（比如 mux4）引擎不认识，没有"施工单"。</p>
+  <p><b>改后：</b>机器操作员发现不认识的图纸时，会<b>照着官方 gcd 的模板自动生成一份施工单</b>：自动写配置、自动生成时钟约束、自动把你的图纸复制进去、自动生成启动脚本。全自动，用户无感。</p>
+
+  <h3>④ 纠正"必须先跑 2D"的错误逻辑</h3>
+  <p><b>改前：</b>提交 3D 任务时，系统强制要求"先有一个成功的 2D 任务"，没有就报错。这是把 2D/3D 错误地当成了"先 2D 后 3D"的父子关系。</p>
+  <p><b>改后：</b>2D 是<b>可选的对比参考</b>——有就自动关联做对比，没有也完全不影响 3D 直接跑。（因为 3D 机器自己内部会做那几步 2D 准备，不需要外面先跑。）</p>
+</section>
+
+<!-- 四 -->
+<section id="s4">
+  <h2>四、验证 —— 三个真实跑通的实验</h2>
+  <p>不是嘴上说"能用了"，是实打实在服务器上跑了三个不同的例子，每个都产出 18 份结果文件，全部存档可查：</p>
+  <table>
+    <tr><th>实验</th><th>验证了什么</th><th>真实结果</th></tr>
+    <tr>
+      <td>✅ 例 1：gcd + asap7_3D + 45% 利用率 + 16 核</td>
+      <td>默认流程 + 自定义参数</td>
+      <td>96 条跨层网络、70 个跨层连接点、DRC 错误 487、面积 50.4 µm²</td>
+    </tr>
+    <tr>
+      <td>✅ 例 2：gcd + <b>nangate45_3D</b> + 60% + 32 核</td>
+      <td><b>切换工艺库</b></td>
+      <td>楼上 312 个零件 + 楼下 268 个、90 条跨层网络、DRC 62</td>
+    </tr>
+    <tr>
+      <td>✅ 例 3：<b>mux4（自传图纸）</b> + asap7_3D + 40% + 5ns</td>
+      <td><b>任意设计 + 自动生成配置</b></td>
+      <td>44 条跨层网络、DRC 178、面积 5.25 µm²</td>
+    </tr>
+  </table>
+  <div class="ok"><b>这三个例子合起来证明了：</b>任意图纸能跑 ✅、任意工艺库能跑 ✅、参数能生效 ✅、每步有存档 ✅。TaiWei 3D 从"验证原型"变成了"能用的生产线"。</div>
+</section>
+
+<!-- 五 -->
+<section id="s5">
+  <h2>五、过程中发现和修复的坑</h2>
+  <table>
+    <tr><th>坑</th><th>大白话</th><th>怎么修好的</th></tr>
+    <tr>
+      <td>工具"起不来"</td>
+      <td>openroad 一启动就报"缺动态库"（GLIBCXX_3.4.30），看起来像工具没装好</td>
+      <td>查明是<b>运行环境少了一条库路径</b>（LD_LIBRARY_PATH 要指向 gcc-toolset-12）。平台配置里补上后，工具正常启动（版本号都能打出来）</td>
+    </tr>
+    <tr>
+      <td>例 2 跑完却报"via 验证失败"</td>
+      <td>nangate45 工艺的 via 命名是<b>小写带数字</b>（via1_2_...），asap7 是大写（VIA_M1m_...），验证程序按 asap7 的规则去查，当然查不到</td>
+      <td>把 via 验证改成<b>按工艺库自动探测</b>：从 DEF 文件里读出实际的 via 定义来验证。还发现阵列 via 一个引用会展开成多个形状，计数规则从"必须相等"改成"至少相等"</td>
+    </tr>
+    <tr>
+      <td>codex 启动报 MCP 403</td>
+      <td>codex 想连一个 OpenAI 官方文档服务，被网络拒了（403），启动时老报警告</td>
+      <td>把那个用不上的服务在配置里注释掉，codex 干净启动（这个修在服务器 .codex 配置，不是仓库代码）</td>
+    </tr>
+  </table>
+  <div class="story"><b>这些坑说明什么：</b>第 2 个坑是"真实跑第二个工艺库时才暴露"的——如果不真跑，光看代码根本发现不了。这就是为什么咱们坚持<b>每步都真实执行、拿日志说话</b>。</div>
+</section>
+
+<!-- 六 -->
+<section id="s6">
+  <h2>六、测试结果</h2>
+  <ul>
+    <li><b>TaiWei 专项测试：13 个全过</b>（含新的任意设计、参数校验、动态生成用例）；</li>
+    <li><b>全量回归：214 通过 / 2 失败</b>——那 2 个失败是<b>改动前就存在的环境性失败</b>（process_guardian 依赖真实子进程，在 SSH 环境里不稳定），不是今天改坏的；</li>
+    <li>网页 JS 语法检查通过，服务健康检查正常（taiwei_3d_ready: true）。</li>
+  </ul>
+</section>
+
+<!-- 七 -->
+<section id="s7">
+  <h2>七、还没做的（后续待办）</h2>
+  <ol>
+    <li><b>官方大设计没试</b>：ibex / aes 等更复杂的设计（引擎自带）还没在平台里真实跑过——流程更长，是下一阶段的事；</li>
+    <li><b>网页旧文案</b>：页面上可能还残留"只支持 gcd / 需要 2D 基线"的老说法，要复查清理；</li>
+    <li><b>3D 结果展示增强</b>：Projects 页对 3D 结果（SVG、跨层指标）的呈现可以做得更漂亮；</li>
+    <li><b>代码还没提交</b>：今天的改动都在工作区，提交到 git 等您拍板。</li>
+  </ol>
+  <p style="margin-top:16px"><b>总结：</b>8 月 16 日是 TaiWei 3D 从"演示壳"变"真工具"的一天——三个真实实验证明它能用了，剩下的都是锦上添花和更大规模的验证。</p>
+</section>
+
+<div class="footer">8月16日 Debug 改动说明 · 纯本地文件，双击打开</div>
+</div>
+</body>
+</html>

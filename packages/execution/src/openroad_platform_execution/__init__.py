@@ -23,7 +23,8 @@ from .agenticpd_plugin import (
     agenticpd_plugin_manifest, build_agenticpd_task,
 )
 from .taiwei_plugin import (
-    TAIWEI_OPENROAD_COMMIT, TAIWEI_ORFS_COMMIT, TAIWEI_PLUGIN_ID,
+    TAIWEI_3D_PLATFORMS, TAIWEI_OFFICIAL_CASES, TAIWEI_OPENROAD_COMMIT,
+    TAIWEI_ORFS_COMMIT, TAIWEI_PLUGIN_ID,
     TAIWEI_PLUGIN_VERSION, TAIWEI_UPSTREAM_COMMIT, TaiWeiToolchainProfile,
     build_taiwei_task, taiwei_plugin_manifest,
 )
@@ -65,7 +66,8 @@ __all__ = [
     "build_rtlscout_task", "rtlscout_plugin_manifest",
     "AGENTICPD_PLUGIN_ID", "AGENTICPD_PLUGIN_VERSION", "AGENTICPD_UPSTREAM_COMMIT",
     "agenticpd_plugin_manifest", "build_agenticpd_task",
-    "TAIWEI_OPENROAD_COMMIT", "TAIWEI_ORFS_COMMIT", "TAIWEI_PLUGIN_ID",
+    "TAIWEI_3D_PLATFORMS", "TAIWEI_OFFICIAL_CASES", "TAIWEI_OPENROAD_COMMIT",
+    "TAIWEI_ORFS_COMMIT", "TAIWEI_PLUGIN_ID",
     "TAIWEI_PLUGIN_VERSION", "TAIWEI_UPSTREAM_COMMIT", "TaiWeiToolchainProfile",
     "build_taiwei_task", "taiwei_plugin_manifest",
     "IMPLCRAFT_PLUGIN_ID", "IMPLCRAFT_PLUGIN_VERSION", "IMPLCRAFT_UPSTREAM_COMMIT",

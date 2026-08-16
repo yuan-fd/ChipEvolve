@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>自演化问题详细版 · 大白话讲解</title>
+<style>
+  :root{
+    --bg:#faf7f2; --card:#ffffff; --ink:#3a3229; --soft:#8a7f70;
+    --line:#e8e0d4; --accent:#c8642a; --accent2:#2a6f5c; --accent3:#3a5a8c;
+    --warn:#a05620; --ok:#2a7a4a;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--ink); font-family:"Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif; line-height:1.9; font-size:17px;}
+  .wrap{max-width:980px; margin:0 auto; padding:30px 22px 80px;}
+  header.hero{background:linear-gradient(135deg,#2a3a2a,#3a5a3a); color:#fff; border-radius:18px; padding:38px 32px; margin-bottom:26px;}
+  header.hero h1{font-size:30px; margin-bottom:10px;}
+  header.hero p{opacity:.92; font-size:18px;}
+  .toc{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:22px 26px; margin-bottom:28px;}
+  .toc h2{font-size:20px; color:var(--accent2); margin-bottom:12px;}
+  .toc a{color:var(--accent2); text-decoration:none; display:block; padding:5px 0; border-bottom:1px dashed var(--line);}
+  .toc a:hover{color:var(--accent);}
+  section{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:26px 28px; margin-bottom:26px;}
+  section h2{font-size:24px; color:var(--accent2); border-left:6px solid var(--accent2); padding-left:12px; margin-bottom:16px;}
+  section h3{font-size:19px; color:var(--accent2); margin:20px 0 10px;}
+  p{margin-bottom:12px;}
+  .story{background:#f3ecdf; border-left:5px solid var(--accent); padding:14px 18px; border-radius:8px; margin:14px 0;}
+  .story b{color:var(--accent);}
+  .ok{background:#e8f3ec; border-left:5px solid var(--ok); padding:14px 18px; border-radius:8px; margin:14px 0;}
+  .warn{background:#fdf0e3; border-left:5px solid var(--warn); padding:14px 18px; border-radius:8px; margin:14px 0;}
+  pre{background:#2e2a26; color:#e8dcc8; border-radius:10px; padding:16px 18px; overflow-x:auto; font-size:14px; line-height:1.6; margin:12px 0;}
+  code{background:#efe9dd; color:#7a4a1a; border-radius:4px; padding:1px 6px; font-size:15px;}
+  table{width:100%; border-collapse:collapse; margin:14px 0; font-size:15.5px;}
+  th{background:#e9f0ec; color:var(--accent2); text-align:left; padding:9px 12px; border:1px solid var(--line);}
+  td{padding:9px 12px; border:1px solid var(--line); vertical-align:top;}
+  tr:nth-child(even) td{background:#fcf9f4;}
+  .flow{display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:16px 0;}
+  .flow .step{background:var(--accent2); color:#fff; border-radius:22px; padding:9px 16px; font-size:15px; font-weight:bold;}
+  .flow .arrow{color:var(--accent); font-size:22px; font-weight:bold;}
+  .flow .step.light{background:var(--accent3);}
+  ul,ol{margin:10px 0 10px 26px;}
+  li{margin-bottom:8px;}
+  .big{font-size:20px; font-weight:bold; color:var(--accent2);}
+  .footer{text-align:center; color:var(--soft); font-size:14px; margin-top:30px;}
+  @media (max-width:700px){ body{font-size:16px;} header.hero h1{font-size:24px;} .wrap{padding:16px 12px 60px;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1>📚 自演化"入库失败"问题 · 详细版</h1>
+  <p>经验是怎么存进图书馆的？为什么图书馆一直是空的？—— 大白话 + 真实证据</p>
+</header>
+
+<div class="toc">
+  <h2>📋 目录</h2>
+  <a href="#s1">一、先搞懂：什么叫"自演化"和"入库"</a>
+  <a href="#s2">二、入库要走哪几步？（完整流程）</a>
+  <a href="#s3">三、问题现象：图书馆一直是空的</a>
+  <a href="#s4">四、真相：不是"入库失败"，是"没人去按按钮"</a>
+  <a href="#s5">五、那到底有没有问题？—— 数据问题 vs 架构问题</a>
+  <a href="#s6">六、一层一层查出来的证据</a>
+  <a href="#s7">七、修复建议（按轻重缓急）</a>
+  <a href="#s8">八、给老师汇报用的"一句话结论"</a>
+</div>
+
+<!-- 一 -->
+<section id="s1">
+  <h2>一、先搞懂：什么叫"自演化"和"入库"</h2>
+  <div class="story">
+    <b>打个比方：</b>本平台平台有个"学习系统"（AI）。它想把每次做芯片的经验都记下来，存在一个"图书馆"里。以后做新芯片时，学习系统翻翻图书馆，参考以前成功的做法，给出更好的建议——这就是<b>自演化</b>（越干越聪明）。
+  </div>
+  <p><b>"入库"</b>就是：把一次做芯片的完整经验（用了什么图纸、什么工艺、什么工具、结果指标如何）整理成一条标准记录，存进图书馆的过程。</p>
+  <p>为什么要这么麻烦？因为学习系统<b>只看真实成功的经验</b>——如果失败的任务也存进去，就会教坏学习系统。所以入库有一整套"质检"流程（后面讲）。</p>
+</section>
+
+<!-- 二 -->
+<section id="s2">
+  <h2>二、入库要走哪几步？（完整流程）</h2>
+  <div class="flow">
+    <span class="step">① 跑任务</span><span class="arrow">→</span>
+    <span class="step light">② 点按钮</span><span class="arrow">→</span>
+    <span class="step">③ 验证</span><span class="arrow">→</span>
+    <span class="step">④ 写数据库</span><span class="arrow">→</span>
+    <span class="step light">⑤ 学习系统使用</span>
+  </div>
+  <p>每一步的细节：</p>
+  <table>
+    <tr><th>步骤</th><th>大白话</th><th>在哪里发生</th></tr>
+    <tr>
+      <td>① 跑任务</td>
+      <td>在平台跑完一个真实任务（比如 3D 设计），得到结果</td>
+      <td>Worker 后台</td>
+    </tr>
+    <tr>
+      <td>② 点按钮</td>
+      <td>在"Projects & Results"页面，找到这次成功记录，点"Collect verified run"（收集验证结果）</td>
+      <td>网页（前端）</td>
+    </tr>
+    <tr>
+      <td>③ 验证</td>
+      <td>系统检查：任务确实成功了？图纸指纹对得上？指标齐全？检查通过后打个"已验证"章</td>
+      <td>后台程序（analysis 包）</td>
+    </tr>
+    <tr>
+      <td>④ 写数据库</td>
+      <td>把经验写进图书馆数据库（tenant-learning.db），生成一条带编号的"观测记录"</td>
+      <td>数据库</td>
+    </tr>
+    <tr>
+      <td>⑤ 学习系统使用</td>
+      <td>AI 翻图书馆，参考历史经验，给出下一步参数建议</td>
+      <td>后台程序（优化模块）</td>
+    </tr>
+  </table>
+</section>
+
+<!-- 三 -->
+<section id="s3">
+  <h2>三、问题现象：图书馆一直是空的</h2>
+  <p>本平台检查服务器上的图书馆数据库，发现一个奇怪现象：</p>
+  <ul>
+    <li><b>图书馆数据库里一条记录都没有</b>（0 行）——从来没有一条经验成功存进去过；</li>
+    <li>更奇怪的是：连"尝试过但失败"的痕迹都没有（连"被拒绝"的记录都是 0 行）。</li>
+  </ul>
+  <div class="story">
+    <b>这个"0 行"很关键：</b>如果系统<b>尝试过</b>入库但失败了，数据库里会留下"待验/被拒"之类的记录。现在连这些都没有，说明——<b>系统根本从来没有被人触发过入库</b>。就像图书馆的存书登记台一直开着，但从没有人来登记过。
+  </div>
+</section>
+
+<!-- 四 -->
+<section id="s4">
+  <h2>四、真相：不是"入库失败"，是"没人去按按钮"</h2>
+  <p>本平台做了个实验来证明这件事：</p>
+  <div class="ok">
+    <b>实验：</b>手动调用一次入库接口（相当于自己去按那个按钮），结果——
+    <b>一次成功！</b>系统返回"已入库"，数据库里出现了一条真实的观测记录。
+  </div>
+  <p>这说明什么？</p>
+  <ul>
+    <li>✅ 入库的<b>所有零件都是好的</b>：验证、写库、编号，全都能正常工作；</li>
+    <li>❌ 唯一的缺口：<b>没有自动触发</b>。机器跑完任务后不会自己去存，网页上那个按钮要人手动去点。</li>
+  </ul>
+  <p>所以"入库经常失败"这个说法，准确的描述应该是：<b>"入库从未被触发过"</b>——它是一条装了但还没接上电的流水线。</p>
+</section>
+
+<!-- 五 -->
+<section id="s5">
+  <h2>五、那到底有没有问题？—— 数据问题 vs 架构问题</h2>
+  <p>读者问的这个问题非常关键。本平台把问题分成两类来看：</p>
+  <table>
+    <tr><th>类型</th><th>是不是有问题？</th><th>具体内容</th><th>严重程度</th></tr>
+    <tr>
+      <td><b>架构问题</b><br>（流程设计）</td>
+      <td>✅ 是，主因</td>
+      <td>缺少"自动入库"环节：worker 跑完不自动存，只能靠人手动点按钮。整个自演化闭环的"入库"这一环，从设计上就没有自动化</td>
+      <td>🔴 严重<br>（这是根本原因）</td>
+    </tr>
+    <tr>
+      <td><b>数据问题</b><br>（数据本身）</td>
+      <td>⚠️ 次要</td>
+      <td>① 观察点看错了库：真正的活数据在 /tmp 下的临时库，var/public 是 8 月 8 日的历史快照（空的）；② 更早的历史任务可能缺少"图纸指纹"字段，会被拒收</td>
+      <td>🟡 中等<br>（容易踩坑）</td>
+    </tr>
+    <tr>
+      <td><b>代码缺陷</b><br>（程序 bug）</td>
+      <td>❌ 没有</td>
+      <td>实测全链路代码逻辑正确，入库一次成功</td>
+      <td>🟢 无</td>
+    </tr>
+  </table>
+  <div class="warn"><b>结论（一句话）：</b>不是数据坏了，也不是代码有 bug，而是<b>架构上少了一个"自动入库"的环节</b>——系统设计时留了手动入口，但没接上自动流程。</div>
+</section>
+
+<!-- 六 -->
+<section id="s6">
+  <h2>六、一层一层查出来的证据</h2>
+  <p>本平台不是猜的，是沿着代码一层一层查下去、每层都验证过。给读者看"体检单"：</p>
+  <table>
+    <tr><th>环节</th><th>代码位置</th><th>检查结果</th></tr>
+    <tr><td>网页按钮</td><td>app.js 第 1271 行附近</td><td>✅ 存在（Projects 页"Collect verified run"按钮）</td></tr>
+    <tr><td>接口</td><td>app.py 第 1998 行附近</td><td>✅ 存在且可用（实测返回成功）</td></tr>
+    <tr><td>前置检查</td><td>app.py 第 969 行附近</td><td>✅ 需要图纸指纹；新任务都有（旧任务可能缺）</td></tr>
+    <tr><td>收集器</td><td>learning_collector.py 第 124-164 行</td><td>✅ 逻辑正确（要求任务已完成 + 至少一次尝试）</td></tr>
+    <tr><td>导出器</td><td>learning_data.py</td><td>✅ 实测通过（验证步骤成功）</td></tr>
+    <tr><td>写库</td><td>learning_collector.py admit()</td><td>✅ 实测写入成功</td></tr>
+    <tr><td><b>自动触发</b></td><td><b>worker / 后台定时任务</b></td><td>❌ <b>不存在！</b>没有任何自动调用入库的地方</td></tr>
+  </table>
+  <p>这张表里，前面 6 行全绿，最后一行"自动触发"是空的——<b>问题就出在这里</b>。</p>
+</section>
+
+<!-- 七 -->
+<section id="s7">
+  <h2>七、修复建议（按轻重缓急）</h2>
+  <ol>
+    <li>
+      <b>① 让 worker 自动入库（治本，最重要）</b><br>
+      改 worker：任务一完成（成功），自动调用入库流程。但要守住底线——<b>只有真实成功 + 验证通过的经验才能进库</b>，失败任务绝不能进（否则会教坏学习系统）。
+    </li>
+    <li>
+      <b>② 统一数据库位置（治乱）</b><br>
+      现在活数据在 /tmp 临时目录，历史快照在 var/public——容易看错。应该统一到一个正式位置，避免"明明入库了却找不到"。
+    </li>
+    <li>
+      <b>③ 前端加提示（治标，体验）</b><br>
+      任务成功后，网页上自动弹"这次经验可以入库，点这里"，降低手动门槛。
+    </li>
+    <li>
+      <b>④ 补历史数据（可选）</b><br>
+      给缺少指纹的旧任务补登记，或者明确它们"不可入库"并说明原因。
+    </li>
+  </ol>
+  <div class="ok"><b>修复后预期：</b>学习系统的图书馆里开始有真书了，AI 建议才有依据，自演化闭环才算真正转起来。</div>
+</section>
+
+<!-- 八 -->
+<section id="s8">
+  <h2>八、给老师汇报用的"一句话结论"</h2>
+  <div class="story">
+    <b>汇报模板：</b>平台自演化的"入库"环节目前是<b>空转</b>状态——所有零件（验证、写库）都正常，实测手动触发可成功入库；但系统<b>缺少自动触发机制</b>，导致真实运行中从未有经验入库，图书馆保持为空。根因是<b>架构层未接通自动化</b>，而非数据损坏或代码缺陷。建议优先为 worker 增加"任务成功后自动入库"环节，并统一数据库路径。
+  </div>
+  <p style="margin-top:16px"><b>大白话总结：</b>不是机器坏了，是"自动登记"这道程序还没写。把这道程序补上，学习系统就能开始学习了。</p>
+</section>
+
+<div class="footer">自演化问题详细版 · 纯本地文件，双击打开</div>
+</div>
+</body>
+</html>
