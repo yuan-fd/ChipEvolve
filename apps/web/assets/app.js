@@ -198,7 +198,8 @@ const post = (path, body) => api(path, {method: "POST", body: JSON.stringify(bod
 function renderAuth() {
   const signedIn = state.auth?.authenticated === true;
   const button = $("#accountButton");
-  button.textContent = signedIn ? state.auth.user.username : ui("Sign in", "登录");
+  const internal = signedIn && state.auth?.user?.username === "local-user";
+  button.textContent = internal ? ui("Internal · shared workspace", "内部模式 · 共享工作区") : (signedIn ? state.auth.user.username : ui("Sign in", "登录"));
   button.classList.toggle("authenticated", signedIn);
   if ($("#developerResultControls")) {
     $("#developerResultControls").hidden = !(signedIn && state.auth.developer);
@@ -207,6 +208,7 @@ function renderAuth() {
 
 function openAuth(note = "") {
   if (state.auth?.authenticated) return;
+  if (state.auth?.user?.username === "local-user") return;  // internal no-auth mode
   $("#authModal").hidden = false;
   message("#authMessage", note);
   setTimeout(() => $("#authUsername").focus(), 0);
@@ -375,7 +377,8 @@ async function loadRtlscoutStatus() {
   try {
     const status = await api("/api/extensions/rtlscout");
     state.rtlscoutStatus = status;
-    const benchmarks = status.offline_demo?.benchmarks || [status.offline_demo?.benchmark || "simple_adder"];
+    const scanned = status.offline_demo?.benchmarks || [];
+    const benchmarks = scanned.length ? scanned : ["simple_adder"];
     $("#rtlscoutBenchmark").innerHTML = benchmarks.map(name => `<option value="${esc(name)}">${esc(name)}</option>`).join("");
     $("#runRtlscout").disabled = !status.ready;
     if (!status.byok?.input_enabled) {
@@ -385,6 +388,7 @@ async function loadRtlscoutStatus() {
     if (!status.ready) message("#rtlscoutMessage", `${ui("RTLScout is unavailable", "RTLScout 当前不可用")}: ${status.reason}`, true);
     updateRtlscoutControls();
   } catch (error) {
+    $("#rtlscoutBenchmark").innerHTML = '<option value="simple_adder">simple_adder</option>';
     $("#runRtlscout").disabled = true;
     message("#rtlscoutMessage", `${ui("RTLScout status unavailable", "无法读取 RTLScout 状态")}: ${error.message}`, true);
   }
@@ -1355,9 +1359,17 @@ $$('[data-input-mode]').forEach(button => button.addEventListener("click", () =>
 $$('[data-design-view]').forEach(button => button.addEventListener("click", () => { state.designView = button.dataset.designView; renderDesignView(); }));
 $$('[data-open-extension]').forEach(button => button.addEventListener("click", () => openExtension(button.dataset.openExtension)));
 $("#watchDemo").addEventListener("click", () => { $("#demoNotice").textContent = "The demo area is ready; the project video will be connected here when uploaded."; $(".showcase-section").scrollIntoView({behavior: "smooth"}); });
-$("#accountButton").addEventListener("click", () => state.auth?.authenticated
-  ? (window.confirm(ui("Sign out of this workspace?", "确认退出当前工作区？")) && logout())
-  : openAuth());
+$("#accountButton").addEventListener("click", () => {
+  if (state.auth?.user?.username === "local-user") {
+    message("#demoNotice", ui("Internal mode: this deployment shares one local workspace without registration.", "内部模式：当前部署为共享本地工作区，无需注册登录。"));
+    return;
+  }
+  if (state.auth?.authenticated) {
+    if (window.confirm(ui("Sign out of this workspace?", "确认退出当前工作区？"))) logout();
+  } else {
+    openAuth();
+  }
+});
 $("#authClose").addEventListener("click", closeAuth);
 $("#authLogin").addEventListener("click", () => submitAuth("login"));
 $("#authRegister").addEventListener("click", () => submitAuth("register"));

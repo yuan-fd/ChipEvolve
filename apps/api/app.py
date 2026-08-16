@@ -89,6 +89,23 @@ def _pinned_taiwei_manifest():
     return taiwei_plugin_manifest(source, profile)
 
 
+def _rtlscout_benchmarks() -> list[str]:
+    """Dynamically scan pinned RTLScout benchmark directories.
+
+    ``*_spirehdl`` variants need the Spire HDL environment and are not opened
+    this round, so they are excluded. Falls back to ``["simple_adder"]`` when
+    no benchmark directory is available.
+    """
+    benchmark_root = ROOT / ".external-src" / "rtlscout" / "benchmarks"
+    benchmarks = []
+    if benchmark_root.is_dir():
+        for path in sorted(benchmark_root.iterdir()):
+            if (path.is_dir() and not path.name.endswith("_spirehdl")
+                    and (path / "metadata.json").is_file()):
+                benchmarks.append(path.name)
+    return benchmarks or ["simple_adder"]
+
+
 def _taiwei_guidance(
     *,
     reason: str,
@@ -222,6 +239,8 @@ class ApiState:
                 manifests.append(implcraft_plugin_manifest(
                     edacraft_source, implcraft_python
                 ))
+        self.no_auth = os.environ.get("OPENROAD_PLATFORM_NO_AUTH", "").strip().lower() in {
+            "1", "true", "yes", "on"}
         self.taiwei_readiness = {"ready": False, "reason": "Pinned 3D toolchain unavailable"}
         if load_taiwei_plugin:
             try:
@@ -264,6 +283,15 @@ class ApiState:
             "ready": True,
             "reason": "Pinned official 3D toolchain is available",
         }
+
+    def _anonymous_session(self):
+        """Local no-auth mode: a fixed developer session so all internal users
+        share one workspace without browser registration. Login is preserved
+        and restored by unsetting OPENROAD_PLATFORM_NO_AUTH."""
+        return AuthSession(
+            user_id="local-user", username="local-user",
+            legacy_access=True, developer=True, session_id="no-auth-local",
+        )
 
     def health(self) -> dict[str, Any]:
         openroad = _find_tool("openroad", ROOT.parent / "bin" / "openroad")
@@ -518,17 +546,12 @@ class ApiState:
                                     include_legacy=include_legacy)
 
     def rtlscout_status(self) -> dict[str, Any]:
-        benchmark_root = ROOT / ".external-src" / "rtlscout" / "benchmarks"
-        benchmarks = []
-        if benchmark_root.is_dir():
-            for path in sorted(benchmark_root.iterdir()):
-                if path.is_dir() and (path / "metadata.json").is_file():
-                    benchmarks.append(path.name)
+        benchmarks = _rtlscout_benchmarks()
         return {
             **self.rtlscout_readiness,
             "offline_demo": {
                 "benchmark": "simple_adder",
-                "benchmarks": ["simple_adder"],
+                "benchmarks": benchmarks,
                 "model": "fake:simple_adder_pass",
                 "api_key_required": False,
                 "real_verilator_yosys": True,
@@ -552,8 +575,11 @@ class ApiState:
                 "use the bounded offline demo in this local HTTP console"
             )
         benchmark = str(payload.get("benchmark") or "simple_adder")
-        if benchmark != "simple_adder":
-            raise ValueError("The bounded offline demo only allows the simple_adder benchmark")
+        if benchmark not in _rtlscout_benchmarks():
+            raise ValueError(
+                "The bounded offline demo only allows the available RTLScout "
+                "benchmarks (e.g. simple_adder)"
+            )
         cost_metric = str(payload.get("cost_metric") or "transistors")
         if cost_metric not in {"transistors", "yosys_cells", "yosys_wires"}:
             raise ValueError("The bounded offline demo only allows fast Yosys cost metrics")
@@ -1704,6 +1730,8 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
             parsed = urlparse(self.path)
             path = parsed.path
             session = self._auth_session()
+            if session is None and state.no_auth:
+                session = state._anonymous_session()
             query = parse_qs(parsed.query)
             developer_all = bool(
                 session and session.developer and (query.get("scope") or [""])[0] == "all"
@@ -1738,7 +1766,7 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                     self._file(WEB_ROOT / "assets" / "app.css", "text/css; charset=utf-8")
                 elif path == "/assets/app.js":
                     self._file(WEB_ROOT / "assets" / "app.js", "text/javascript; charset=utf-8")
-                elif session is None:
+                elif session is None and not state.no_auth:
                     self._error(HTTPStatus.UNAUTHORIZED, "Sign in to access this workspace")
                 elif path == "/api/platform/results":
                     result = state.platform.results(
@@ -1895,6 +1923,8 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                         "Set-Cookie": self._session_cookie("", expire=True)
                     })
                     return
+                if session is None and state.no_auth:
+                    session = state._anonymous_session()
                 if session is None:
                     self._error(HTTPStatus.UNAUTHORIZED, "Sign in to access this workspace")
                     return
