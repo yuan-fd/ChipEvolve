@@ -29,3 +29,6 @@ plan/
 
 # Internal milestone snapshots (not public)
 memory_snapshots/
+
+# Internal phase task records (not public)
+tasks/
