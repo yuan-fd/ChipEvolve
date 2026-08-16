@@ -26,3 +26,6 @@ artifacts/
 
 # Internal research planning documents (not public)
 plan/
+
+# Internal milestone snapshots (not public)
+memory_snapshots/
