@@ -18,6 +18,18 @@
 
 ---
 
+## 架构总览
+
+![平台架构](docs/images/architecture.png)
+
+*整体：网页工作台 → API 服务 → SQLite 队列 → worker → 工作流运行时 + 插件注册表 → 2D/3D 工具链 → 证据库 → 自演化学习 → AI 建议 → 人工决策。*
+
+![设计工作流](docs/images/workflow.png)
+
+*输入 RTL（含 SHA-256 指纹）→ 双分支：2D（ORFS 六阶段）/ 3D（TaiWei 20 道工序）→ GDS + 指标 → 知识库（验证通过才入库）→ AI 建议（GP/BO + 行为克隆）→ 人工批准。*
+
+---
+
 ## 功能清单
 
 | 功能 | 状态 | 说明 |
@@ -100,10 +112,10 @@ openroad-platform/
 
 ### 方式一：同一服务器（无需 clone）
 
-仓库已在 `~/openroad-platform`，直接启动：
+仓库已在本服务器 `/share/home/yuanwenjie/openroad-platform`（注意：`~` 是各用户自己的家目录，不同用户路径不同，请用 `echo $HOME` 确认自己的路径），直接启动：
 
 ```bash
-cd ~/openroad-platform
+cd /share/home/yuanwenjie/openroad-platform
 HOST=127.0.0.1 PORT=8000 ./scripts/run_demo.sh
 # 免登录内部模式（可选）：export OPENROAD_PLATFORM_NO_AUTH=1 后再启动
 ```
@@ -172,16 +184,16 @@ git 忽略 `.tools/`、`.external-src/`、`var/`，保证仓库干净、工具�
 
 ## 教程入口
 
-| 教程 | 内容 | 链接 |
-| --- | --- | --- |
-| 平台总览 | 定位、目录树、接口、协作、知识入库 | [01_openroad_platform_overview.html](docs/tutorials/01_openroad_platform_overview.html) |
-| TaiWei 3D 原理 | 3D 芯片怎么工作、20 道工序、输入输出 | [02_taiwei_3d_how_it_works.html](docs/tutorials/02_taiwei_3d_how_it_works.html) |
-| 自演化问题详解 | 知识入库流程、问题根因 | [03_self_evolution_issue.html](docs/tutorials/03_self_evolution_issue.html) |
-| 多人协作开发 | Git 流程、模块分工、加新插件 | [04_collaboration_guide.html](docs/tutorials/04_collaboration_guide.html) |
-| 为什么可以自演化 | GP/BO、离线 RL 的原理答疑 | [05_why_self_evolution.html](docs/tutorials/05_why_self_evolution.html) |
-| AI for EDA 对照 | 参考 Si2 标准的数据对照 | [06_ai_for_eda_si2_mapping.html](docs/tutorials/06_ai_for_eda_si2_mapping.html) |
+| 教程 | 内容 | 源码 | 在线预览 |
+| --- | --- | --- | --- |
+| 平台总览 | 定位、目录树、接口、协作、知识入库 | [01...html](docs/tutorials/01_openroad_platform_overview.html) | [▶ 打开](https://htmlpreview.github.io/?https://github.com/CODA-Team/ChipEvolve/blob/main/docs/tutorials/01_openroad_platform_overview.html) |
+| TaiWei 3D 原理 | 3D 芯片怎么工作、20 道工序、输入输出 | [02...html](docs/tutorials/02_taiwei_3d_how_it_works.html) | [▶ 打开](https://htmlpreview.github.io/?https://github.com/CODA-Team/ChipEvolve/blob/main/docs/tutorials/02_taiwei_3d_how_it_works.html) |
+| 自演化问题详解 | 知识入库流程、问题根因 | [03...html](docs/tutorials/03_self_evolution_issue.html) | [▶ 打开](https://htmlpreview.github.io/?https://github.com/CODA-Team/ChipEvolve/blob/main/docs/tutorials/03_self_evolution_issue.html) |
+| 多人协作开发 | Git 流程、模块分工、加新插件 | [04...html](docs/tutorials/04_collaboration_guide.html) | [▶ 打开](https://htmlpreview.github.io/?https://github.com/CODA-Team/ChipEvolve/blob/main/docs/tutorials/04_collaboration_guide.html) |
+| 为什么可以自演化 | GP/BO、离线 RL 的原理答疑 | [05...html](docs/tutorials/05_why_self_evolution.html) | [▶ 打开](https://htmlpreview.github.io/?https://github.com/CODA-Team/ChipEvolve/blob/main/docs/tutorials/05_why_self_evolution.html) |
+| AI for EDA 对照 | 参考 Si2 标准的数据对照 | [06...html](docs/tutorials/06_ai_for_eda_si2_mapping.html) | [▶ 打开](https://htmlpreview.github.io/?https://github.com/CODA-Team/ChipEvolve/blob/main/docs/tutorials/06_ai_for_eda_si2_mapping.html) |
 
-> HTML 教程为通俗讲解，双击即可本地打开；也可直接在 GitHub 页面点击查看源码。
+> GitHub 不会渲染 `.html` 文件（点击只能看源码）。三种查看方式：① 上表「在线预览」链接（htmlpreview.github.io 渲染，登录且有权限即可用，仓库公开后对所有访客可用）；② 克隆仓库到本地，双击打开；③ 直接看「源码」列下载原文件。
 
 ---
 
