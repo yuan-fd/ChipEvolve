@@ -395,10 +395,16 @@ async function loadRtlscoutStatus() {
   }
 }
 
+function exampleLevelLabel(level) {
+  if (level === "orfs") return "ORFS";
+  if (level === "advanced") return "Advanced";
+  return "Starter";
+}
+
 async function loadExamples() {
   try {
     state.examples = (await api("/api/designs/examples")).examples || [];
-    $("#exampleSelect").innerHTML = state.examples.map(example => `<option value="${esc(example.id)}">${esc(example.level === "advanced" ? "Advanced" : "Starter")} · ${esc(example.name)}</option>`).join("");
+    $("#exampleSelect").innerHTML = state.examples.map(example => `<option value="${esc(example.id)}">${esc(exampleLevelLabel(example.level))} · ${esc(example.name)}</option>`).join("");
     updateExampleDescription();
     renderExampleChips();
   } catch (error) {
@@ -411,7 +417,7 @@ function renderExampleChips() {
   const root = $("#exampleChips");
   if (!root) return;
   const selected = $("#exampleSelect")?.value;
-  root.innerHTML = state.examples.map(example => `<button type="button" class="${example.id === selected ? "active" : ""}" data-example-id="${esc(example.id)}">▶ ${esc(example.name)} · ${esc(example.level === "advanced" ? ui("advanced", "进阶") : ui("starter", "基础"))}</button>`).join("");
+  root.innerHTML = state.examples.map(example => `<button type="button" class="${example.id === selected ? "active" : ""}" data-example-id="${esc(example.id)}">▶ ${esc(example.name)} · ${esc(exampleLevelLabel(example.level) === "ORFS" ? "ORFS 典型设计" : exampleLevelLabel(example.level) === "Advanced" ? ui("advanced", "进阶") : ui("starter", "基础"))}</button>`).join("");
   $$('[data-example-id]', root).forEach(button => button.addEventListener("click", () => {
     $("#exampleSelect").value = button.dataset.exampleId;
     updateExampleDescription();
@@ -430,6 +436,20 @@ async function useExample() {
   if (!example) return message("#specMessage", "Choose an example first.", true);
   const button = $("#useExample");
   button.disabled = true;
+  // ORFS typical designs are already registered in the platform — select directly.
+  if (example.design_id) {
+    try {
+      message("#specMessage", `Loading ${example.name}…`);
+      await loadDesigns(example.design_id);
+      await selectDesign(example.design_id);
+      message("#specMessage", `${example.name} is selected and ready for implementation.`);
+    } catch (error) {
+      message("#specMessage", error.message, true);
+    } finally {
+      button.disabled = false;
+    }
+    return;
+  }
   message("#specMessage", `Synthesizing ${example.name}…`);
   try {
     const design = await post("/api/designs/import", {filename: example.filename, rtl_source: example.rtl_source, description: example.description});

@@ -1074,6 +1074,20 @@ class ApiState:
                 "schema": "si2_ai_eda_observation_v1",
                 "record_count": len(records), "records": records}
 
+    def workspace_examples(self) -> list[dict[str, Any]]:
+        """Static starter examples plus imported ORFS typical designs."""
+        examples = list(self.designs.examples())
+        for item in self.designs.list(limit=200):
+            desc = str(item.get("description") or "")
+            if not desc.startswith("[ORFS]"):
+                continue
+            examples.append({
+                "id": item["id"], "name": item["module"],
+                "level": "orfs", "description": desc,
+                "design_id": item["id"],
+            })
+        return examples
+
     def _byok_transport_available(self) -> bool:
         return self.byok_transport_secure
 
@@ -1873,7 +1887,7 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                         include_legacy=session.legacy_access or developer_all,
                     )})
                 elif path == "/api/designs/examples":
-                    self._json({"examples": state.designs.examples()})
+                    self._json({"examples": state.workspace_examples()})
                 elif re.fullmatch(r"/api/designs/[^/]+/schematic\.svg", path):
                     design_id = unquote(path.split("/")[3])
                     self._text(state.designs.schematic(

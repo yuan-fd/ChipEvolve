@@ -355,7 +355,23 @@ class DesignService:
 
     @staticmethod
     def _module_name(source: str) -> str:
-        match = MODULE_RE.search(source)
+        # Scan for the first real module declaration, ignoring commented-out
+        # ones (e.g. "//module GcdUnit" in ORFS designs would otherwise win).
+        lines = []
+        in_block = False
+        for line in source.splitlines():
+            stripped = line.strip()
+            if in_block:
+                if "*/" in stripped:
+                    in_block = False
+                continue
+            if stripped.startswith("/*"):
+                in_block = True
+                continue
+            if stripped.startswith("//"):
+                continue
+            lines.append(line)
+        match = MODULE_RE.search("\n".join(lines))
         if not match:
             raise ValueError("RTL does not contain a valid module declaration")
         return match.group(1)
