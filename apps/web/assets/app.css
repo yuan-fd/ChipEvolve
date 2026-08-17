@@ -63,6 +63,7 @@ a { color: inherit; }
 .capability-list { margin-top: 38px; display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
 .capability-list > div { min-height: 112px; padding: 18px; display: grid; grid-template-columns: 24px 1fr; gap: 7px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .capability-list > div:nth-child(3n) { border-right: 0; }
+.capability-list > div:last-child { border-right: 0; }
 .capability-list > div:nth-child(n+4) { border-bottom: 0; }
 .capability-list > div > span { color: var(--accent); font: 11px var(--mono); }
 .capability-list p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
