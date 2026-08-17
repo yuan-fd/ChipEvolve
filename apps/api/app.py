@@ -1046,6 +1046,34 @@ class ApiState:
                 "observations": [item.to_dict() for item in observations],
                 "source": "observed", "shared": False}
 
+    def export_si2(self, owner_id: str, project_id: str) -> dict[str, Any]:
+        """Export the tenant's observations in Si2 AI-for-EDA style structure."""
+        observations = self.tenant_learning_store.list(owner_id, project_id)
+        records = []
+        for obs in observations:
+            ctx = obs.context
+            metrics = obs.metrics or {}
+            records.append({
+                "record_type": "si2_ai_eda_observation_v1",
+                "record_id": obs.observation_id,
+                "design": {"design_id": ctx.design_id,
+                           "design_fingerprint": ctx.design_fingerprint},
+                "flow": {"flow_stage": ctx.flow_stage},
+                "pdk_library": {"pdk_id": ctx.pdk_id, "platform": ctx.platform,
+                                "toolchain_id": ctx.toolchain_id},
+                "netlist": {"cross_tier_nets": metrics.get("cross_tier_nets")},
+                "timing": {"wns_ns": metrics.get("wns_ns"),
+                           "tns_ns": metrics.get("tns_ns")},
+                "physical": {"area_um2": metrics.get("area"),
+                             "core_utilization_pct": metrics.get("core_utilization_pct")},
+                "verification": {"drc_errors": metrics.get("drc_errors"),
+                                 "evidence_sha256": metrics.get("artifact_fingerprint")},
+                "source": "observed",
+            })
+        return {"tenant_id": owner_id, "project_id": project_id,
+                "schema": "si2_ai_eda_observation_v1",
+                "record_count": len(records), "records": records}
+
     def _byok_transport_available(self) -> bool:
         return self.byok_transport_secure
 
@@ -1901,6 +1929,8 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                     self._json(state.list_provider_profiles(session.user_id))
                 elif path == "/api/recommendations":
                     self._json(state.list_recommendations(session.user_id))
+                elif path == "/api/export/si2":
+                    self._json(state.export_si2(session.user_id, "openroad-platform"))
                 elif path == "/api/learning/observations":
                     self._json(state.list_learning_observations({
                         "tenant_id": [session.user_id], "project_id": ["openroad-platform"]
