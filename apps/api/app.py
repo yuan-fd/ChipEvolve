@@ -1295,6 +1295,16 @@ class ApiState:
         grid = payload.get("parameter_grid") or {}
         if not isinstance(grid, dict):
             raise ValueError("parameter_grid must be an object")
+        if not grid:
+            # Batch-parallel (L1): auto-generate neighbor candidates around the
+            # baseline so a one-click batch run works without a hand-built grid.
+            from openroad_platform_scheduler.neighbor_grid import (
+                generate_neighbor_grid,
+            )
+            grid = generate_neighbor_grid(
+                base.parameters,
+                count=int(payload.get("neighbor_count", 6)),
+            )
         stage_budgets = payload.get("stage_budgets") or {}
         if not isinstance(stage_budgets, dict):
             raise ValueError("stage_budgets must be an object")
