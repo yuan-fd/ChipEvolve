@@ -44,7 +44,7 @@
 | 批量实验（Campaign / Agent 搜索） | 🚧 部分可用 | 创建候选计划并人工确认后执行 |
 | LLM 在线优化（需模型服务） | 🚧 需配置 | BYOK 或共享模型，凭据仅存内存 |
 
-> 完整能力地图见网页 Overview 页与 [教程 01](docs/tutorials/01_openroad_platform_overview.html)。
+> 完整能力地图见网页 Overview 页与 [教程 01](docs/tutorials/01_openroad_platform_overview.md)。
 
 ---
 
@@ -184,16 +184,16 @@ git 忽略 `.tools/`、`.external-src/`、`var/`，保证仓库干净、工具�
 
 ## 教程入口
 
-| 教程 | 内容 | 源码 | 在线预览 |
-| --- | --- | --- | --- |
-| 平台总览 | 定位、目录树、接口、协作、知识入库 | [01...html](docs/tutorials/01_openroad_platform_overview.html) | [▶ 打开](https://CODA-Team.github.io/ChipEvolve/docs/tutorials/01_openroad_platform_overview.html) |
-| TaiWei 3D 原理 | 3D 芯片怎么工作、20 道工序、输入输出 | [02...html](docs/tutorials/02_taiwei_3d_how_it_works.html) | [▶ 打开](https://CODA-Team.github.io/ChipEvolve/docs/tutorials/02_taiwei_3d_how_it_works.html) |
-| 自演化问题详解 | 知识入库流程、问题根因 | [03...html](docs/tutorials/03_self_evolution_issue.html) | [▶ 打开](https://CODA-Team.github.io/ChipEvolve/docs/tutorials/03_self_evolution_issue.html) |
-| 多人协作开发 | Git 流程、模块分工、加新插件 | [04...html](docs/tutorials/04_collaboration_guide.html) | [▶ 打开](https://CODA-Team.github.io/ChipEvolve/docs/tutorials/04_collaboration_guide.html) |
-| 为什么可以自演化 | GP/BO、离线 RL 的原理答疑 | [05...html](docs/tutorials/05_why_self_evolution.html) | [▶ 打开](https://CODA-Team.github.io/ChipEvolve/docs/tutorials/05_why_self_evolution.html) |
-| AI for EDA 对照 | 参考 Si2 标准的数据对照 | [06...html](docs/tutorials/06_ai_for_eda_si2_mapping.html) | [▶ 打开](https://CODA-Team.github.io/ChipEvolve/docs/tutorials/06_ai_for_eda_si2_mapping.html) |
+| 教程 | 内容 | 链接 |
+| --- | --- | --- |
+| 平台总览 | 定位、目录树、接口、协作、知识入库 | [01_openroad_platform_overview.md](docs/tutorials/01_openroad_platform_overview.md) |
+| TaiWei 3D 原理 | 3D 芯片怎么工作、20 道工序、输入输出 | [02_taiwei_3d_how_it_works.md](docs/tutorials/02_taiwei_3d_how_it_works.md) |
+| 自演化问题详解 | 知识入库流程、问题根因 | [03_self_evolution_issue.md](docs/tutorials/03_self_evolution_issue.md) |
+| 多人协作开发 | Git 流程、模块分工、加新插件 | [04_collaboration_guide.md](docs/tutorials/04_collaboration_guide.md) |
+| 为什么可以自演化 | GP/BO、离线 RL 的原理答疑 | [05_why_self_evolution.md](docs/tutorials/05_why_self_evolution.md) |
+| AI for EDA 对照 | 参考 Si2 标准的数据对照 | [06_ai_for_eda_si2_mapping.md](docs/tutorials/06_ai_for_eda_si2_mapping.md) |
 
-> GitHub 不会渲染 `.html` 文件（点击只能看源码）。**「在线预览」走 GitHub Pages**（https://CODA-Team.github.io/ChipEvolve）：只需在仓库 Settings → Pages → Deploy from a branch 选 `main` / `/docs` 开启一次，之后有仓库访问权限（登录 GitHub）即可在线查看；未开启前可克隆到本地双击打开，或看「源码」列下载原文件。
+> 教程均为 **Markdown**，GitHub 原生渲染——点击链接即可在线阅读，无需任何额外配置。
 
 ---
 

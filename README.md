@@ -44,7 +44,7 @@ Turning chip design from a manual flow into an **automated + self-learning** ope
 | Batch experiments (Campaign / Agent search) | 🚧 Partial | Creates reviewable candidate plans, human-confirmed execution |
 | LLM online optimization | 🚧 Needs config | BYOK or shared model; credentials in memory only |
 
-> Full capability map: Overview page + [Tutorial 01](docs/tutorials/01_openroad_platform_overview.html).
+> Full capability map: Overview page + [Tutorial 01](docs/tutorials/01_openroad_platform_overview.md).
 
 ---
 
@@ -183,16 +183,16 @@ git ignores `.tools/`, `.external-src/`, `var/` so the repo stays clean.
 
 ## Tutorials
 
-| Tutorial | Topic | Source | Online preview |
-| --- | --- | --- | --- |
-| Platform overview | positioning, layout, API, collaboration, knowledge | [01...html](docs/tutorials/01_openroad_platform_overview.html) | [▶ Open](https://CODA-Team.github.io/ChipEvolve/docs/tutorials/01_openroad_platform_overview.html) |
-| TaiWei 3D internals | how 3D works, 20 stages, inputs/outputs | [02...html](docs/tutorials/02_taiwei_3d_how_it_works.html) | [▶ Open](https://CODA-Team.github.io/ChipEvolve/docs/tutorials/02_taiwei_3d_how_it_works.html) |
-| Self-evolution deep dive | collection flow, root-cause analysis | [03...html](docs/tutorials/03_self_evolution_issue.html) | [▶ Open](https://CODA-Team.github.io/ChipEvolve/docs/tutorials/03_self_evolution_issue.html) |
-| Collaboration | Git flow, module ownership, adding a plugin | [04...html](docs/tutorials/04_collaboration_guide.html) | [▶ Open](https://CODA-Team.github.io/ChipEvolve/docs/tutorials/04_collaboration_guide.html) |
-| Why self-evolution works | GP/BO, offline RL explained | [05...html](docs/tutorials/05_why_self_evolution.html) | [▶ Open](https://CODA-Team.github.io/ChipEvolve/docs/tutorials/05_why_self_evolution.html) |
-| AI for EDA mapping | Si2 standard data mapping | [06...html](docs/tutorials/06_ai_for_eda_si2_mapping.html) | [▶ Open](https://CODA-Team.github.io/ChipEvolve/docs/tutorials/06_ai_for_eda_si2_mapping.html) |
+| Tutorial | Topic | Link |
+| --- | --- | --- |
+| Platform overview | positioning, layout, API, collaboration, knowledge | [01_openroad_platform_overview.md](docs/tutorials/01_openroad_platform_overview.md) |
+| TaiWei 3D internals | how 3D works, 20 stages, inputs/outputs | [02_taiwei_3d_how_it_works.md](docs/tutorials/02_taiwei_3d_how_it_works.md) |
+| Self-evolution deep dive | collection flow, root-cause analysis | [03_self_evolution_issue.md](docs/tutorials/03_self_evolution_issue.md) |
+| Collaboration | Git flow, module ownership, adding a plugin | [04_collaboration_guide.md](docs/tutorials/04_collaboration_guide.md) |
+| Why self-evolution works | GP/BO, offline RL explained | [05_why_self_evolution.md](docs/tutorials/05_why_self_evolution.md) |
+| AI for EDA mapping | Si2 standard data mapping | [06_ai_for_eda_si2_mapping.md](docs/tutorials/06_ai_for_eda_si2_mapping.md) |
 
-> GitHub does not render `.html` files inline. **Online preview** uses GitHub Pages (https://CODA-Team.github.io/ChipEvolve) — enable it once in Settings → Pages → Deploy from a branch: `main` / `/docs`, then the links work for anyone signed in with repo access. Alternatively clone the repo and open the file locally.
+> Tutorials are **Markdown** — GitHub renders them natively, so each link opens in the browser directly. No extra setup needed.
 
 ---
 
