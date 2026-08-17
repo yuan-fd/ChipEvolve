@@ -1409,7 +1409,6 @@ $$('[data-scroll]').forEach(element => element.addEventListener("click", () => $
 $$('[data-input-mode]').forEach(button => button.addEventListener("click", () => selectInputMode(button.dataset.inputMode)));
 $$('[data-design-view]').forEach(button => button.addEventListener("click", () => { state.designView = button.dataset.designView; renderDesignView(); }));
 $$('[data-open-extension]').forEach(button => button.addEventListener("click", () => openExtension(button.dataset.openExtension)));
-$("#watchDemo").addEventListener("click", () => { $("#demoNotice").textContent = "The demo area is ready; the project video will be connected here when uploaded."; $(".showcase-section").scrollIntoView({behavior: "smooth"}); });
 $("#accountButton").addEventListener("click", () => {
   if (state.auth?.user?.username === "local-user") {
     message("#demoNotice", ui("Internal mode: this deployment shares one local workspace without registration.", "内部模式：当前部署为共享本地工作区，无需注册登录。"));

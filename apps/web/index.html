@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/assets/app.css?v=20260817">
+  <link rel="stylesheet" href="/assets/app.css?v=20260817b">
 </head>
 <body>
   <header class="site-header">
@@ -49,25 +49,13 @@
           <div title="Natural-language design with reviewable RTL and reproducible physical implementation."><span>01</span><p><b>Spec → RTL → GDS</b><span data-i18n="overview.cap1">Natural-language design with reviewable RTL.</span></p></div>
           <div title="Natural-language control, report interpretation, diagnosis, and guided repair."><span>02</span><p><b data-i18n="overview.cap2.name">EDA Copilot</b><span data-i18n="overview.cap2">Natural-language control, diagnosis, and guided repair.</span></p></div>
           <div title="Stage-aware experiments, bounded search, BO/GP, Pareto analysis, and RL advice."><span>03</span><p><b data-i18n="overview.cap3.name">Flow Optimization</b><span data-i18n="overview.cap3">Stage-aware experiments, bounded search, and RL advice.</span></p></div>
-          <div title="Optional OpenROAD source-code candidate generation and evidence-based evaluation."><span>04</span><p><b>Tool-Evolve</b><span data-i18n="overview.cap4">Source-code candidates with evidence-based evaluation.</span></p></div>
-          <div title="2D/3D IC implementation plus device TCAD, interconnect EM, and SPICE circuit simulation."><span>05</span><p><b data-i18n="overview.cap5.name">Extended Design Stack</b><span data-i18n="overview.cap5">2D/3D IC plus TCAD, interconnect EM, and SPICE.</span></p></div>
+          <div title="OpenROAD 2D flow and TaiWei Pin-3D two-tier implementation, both verified end-to-end."><span>04</span><p><b>2D / 3D Physical Design</b><span data-i18n="overview.cap4">OpenROAD 2D flow and TaiWei Pin-3D two-tier implementation.</span></p></div>
+          <div title="Plugins extend the platform through contracts: TaiWei 3D, RTLScout, and more."><span>05</span><p><b data-i18n="overview.cap5.name">Plugin Ecosystem</b><span data-i18n="overview.cap5">Contract-based plugins: TaiWei 3D, RTLScout, and more.</span></p></div>
           <div title="Traceable knowledge, verified run data, recommendations, and reusable design experience."><span>06</span><p><b data-i18n="overview.cap6.name">Continuous Learning</b><span data-i18n="overview.cap6">Traceable knowledge and reusable design experience.</span></p></div>
         </div>
         <div class="hero-actions">
-          <button class="button" id="watchDemo">Watch Demo <span>▷</span></button>
-          <button class="button" data-scroll="tutorial">Tutorial <span>↓</span></button>
           <button class="button primary" data-route="frontend">Quick Start <span>→</span></button>
-        </div>
-        <p class="demo-notice" id="demoNotice" aria-live="polite"></p>
-      </section>
-
-      <section class="showcase-section">
-        <div class="wrap">
-          <div class="section-heading centered"><p class="eyebrow" data-i18n="overview.walkthrough">Platform walkthrough</p><h2 data-i18n="overview.walkthrough.title">See the complete design journey.</h2><p data-i18n="overview.walkthrough.help">Reserved for the project video and presentation deck. The final media can be added without changing the page structure.</p></div>
-          <div class="showcase-grid">
-            <div class="media-placeholder video-placeholder"><div class="play-mark">▷</div><b data-i18n="overview.media.video">Platform Demo</b><span data-i18n="overview.media.video.help">Video placeholder · coming soon</span></div>
-            <div class="media-placeholder slides-placeholder"><div class="slide-preview"><i></i><i></i><i></i></div><b data-i18n="overview.media.slides">Project Slides</b><span data-i18n="overview.media.slides.help">Capabilities · workflow · architecture · results</span></div>
-          </div>
+          <button class="button" data-scroll="tutorial">Tutorial <span>↓</span></button>
         </div>
       </section>
 
@@ -92,7 +80,7 @@
           <ol class="tutorial-list full-journey">
             <li><span>1</span><div title="Describe behavior and ports, review the server-generated RTL, answer clarification questions, then approve registration."><b data-i18n="tutorial.1.title">Generate and review RTL from a specification</b><p data-i18n="tutorial.1.help">Describe behavior and ports, review the RTL, then approve.</p><small class="requirement" data-i18n="tutorial.key.required">Shared server model included · no user API key required</small></div><button class="text-link" data-route="frontend" data-i18n="tutorial.frontend.action">Open Frontend →</button></li>
             <li><span>2</span><div title="Use RTLScout to propose RTL edits; Verilator and Yosys independently verify and score every candidate."><b data-i18n="tutorial.2.title">Run verified RTL exploration</b><p data-i18n="tutorial.2.help">RTLScout proposes edits; Verilator and Yosys verify each candidate.</p><small class="requirement" data-i18n="tutorial.key.optional" title="Verified offline demo needs no key · full custom-provider exploration is not enabled in this preview">Verified offline demo needs no key</small></div><button class="text-link" data-route="frontend">RTLScout →</button></li>
-            <li><span>3</span><div title="After selecting the main-flow design, the platform inherits its project context and lists the additional TCAD, interconnect EM, or SPICE inputs explicitly."><b data-i18n="tutorial.3.title">Inspect a device or circuit research branch</b><p data-i18n="tutorial.3.help">Inherits project context and lists TCAD, EM, or SPICE inputs.</p><small class="requirement" data-i18n="tutorial.device.requirement" title="Requires device geometry, interconnect ports, or a transistor-level netlist; no fixed example is presented as your design result">Requires device geometry, interconnect ports, or a transistor netlist.</small></div><button class="text-link" data-open-extension="edacraft-tcadcraft" data-i18n="tutorial.device.action">Open device branch →</button></li>
+            <li><span>3</span><div title="Select the registered RTL and run the TaiWei two-tier flow from the Backend 3D mode."><b data-i18n="tutorial.3.title">Produce a 3D IC implementation</b><p data-i18n="tutorial.3.help">Open Backend → 3D IC, pick a design and a 3D platform, then Generate 3D.</p><small class="requirement" data-i18n="tutorial.key.none">No API key required</small></div><button class="text-link" data-route="backend">Open 3D mode →</button></li>
             <li><span>4</span><div title="Select the registered RTL, use Baseline flow, and follow synthesis through final GDS."><b data-i18n="tutorial.4.title">Produce a baseline 2D layout</b><p data-i18n="tutorial.4.help">Select the RTL, use Baseline flow, then synthesize to GDS.</p><small class="requirement" data-i18n="tutorial.key.none">No API key required</small></div><button class="text-link" data-route="backend" data-i18n="tutorial.backend.action">Open Backend →</button></li>
             <li><span>5</span><div title="Switch to Stage-aware batch mode, review the bounded parameter candidates, and submit only the trials you approve."><b data-i18n="tutorial.5.title">Create a stage-aware batch experiment</b><p data-i18n="tutorial.5.help">Review bounded candidates, then submit only the trials you approve.</p><small class="requirement" data-i18n="tutorial.key.none">No API key required</small></div><button class="text-link" data-route="backend" data-i18n="tutorial.backend.action">Open Backend →</button></li>
             <li><span>6</span><div title="Use Agent-guided search for monitored experiments and bounded repair. The internal orchestration stays behind the user-facing mode."><b data-i18n="tutorial.6.title">Create an agent-guided search plan</b><p data-i18n="tutorial.6.help">Agent-guided search for monitored experiments and bounded repair.</p><small class="requirement" data-i18n="tutorial.agent.status">Plan review and confirmed execution are available</small></div><button class="text-link" data-route="backend" data-i18n="tutorial.backend.action">Open Backend →</button></li>
@@ -117,7 +105,7 @@
 
     <section class="page workspace-page" id="page-frontend">
       <div class="workspace-head workspace-wrap"><p class="workspace-kicker" data-i18n="frontend.kicker">Interactive design workspace</p><h1 data-i18n="frontend.title">Frontend Design</h1><p data-i18n="frontend.subtitle">Create or import RTL, synthesize it, and inspect the circuit in one clear sequence.</p></div>
-      <nav class="workspace-switcher workspace-wrap" aria-label="Design workspace"><button class="active" data-route="frontend"><span>●</span><b data-i18n="switch.frontend">Frontend Design</b></button><button data-route="backend"><span>▥</span><b data-i18n="switch.backend">Backend Implementation</b></button><button data-route="projects"><span>▣</span><b data-i18n="switch.results">Run Results</b></button></nav>
+      <nav class="workspace-switcher workspace-wrap" aria-label="Design workspace"><button class="active" data-route="frontend"><b data-i18n="switch.frontend">Frontend Design</b></button><button data-route="backend"><b data-i18n="switch.backend">Backend Implementation</b></button><button data-route="projects"><b data-i18n="switch.results">Run Results</b></button></nav>
 
       <div class="workspace-stack workspace-wrap">
         <section class="task-panel">
@@ -139,7 +127,7 @@
           <div class="design-summary" id="designMeta"><div><b>No design selected</b><span>Choose an example, upload RTL, or select an existing design.</span></div><div class="metric"><strong>—</strong><small>Gate instances</small></div><div class="metric"><strong>—</strong><small>Ports</small></div></div>
           <div class="result-viewer">
             <div class="viewer-tabs"><button class="active" data-design-view="schematic" data-i18n="frontend.view.schematic">Circuit schematic</button><button data-design-view="rtl" data-i18n="frontend.view.rtl">Verilog source</button><button data-design-view="netlist" data-i18n="frontend.view.netlist">Gate netlist</button><div class="viewer-downloads"><a id="downloadRtl" href="#" data-i18n="frontend.download.rtl">Download RTL</a><a id="downloadNetlist" href="#" data-i18n="frontend.download.netlist">Download netlist</a></div></div>
-            <div class="visual-canvas" id="frontendCanvas"><div class="empty"><span>◇</span><h3 data-i18n="frontend.empty.title">Your synthesized circuit will appear here.</h3><p data-i18n="frontend.empty.help">Choose a design above to load its registered outputs.</p></div></div>
+            <div class="visual-canvas" id="frontendCanvas"><div class="empty"><h3 data-i18n="frontend.empty.title">Your synthesized circuit will appear here.</h3><p data-i18n="frontend.empty.help">Choose a design above to load its registered outputs.</p></div></div>
           </div>
         </section>
 
@@ -198,7 +186,7 @@
 
     <section class="page workspace-page" id="page-backend">
       <div class="workspace-head workspace-wrap"><p class="workspace-kicker" data-i18n="backend.kicker">Interactive implementation workspace</p><h1 data-i18n="backend.title">Backend Implementation</h1><p data-i18n="backend.subtitle">Configure RTL-to-GDS, follow each physical-design stage, and inspect layout and QoR evidence.</p></div>
-      <nav class="workspace-switcher workspace-wrap" aria-label="Design workspace"><button data-route="frontend"><span>●</span><b data-i18n="switch.frontend">Frontend Design</b></button><button class="active" data-route="backend"><span>▥</span><b data-i18n="switch.backend">Backend Implementation</b></button><button data-route="projects"><span>▣</span><b data-i18n="switch.results">Run Results</b></button></nav>
+      <nav class="workspace-switcher workspace-wrap" aria-label="Design workspace"><button data-route="frontend"><b data-i18n="switch.frontend">Frontend Design</b></button><button class="active" data-route="backend"><b data-i18n="switch.backend">Backend Implementation</b></button><button data-route="projects"><b data-i18n="switch.results">Run Results</b></button></nav>
       <div class="backend-mode-switch workspace-wrap" role="tablist" aria-label="Implementation mode">
         <button class="active" role="tab" data-backend-mode="2d"><b>2D Design</b><small>RTL → GDS · baseline flow</small></button>
         <button role="tab" data-backend-mode="3d"><b>3D IC</b><small>TaiWei Pin-3D · two-tier</small></button>
@@ -224,14 +212,14 @@
 
         <section class="task-panel">
           <header class="task-panel-head"><span>④</span><div><b data-i18n="backend.evidence.title">Layout, QoR, and implementation evidence</b><small data-i18n="backend.evidence.subtitle">Inspect generated views, timing, area, power, DRC, reports, and downloadable artifacts.</small></div></header>
-          <div class="result-evidence" id="backendEvidence"><div class="empty"><span>□</span><h3 data-i18n="backend.evidence.empty">Design results will appear here.</h3><p data-i18n="backend.evidence.empty.help">Choose a completed task for the current design to load its layout and reports.</p></div></div>
+          <div class="result-evidence" id="backendEvidence"><div class="empty"><h3 data-i18n="backend.evidence.empty">Design results will appear here.</h3><p data-i18n="backend.evidence.empty.help">Choose a completed task for the current design to load its layout and reports.</p></div></div>
         </section>
       </div>
 
       <div class="workspace-stack workspace-wrap" id="backend-pane-3d" hidden>
         <section class="task-panel">
           <header class="task-panel-head"><span>3D</span><div><b>TaiWei 3D IC implementation</b><small>Two-tier (3D) physical design from a registered RTL design · 20-stage flow · GDS + cross-tier metrics.</small></div></header>
-          <div class="task-panel-body" id="taiwei3dPane"><div class="empty"><span>⬒</span><h3>Loading 3D workspace…</h3></div></div>
+          <div class="task-panel-body" id="taiwei3dPane"><div class="empty"><h3>Loading 3D workspace…</h3></div></div>
         </section>
       </div>
     </section>
@@ -242,7 +230,7 @@
         <div class="result-toolbar"><div class="segmented" id="resultFilters"><button class="active" data-filter="all">All records</button><button data-filter="design">Designs</button><button data-filter="runtime_run">Design tasks</button></div><div class="developer-result-controls" id="developerResultControls" hidden><span>Developer</span><button class="button small" id="developerScope">Show all users</button></div><button class="button small" id="refreshResults">Refresh</button></div>
         <div class="result-list" id="resultList"><div class="empty"><span>○</span><h3>Loading project records…</h3></div></div>
       </section>
-      <section class="project-detail-section" id="projectDetailSection"><div class="wrap"><button class="text-link back-to-results" id="closeResultDetail">← Back to project list</button><div id="resultDetail"><div class="empty"><span>↗</span><h3>Select a project.</h3><p>Its circuit, stages, layout, QoR, artifacts, versions, hashes, and replay context will open here.</p></div></div></div></section>
+      <section class="project-detail-section" id="projectDetailSection"><div class="wrap"><button class="text-link back-to-results" id="closeResultDetail">← Back to project list</button><div id="resultDetail"><div class="empty"><h3>Select a project.</h3><p>Its circuit, stages, layout, QoR, artifacts, versions, hashes, and replay context will open here.</p></div></div></div></section>
     </section>
 
     <section class="page" id="page-evolution">
@@ -272,6 +260,6 @@
     </section>
   </main>
   <footer><span>OpenROAD Self-Evolving EDA Platform</span><span>Local research workspace · verified evidence</span></footer>
-  <script src="/assets/app.js?v=20260817"></script>
+  <script src="/assets/app.js?v=20260817b"></script>
 </body>
 </html>
