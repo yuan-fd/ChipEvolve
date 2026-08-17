@@ -41,3 +41,6 @@ pythonpath = [
   "packages/visualization/src",
 ]
 addopts = "-ra"
+markers = [
+  "real_3d: real TaiWei 3D end-to-end flow (needs pinned toolchain)",
+]

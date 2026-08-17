@@ -156,6 +156,17 @@ def main(argv: list[str] | None = None) -> int:
                 heartbeat.active_run = None
                 heartbeat.status = "idle"
                 heartbeat.write()
+            # Auto-learning: terminal succeeded runs are collected into the
+            # knowledge base automatically; failed/cancelled runs are recorded
+            # as rejections (audit trail only, never into observations).
+            try:
+                current = state.runtime_store.get_run(run.run_id)
+                if current.status.value in {"succeeded", "failed", "cancelled",
+                                            "timed_out"}:
+                    state.auto_collect_terminal_run(run.run_id)
+            except Exception as exc:  # Learning must never break the worker loop.
+                print(f"Auto-learning for run {run.run_id} failed: {exc}",
+                      file=sys.stderr, flush=True)
             if args.once:
                 break
     finally:

@@ -65,6 +65,15 @@ class TenantLearningStore:
                     UNIQUE(tenant_id, project_id, run_id, attempt_id,
                            context_fingerprint, parser_version)
                 );
+                CREATE TABLE IF NOT EXISTS learning_rejections_v1 (
+                    rejection_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL,
+                    project_id TEXT NOT NULL, run_id TEXT NOT NULL,
+                    attempt_id TEXT NOT NULL, context_fingerprint TEXT NOT NULL,
+                    run_status TEXT NOT NULL, reason TEXT NOT NULL,
+                    metrics_snapshot TEXT, created_at TEXT NOT NULL,
+                    UNIQUE(tenant_id, project_id, run_id, attempt_id,
+                           context_fingerprint)
+                );
             """)
 
     def admit(self, tenant_id: str, project_id: str,
@@ -94,6 +103,18 @@ class TenantLearningStore:
                 WHERE tenant_id = ? AND project_id = ? AND tombstoned = 0
                 ORDER BY created_at, observation_id""", (tenant_id, project_id)).fetchall()
         return [LearningObservation.from_dict(json.loads(row[0])) for row in rows]
+
+    def rejections(self, tenant_id: str, project_id: str) -> list[dict[str, Any]]:
+        """Audit trail of rejected runs (never enters the learning observations)."""
+        self._scope(tenant_id, project_id)
+        with self._connect() as connection:
+            connection.row_factory = sqlite3.Row
+            rows = connection.execute("""SELECT rejection_id, run_id, attempt_id,
+                context_fingerprint, run_status, reason, metrics_snapshot, created_at
+                FROM learning_rejections_v1
+                WHERE tenant_id = ? AND project_id = ?
+                ORDER BY created_at, rejection_id""", (tenant_id, project_id)).fetchall()
+        return [dict(row) for row in rows]
 
     def set_shared_opt_in(self, tenant_id: str, project_id: str,
                           observation_id: str, enabled: bool) -> None:
@@ -162,6 +183,37 @@ class LearningCollector:
             self._record(collection_id, tenant_id, project_id, run_id, attempt.attempt_id,
                          context, "rejected", None, reason)
         return self._receipt(collection_id)  # type: ignore[return-value]
+
+    def reject(self, run_id: str, context: LearningContext, *, tenant_id: str,
+               project_id: str, run_status: str, reason: str) -> str:
+        """Record a rejected run (failed / cancelled / timed-out) without touching
+        the learning observations — keeps the knowledge base clean while keeping
+        an audit trail (and optional future negative samples for offline RL)."""
+        TenantLearningStore._scope(tenant_id, project_id)
+        context.validate()
+        attempts = [attempt for stage in self.runtime_store.list_stages(run_id)
+                    for attempt in self.runtime_store.list_attempts(stage.stage_run_id)]
+        attempt_id = attempts[-1].attempt_id if attempts else "no-attempt"
+        metrics_snapshot = None
+        if attempts:
+            try:
+                metrics_snapshot = json.dumps(
+                    self.runtime_store.metrics(attempt_id),
+                    ensure_ascii=False, default=str)
+            except Exception:
+                metrics_snapshot = None
+        key = {"tenant": tenant_id, "project": project_id, "run": run_id,
+               "attempt": attempt_id, "context": context.fingerprint}
+        rejection_id = f"reject-{_digest(key)[:24]}"
+        with self.learning_store._connect() as connection:
+            connection.execute("""INSERT INTO learning_rejections_v1
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(rejection_id) DO UPDATE SET
+                    run_status=excluded.run_status, reason=excluded.reason,
+                    metrics_snapshot=excluded.metrics_snapshot""",
+                (rejection_id, tenant_id, project_id, run_id, attempt_id,
+                 context.fingerprint, run_status, reason[:2000], metrics_snapshot))
+        return rejection_id
 
     def _record(self, collection_id: str, tenant_id: str, project_id: str, run_id: str,
                 attempt_id: str, context: LearningContext, status: str,

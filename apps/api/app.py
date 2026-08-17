@@ -972,34 +972,66 @@ class ApiState:
         )
         return {"revoked": revoked}
 
-    def collect_runtime_learning(self, run_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        owner_id = str(payload.get("owner_id") or "local-user")
-        run = self._authorize_runtime(
-            run_id, owner_id, include_legacy=payload.get("include_legacy") is True
-        )
+    def _learning_context_for_run(self, run, *, metric_parser_version=None):
+        """Build the learning context for a run (shared by manual + auto paths)."""
         rtl = run.task_spec.inputs.get("rtl")
         rtl_sha = rtl.get("sha256") if isinstance(rtl, dict) else run.task_spec.inputs.get("rtl_sha256")
         if not isinstance(rtl_sha, str):
             raise ValueError("Runtime task has no immutable RTL fingerprint")
-        stages = self.runtime_store.list_stages(run_id)
+        stages = self.runtime_store.list_stages(run.run_id)
         plugin_version = str(stages[0].plugin_version if stages else "registered")
-        context = LearningContext(
+        return LearningContext(
             design_id=run.task_spec.design_id, design_fingerprint=rtl_sha,
             platform=_learning_identifier(
                 run.task_spec.parameters.get("platform"), "unknown-platform"
             ),
             pdk_id=_learning_identifier(
-                payload.get("pdk_id") or run.task_spec.parameters.get("platform"),
-                "unknown-pdk",
+                run.task_spec.parameters.get("platform"), "unknown-pdk"
             ),
             toolchain_id=_learning_identifier(
                 f"{run.task_spec.plugin_id}-{plugin_version}", "unknown-toolchain"
             ),
             flow_stage=str(run.task_spec.parameters.get("target_stage") or "finish"),
             metric_parser_version=_learning_identifier(
-                payload.get("metric_parser_version"), "web-evidence-v1"
+                metric_parser_version or "web-evidence-v1", "web-evidence-v1"
             ),
         )
+
+    def auto_collect_terminal_run(self, run_id: str) -> dict[str, Any]:
+        """Auto-learning hook for the worker: succeeded -> collect; otherwise -> reject."""
+        run = self.runtime_store.get_run(run_id)
+        if run.status.value not in {"succeeded", "failed", "cancelled", "timed_out"}:
+            return {"run_id": run_id, "action": "skipped", "reason": "not terminal"}
+        owner_id = str(run.task_spec.labels.get("owner_id") or "system-auto")
+        project_id = str(run.task_spec.project_id or "openroad-platform")
+        try:
+            context = self._learning_context_for_run(run)
+        except ValueError as exc:
+            return {"run_id": run_id, "action": "skipped",
+                    "reason": f"no learning context: {exc}"}
+        if run.status.value == "succeeded":
+            receipt = self.learning_collector.collect(
+                run_id, context, tenant_id=owner_id, project_id=project_id)
+            return {"run_id": run_id, "action": "collect",
+                    "status": receipt.status,
+                    "observation_id": receipt.observation_id,
+                    "reason": receipt.reason}
+        attempts = [attempt for stage in self.runtime_store.list_stages(run_id)
+                    for attempt in self.runtime_store.list_attempts(stage.stage_run_id)]
+        failure = attempts[-1].failure if attempts else None
+        reason = str(failure or run.terminal_reason or "run did not succeed")
+        rejection_id = self.learning_collector.reject(
+            run_id, context, tenant_id=owner_id, project_id=project_id,
+            run_status=run.status.value, reason=reason)
+        return {"run_id": run_id, "action": "reject", "rejection_id": rejection_id}
+
+    def collect_runtime_learning(self, run_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        owner_id = str(payload.get("owner_id") or "local-user")
+        run = self._authorize_runtime(
+            run_id, owner_id, include_legacy=payload.get("include_legacy") is True
+        )
+        context = self._learning_context_for_run(
+            run, metric_parser_version=payload.get("metric_parser_version"))
         receipt = self.learning_collector.collect(
             run_id, context, tenant_id=owner_id,
             project_id=str(payload.get("project_id") or run.task_spec.project_id),
