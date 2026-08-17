@@ -497,12 +497,20 @@ footer { height: 56px; padding: 0 24px; display: flex; justify-content: space-be
 .workspace-head h1::after { content: " — Interactive Demo"; color: var(--accent); font-weight: 600; }
 html[lang="zh-CN"] .workspace-head h1::after { content: " — 交互演示"; }
 .workspace-head > p:last-child { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+/* hidden attribute must always win over display rules (e.g. workspace-stack grid) */
+[hidden] { display: none !important; }
 .workspace-switcher { padding: 14px 0 10px; display: flex; gap: 7px; }
 .workspace-switcher button { min-height: 32px; padding: 0 13px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line-strong); border-radius: 17px; background: white; color: #475467; }
 .workspace-switcher button span { color: #98a2b3; font-size: 11px; }
 .workspace-switcher button b { font-size: 11px; font-weight: 600; }
 .workspace-switcher button.active { border-color: var(--accent); background: var(--accent); color: white; }
 .workspace-switcher button.active span { color: #ffd3e0; }
+.backend-mode-switch { padding: 6px 0 14px; display: flex; gap: 10px; }
+.backend-mode-switch button { flex: 1; min-height: 58px; padding: 8px 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; border: 1px solid var(--line-strong); border-radius: 8px; background: white; color: #475467; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+.backend-mode-switch button b { font-size: 15px; font-weight: 700; }
+.backend-mode-switch button small { font-size: 11px; color: #98a2b3; }
+.backend-mode-switch button.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); color: var(--accent); }
+.backend-mode-switch button.active small { color: var(--accent); }
 .workspace-stack { padding: 0 0 56px; display: grid; gap: 13px; }
 .task-panel { border: 1px solid var(--line-strong); border-radius: 6px; background: white; overflow: hidden; }
 .task-panel-head { min-height: 44px; padding: 9px 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); background: #f6f7f9; }

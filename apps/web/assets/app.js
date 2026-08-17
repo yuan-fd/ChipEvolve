@@ -10,6 +10,7 @@ const state = {
   requestedExtension: null, rtlscoutPoll: null, runtimePoll: null, healthPoll: null,
   health: null, auth: null, workspaceLoaded: false, locale: "en",
   specSession: null, pendingCampaign: null, developerView: false,
+  backendMode: "2d",
 };
 const stages = ["synth", "floorplan", "place", "cts", "route", "finish"];
 const ZH = {
@@ -497,6 +498,7 @@ async function selectDesign(id) {
   await renderDesignView();
   await loadRuns();
   if (state.selectedExtension) selectExtension(state.selectedExtension);
+  if (state.backendMode === "3d") renderTaiwei3dPane();
 }
 
 async function renderDesignView() {
@@ -1068,6 +1070,54 @@ function updateFlowMode() {
     : ui("Batch modes create three bounded candidates for review; they do not execute automatically.", "批量模式会创建三个有界候选供审查，不会自动执行。")
 }
 
+function backendMode(mode) {
+  state.backendMode = mode;
+  const two = $("#backend-pane-2d");
+  const three = $("#backend-pane-3d");
+  if (two) two.hidden = mode !== "2d";
+  if (three) three.hidden = mode !== "3d";
+  $$("[data-backend-mode]").forEach(btn => btn.classList.toggle("active", btn.dataset.backendMode === mode));
+  if (mode === "3d") renderTaiwei3dPane();
+  if (mode === "2d" && state.selectedDesign) renderDesignChips();
+}
+
+function renderTaiwei3dPane() {
+  const root = $("#taiwei3dPane");
+  if (!root) return;
+  const design = state.selectedDesign;
+  // 3D output requires a design imported/selected in the 2D flow first.
+  if (!design) {
+    root.innerHTML = `<div class="empty" style="text-align:center;padding:26px 18px"><span>⬒</span><h3>${ui("Import a design in 2D first", "请先在 2D 分区导入/选择设计")}</h3><p>${ui("3D output needs a registered RTL design. Go to 2D Design step ① (or Frontend Design) to import one, then come back here.", "3D 输出需要一个已登记的设计。请先在 2D Design 步骤①（或 Frontend Design 页）导入/选择一个设计，再回到这里。")}</p><button class="button" id="jumpTo2d">${ui("Go to 2D Design →", "前往 2D Design →")}</button></div>`;
+    const jump = root.querySelector("#jumpTo2d");
+    if (jump) jump.addEventListener("click", () => backendMode("2d"));
+    return;
+  }
+  const baseline = successfulBaselineForDesign(design.id);
+  const compatibility = extensionCompatibility("taiwei-3d", design, baseline);
+  const designLabel = `${ui("Design", "设计")} · ${design.module}`;
+  const baselineLabel = baseline
+    ? `${runDisplayName(baseline.run_id)} · ${ui("2D baseline succeeded", "2D 基线成功")}`
+    : ui("No 2D baseline (optional — 3D runs standalone)", "无 2D 基线（可选——3D 独立运行）");
+  let action;
+  if (compatibility.action === "taiwei") {
+    action = `<button class="button primary" data-run-taiwei>${ui("Generate 3D", "生成 3D")} <span>→</span></button>`;
+  } else {
+    action = `<button class="button primary" disabled title="${esc(compatibility.reason)}">${ui("Generate 3D", "生成 3D")} <span>→</span></button>`;
+  }
+  root.innerHTML = `
+    <div class="extension-context">
+      <div><span>${ui("Current design", "当前设计")}</span><b>${esc(designLabel)}</b></div>
+      <div><span>2D baseline</span><b>${esc(baselineLabel)}</b></div>
+    </div>
+    <div style="margin-top:10px;padding:9px 11px;border:1px dashed var(--line-strong);display:grid;gap:4px"><span style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em">${ui("Supported scope", "支持范围")}</span><b style="color:var(--heading);font-size:11px">${ui("Registered design + 3D platform; 2D baseline optional", "已登记设计 + 3D 工艺库；2D 基线可选")}</b></div>
+    <div class="compatibility ${esc(compatibility.tone)}"><span>${ui("Compatibility", "兼容性")}</span><b>${esc(compatibility.label)}</b><p>${esc(compatibility.reason)}</p></div>
+    ${taiwei3dConfigForm()}
+    <div class="extension-actions">${action}</div>
+    <p class="message" id="extensionMessage"></p>`;
+  const taiwei = root.querySelector("[data-run-taiwei]");
+  if (taiwei) taiwei.addEventListener("click", () => submitTaiweiExtension(design.id, baseline?.run_id || ""));
+}
+
 function openExtension(id) {
   if (!state.auth?.authenticated) return openAuth(ui(
     "Sign in and select a design before opening an extension.",
@@ -1354,6 +1404,7 @@ function formatDate(value) {
 }
 
 $$('[data-route]').forEach(element => element.addEventListener("click", () => route(element.dataset.route)));
+$$('[data-backend-mode]').forEach(btn => btn.addEventListener("click", () => backendMode(btn.dataset.backendMode)));
 $$('[data-scroll]').forEach(element => element.addEventListener("click", () => $("#" + element.dataset.scroll)?.scrollIntoView({behavior: "smooth"})));
 $$('[data-input-mode]').forEach(button => button.addEventListener("click", () => selectInputMode(button.dataset.inputMode)));
 $$('[data-design-view]').forEach(button => button.addEventListener("click", () => { state.designView = button.dataset.designView; renderDesignView(); }));

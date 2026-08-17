@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/assets/app.css">
+  <link rel="stylesheet" href="/assets/app.css?v=20260817">
 </head>
 <body>
   <header class="site-header">
@@ -83,7 +83,7 @@
       </section>
 
       <section class="overview-extension-showcase">
-        <div class="wrap"><div class="section-heading"><p class="eyebrow" data-i18n="overview.optional">Optional research capabilities</p><h2 data-i18n="overview.optional.title">Specialist branches, connected to the main workflow.</h2><p data-i18n="overview.optional.help">The default path remains Spec-to-GDS. Open a specialist branch only when the design needs 3D implementation, device physics, interconnect EM, circuit simulation, or source-code optimization.</p></div><div class="overview-extension-grid"><article title="Two-tier physical implementation and optional OpenROAD source optimization extend the backend path."><small data-i18n="overview.optional.physical">Physical-design options</small><h3>3D IC · Tool-Evolve</h3><p data-i18n="overview.optional.physical.help">Two-tier implementation and optional OpenROAD source optimization.</p><button class="text-link" data-route="backend" data-i18n="overview.optional.backend.action">Open backend options →</button></article><article title="TCADCraft, MoMCraft, and CktCraft add device physics, S-parameter extraction, and transistor-level simulation without duplicating RTL generation."><small data-i18n="overview.optional.device">Device and circuit research</small><h3>TCAD · Interconnect EM · SPICE</h3><p data-i18n="overview.optional.device.help">Device physics, S-parameter extraction, and transistor-level simulation.</p><button class="text-link" data-open-extension="edacraft-tcadcraft" data-i18n="overview.optional.device.action">Open device tools →</button></article></div></div>
+        <div class="wrap"><div class="section-heading"><p class="eyebrow" data-i18n="overview.optional">Implementation options</p><h2 data-i18n="overview.optional.title">2D baseline and 3D IC implementation.</h2><p data-i18n="overview.optional.help">The default path is Spec-to-GDS. Open the 3D branch when the design needs two-tier (3D) implementation.</p></div><div class="overview-extension-grid"><article title="Two-tier physical implementation from registered RTL."><small data-i18n="overview.optional.physical">Physical-design options</small><h3>3D IC</h3><p data-i18n="overview.optional.physical.help">Two-tier (TaiWei Pin-3D) implementation from registered RTL.</p><button class="text-link" data-route="backend" data-i18n="overview.optional.backend.action">Open backend options →</button></article></div></div>
       </section>
 
       <section class="tutorial-section" id="tutorial">
@@ -199,7 +199,11 @@
     <section class="page workspace-page" id="page-backend">
       <div class="workspace-head workspace-wrap"><p class="workspace-kicker" data-i18n="backend.kicker">Interactive implementation workspace</p><h1 data-i18n="backend.title">Backend Implementation</h1><p data-i18n="backend.subtitle">Configure RTL-to-GDS, follow each physical-design stage, and inspect layout and QoR evidence.</p></div>
       <nav class="workspace-switcher workspace-wrap" aria-label="Design workspace"><button data-route="frontend"><span>●</span><b data-i18n="switch.frontend">Frontend Design</b></button><button class="active" data-route="backend"><span>▥</span><b data-i18n="switch.backend">Backend Implementation</b></button><button data-route="projects"><span>▣</span><b data-i18n="switch.results">Run Results</b></button></nav>
-      <div class="workspace-stack workspace-wrap">
+      <div class="backend-mode-switch workspace-wrap" role="tablist" aria-label="Implementation mode">
+        <button class="active" role="tab" data-backend-mode="2d"><b>2D Design</b><small>RTL → GDS · baseline flow</small></button>
+        <button role="tab" data-backend-mode="3d"><b>3D IC</b><small>TaiWei Pin-3D · two-tier</small></button>
+      </div>
+      <div class="workspace-stack workspace-wrap" id="backend-pane-2d">
         <section class="task-panel">
           <header class="task-panel-head"><span>①</span><div><b data-i18n="backend.design.title">Choose a registered RTL design</b><small data-i18n="backend.design.subtitle">Frontend designs are immediately available to the physical-design flow.</small></div></header>
           <div class="task-panel-body"><div class="design-chips" id="backendDesignChips"></div><label class="wide-select"><span data-i18n="common.design">Registered design</span><select id="backendDesign"><option value="">Select a registered design</option></select></label></div>
@@ -222,13 +226,12 @@
           <header class="task-panel-head"><span>④</span><div><b data-i18n="backend.evidence.title">Layout, QoR, and implementation evidence</b><small data-i18n="backend.evidence.subtitle">Inspect generated views, timing, area, power, DRC, reports, and downloadable artifacts.</small></div></header>
           <div class="result-evidence" id="backendEvidence"><div class="empty"><span>□</span><h3 data-i18n="backend.evidence.empty">Design results will appear here.</h3><p data-i18n="backend.evidence.empty.help">Choose a completed task for the current design to load its layout and reports.</p></div></div>
         </section>
+      </div>
 
-        <section class="task-panel extension-task compact-extensions">
-          <header class="task-panel-head"><span>⑤</span><div><b data-i18n="backend.extensions.title">Optional research branches</b><small data-i18n="backend.extensions.subtitle" title="Choose a compatible branch for the registered design. TaiWei 3D starts independently from RTL; a successful 2D run is optional comparison evidence.">Choose a compatible branch for the registered design.</small></div></header>
-          <p class="extension-contract-note"><b data-i18n="backend.extensions.contract">Current design → choose a 2D or 3D branch → verified evidence</b><span data-i18n="backend.extensions.contract.help" title="The 2D and 3D branches both start independently from registered RTL. An optional 2D baseline is linked only for comparison; other extensions declare their additional inputs before execution.">2D and 3D start independently from registered RTL.</span></p>
-          <div class="extension-group"><p data-i18n="backend.extensions.digital">Physical-design options</p><div class="extension-rows three"><button data-open-extension="taiwei-3d"><span><b>TaiWei 3D IC</b><small data-i18n="backend.ext.3d">Start a standalone two-tier implementation from registered RTL, producing HBT, cross-tier metrics, and 3D views.</small></span><i>→</i></button><button data-open-extension="dplevolve"><span><b>DPLEvolve / Tool-Evolve</b><small data-i18n="backend.ext.evolve">Optional long-running OpenROAD source candidate optimization.</small></span><i>→</i></button></div></div>
-          <div class="extension-group device-group"><p data-i18n="backend.extensions.device">Device and circuit extensions</p><div class="extension-rows three"><button data-open-extension="edacraft-tcadcraft"><span><b>TCADCraft</b><small data-i18n="backend.ext.tcad">3D semiconductor device geometry and bounded physics simulation.</small></span><i>→</i></button><button data-open-extension="edacraft-momcraft"><span><b>MoMCraft</b><small data-i18n="backend.ext.mom">Interconnect electromagnetic analysis and S-parameter extraction.</small></span><i>→</i></button><button data-open-extension="edacraft-cktcraft"><span><b>CktCraft</b><small data-i18n="backend.ext.ckt">SPICE-level analog and RF circuit simulation.</small></span><i>→</i></button></div></div>
-          <div class="embedded-extension-detail" id="embeddedExtensionDetail"></div>
+      <div class="workspace-stack workspace-wrap" id="backend-pane-3d" hidden>
+        <section class="task-panel">
+          <header class="task-panel-head"><span>3D</span><div><b>TaiWei 3D IC implementation</b><small>Two-tier (3D) physical design from a registered RTL design · 20-stage flow · GDS + cross-tier metrics.</small></div></header>
+          <div class="task-panel-body" id="taiwei3dPane"><div class="empty"><span>⬒</span><h3>Loading 3D workspace…</h3></div></div>
         </section>
       </div>
     </section>
@@ -269,6 +272,6 @@
     </section>
   </main>
   <footer><span>OpenROAD Self-Evolving EDA Platform</span><span>Local research workspace · verified evidence</span></footer>
-  <script src="/assets/app.js"></script>
+  <script src="/assets/app.js?v=20260817"></script>
 </body>
 </html>
