@@ -1403,7 +1403,10 @@ function formatDate(value) {
   return Number.isNaN(date.valueOf()) ? "" : date.toLocaleDateString(undefined, {year: "numeric", month: "short", day: "2-digit"});
 }
 
-$$('[data-route]').forEach(element => element.addEventListener("click", () => route(element.dataset.route)));
+$$('[data-route]').forEach(element => element.addEventListener("click", () => {
+  route(element.dataset.route);
+  if (element.dataset.backendTarget === "3d") backendMode("3d");
+}));
 $$('[data-backend-mode]').forEach(btn => btn.addEventListener("click", () => backendMode(btn.dataset.backendMode)));
 $$('[data-scroll]').forEach(element => element.addEventListener("click", () => $("#" + element.dataset.scroll)?.scrollIntoView({behavior: "smooth"})));
 $$('[data-input-mode]').forEach(button => button.addEventListener("click", () => selectInputMode(button.dataset.inputMode)));
