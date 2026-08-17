@@ -142,6 +142,7 @@ def test_taiwei_3d_end_to_end(tmp_path, case: str, tech: str, parameters: dict) 
         f"toolchain_snapshot not readable under any workspace: "
         f"{snapshots[0].get('store_key')!r} (workspaces={workspaces})")
     snap = json.loads(snap_path.read_text(encoding="utf-8"))
-    assert snap.get("real_3d") is True
+    assert snap.get("flow") == "ord"
     assert snap.get("case") == case and snap.get("tech") == tech
     assert snap.get("openroad_sha256") and snap.get("yosys_sha256")
+    assert snap.get("parameters", {}).get("core_utilization_pct") == 45
