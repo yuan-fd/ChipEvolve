@@ -8,12 +8,12 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/assets/app.css?v=20260820c">
+  <link rel="stylesheet" href="/assets/app.css?v=20260821a">
 </head>
 <body>
   <header class="site-header">
     <a class="wordmark" href="#overview" data-route="overview" aria-label="OpenROAD Self-Evolving EDA Platform home">
-      <span class="mark">O</span><span>OpenROAD <i>Self-Evolving EDA Platform</i></span>
+      <span class="mark">O</span><span class="wordmark-text"><b>OpenROAD</b><i>Self-Evolving EDA Platform</i></span>
     </a>
     <nav class="tabs" aria-label="Primary navigation">
       <button class="tab active" data-route="overview" data-i18n="nav.overview">Overview</button>
@@ -21,9 +21,8 @@
       <button class="tab" data-route="backend" data-i18n="nav.backend">Backend Design</button>
       <button class="tab" data-route="projects" data-i18n="nav.projects">Projects &amp; Results</button>
       <button class="tab" data-route="evolution" data-i18n="nav.evolution">Self-Evolution</button>
+      <button class="tab" data-route="tutorial" data-i18n="nav.tutorial">Tutorial</button>
     </nav>
-    <label class="global-design" title="选择当前设计，所有功能按钮直接对它生效"><span>当前设计</span><select id="globalDesign"><option value="">未选择</option></select></label>
-    <div class="header-controls"><div class="language-switch" role="group" aria-label="Language"><button id="langZh" data-locale="zh">中文</button><button id="langEn" data-locale="en" class="active">EN</button></div><button class="account-button" id="accountButton" title="Account" hidden>Sign in</button><div class="health" title="Platform status"><span id="healthDot"></span><b id="healthText">Connecting</b></div></div>
   </header>
 
   <!-- Registration/login is disabled in internal no-auth mode; restore by removing OPENROAD_PLATFORM_NO_AUTH. -->
@@ -60,9 +59,9 @@
         <h1 data-i18n="overview.hero.title">从设计意图<br>到可验证的芯片</h1>
         <p class="hero-tagline" data-i18n="overview.tagline">自然语言驱动 · Spec → RTL → GDS · 全程可验证</p>
         <div class="hero-actions hero-cta">
-          <button class="button hero-cta-btn" data-scroll="features" data-i18n="hero.intro">项目介绍</button>
-          <button class="button hero-cta-btn primary" data-scroll="tutorial" data-i18n="hero.tutorial">使用教程</button>
-          <a class="button hero-cta-btn" href="https://github.com/CODA-Team/ChipEvolve/issues" target="_blank" rel="noopener" data-i18n="hero.feedback">问题反馈</a>
+          <button class="button hero-cta-btn" data-scroll="features" data-i18n="hero.intro">About</button>
+          <button class="button hero-cta-btn primary" data-route="tutorial" data-i18n="hero.tutorial">Tutorial</button>
+          <a class="button hero-cta-btn" href="https://github.com/CODA-Team/ChipEvolve/issues" target="_blank" rel="noopener" data-i18n="hero.feedback">Feedback</a>
         </div>
       </section>
 
@@ -89,13 +88,12 @@
         </div>
       </section>
 
-      <section class="overview-extension-showcase">
-        <div class="wrap"><div class="section-heading"><p class="eyebrow" data-i18n="overview.optional">Implementation options</p><h2 data-i18n="overview.optional.title">2D baseline and 3D IC implementation.</h2><p data-i18n="overview.optional.help">The default path is Spec-to-GDS. Open the 3D branch when the design needs two-tier (3D) implementation.</p></div><div class="overview-extension-grid"><article title="Two-tier physical implementation from registered RTL."><small data-i18n="overview.optional.physical">Physical-design options</small><h3>3D IC</h3><p data-i18n="overview.optional.physical.help">Two-tier (TaiWei Pin-3D) implementation from registered RTL.</p><button class="text-link" data-route="backend" data-i18n="overview.optional.backend.action">Open backend options →</button></article></div></div>
-      </section>
+    </section>
 
-      <section class="tutorial-section" id="tutorial">
+    <section class="page" id="page-tutorial">
+      <div class="page-head wrap"><div><p class="eyebrow">使用教程</p><h1>从一句话到一颗芯片</h1></div><p>四步走完一个完整流程：描述设计、生成 RTL、跑物理实现、查看结果与经验。</p></div>
+      <section class="tutorial-section" style="padding:44px 0 64px;border-top:0">
         <div class="wrap">
-          <div class="section-heading"><p class="eyebrow">使用教程</p><h2>从一句话到一颗芯片</h2><p>四步走完一个完整流程：描述设计、生成 RTL、跑物理实现、查看结果与经验。</p></div>
           <div class="tutorial-cards">
             <article class="tutorial-card">
               <span class="tutorial-num">1</span>
@@ -209,7 +207,7 @@
     </section>
 
     <section class="page workspace-page" id="page-backend">
-      <div class="workspace-head workspace-wrap"><p class="workspace-kicker" data-i18n="backend.kicker">Interactive implementation workspace</p><h1 data-i18n="backend.title">Backend Implementation</h1><p data-i18n="backend.subtitle">Configure RTL-to-GDS, follow each physical-design stage, and inspect layout and QoR evidence.</p></div>
+      <div class="workspace-head workspace-wrap"><p class="workspace-kicker" data-i18n="backend.kicker">Interactive implementation workspace</p><h1 data-i18n="backend.title">Backend Implementation</h1><p data-i18n="backend.subtitle">Configure RTL-to-GDS, follow each physical-design stage, and inspect layout and QoR evidence.</p><label class="global-design global-design-inline" title="选择设计后，各功能直接对它生效"><span>当前设计</span><select id="globalDesign"><option value="">未选择</option></select></label></div>
       <nav class="workspace-switcher workspace-wrap" aria-label="Design workspace"><button data-route="frontend"><b data-i18n="switch.frontend">Frontend Design</b></button><button class="active" data-route="backend"><b data-i18n="switch.backend">Backend Implementation</b></button><button data-route="projects"><b data-i18n="switch.results">Run Results</b></button></nav>
       <div class="backend-mode-switch workspace-wrap" role="tablist" aria-label="Implementation mode">
         <button class="active" role="tab" data-backend-mode="2d"><b>2D Design</b><small>RTL → GDS · baseline flow</small></button>
@@ -283,7 +281,7 @@
       </section>
     </section>
   </main>
-  <footer><span>OpenROAD Self-Evolving EDA Platform</span><span>Spec → RTL → GDS · verified evidence</span></footer>
-  <script src="/assets/app.js?v=20260820c"></script>
+  <footer><span>OpenROAD Self-Evolving EDA Platform</span><span class="footer-lang" role="group" aria-label="Language"><button id="langZh" data-locale="zh">中文</button><button id="langEn" data-locale="en" class="active">EN</button></span><span class="footer-health" title="Platform status"><i id="healthDot"></i><b id="healthText">Connecting</b></span><span>Spec → RTL → GDS · verified evidence</span></footer>
+  <script src="/assets/app.js?v=20260821a"></script>
 </body>
 </html>

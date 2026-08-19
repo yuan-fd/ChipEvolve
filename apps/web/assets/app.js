@@ -15,7 +15,7 @@ const state = {
 const stages = ["synth", "floorplan", "place", "cts", "route", "finish"];
 const ZH = {
   "nav.overview": "平台概览", "nav.frontend": "前端设计", "nav.backend": "后端实现",
-  "nav.projects": "项目与结果", "nav.evolution": "自演化",
+  "nav.projects": "项目与结果", "nav.evolution": "自演化", "nav.tutorial": "使用教程",
   "auth.personal": "个人工作区", "auth.title": "登录后开始设计",
   "auth.help": "账户会将你的设计、任务、报告、学习记录和模型配置与其他用户分开。",
   "auth.username": "用户名", "auth.password": "密码", "auth.login": "登录",
@@ -185,8 +185,16 @@ async function api(path, options = {}) {
 const post = (path, body) => api(path, {method: "POST", body: JSON.stringify(body)});
 
 function renderAuth() {
-  const signedIn = state.auth?.authenticated === true;
   const button = $("#accountButton");
+  if (!button) {
+    // Account button was removed from the header (no-auth public UI).
+    if ($("#developerResultControls")) {
+      const signedIn = state.auth?.authenticated === true;
+      $("#developerResultControls").hidden = !(signedIn && state.auth.developer);
+    }
+    return;
+  }
+  const signedIn = state.auth?.authenticated === true;
   const internal = signedIn && state.auth?.user?.username === "local-user";
   if (internal) {
     // No-auth deployment: account button is irrelevant to the public UI.
@@ -1651,14 +1659,6 @@ $$('[data-scroll]').forEach(element => element.addEventListener("click", () => $
 $$('[data-input-mode]').forEach(button => button.addEventListener("click", () => selectInputMode(button.dataset.inputMode)));
 $$('[data-design-view]').forEach(button => button.addEventListener("click", () => { state.designView = button.dataset.designView; renderDesignView(); }));
 $$('[data-open-extension]').forEach(button => button.addEventListener("click", () => openExtension(button.dataset.openExtension)));
-$("#accountButton").addEventListener("click", () => {
-  if (state.auth?.user?.username === "local-user") return;
-  if (state.auth?.authenticated) {
-    if (window.confirm(ui("Sign out?", "确认退出？"))) logout();
-  } else {
-    openAuth();
-  }
-});
 $("#authClose").addEventListener("click", closeAuth);
 $("#authLogin").addEventListener("click", () => submitAuth("login"));
 $("#authRegister").addEventListener("click", () => submitAuth("register"));
