@@ -104,6 +104,13 @@ class TenantLearningStore:
                 ORDER BY created_at, observation_id""", (tenant_id, project_id)).fetchall()
         return [LearningObservation.from_dict(json.loads(row[0])) for row in rows]
 
+    def list_all(self) -> list[LearningObservation]:
+        """All observations across tenants (internal shared mode)."""
+        with self._connect() as connection:
+            rows = connection.execute("""SELECT payload_json FROM tenant_observations_v1
+                WHERE tombstoned = 0 ORDER BY created_at""").fetchall()
+        return [LearningObservation.from_dict(json.loads(row[0])) for row in rows]
+
     def rejections(self, tenant_id: str, project_id: str) -> list[dict[str, Any]]:
         """Audit trail of rejected runs (never enters the learning observations)."""
         self._scope(tenant_id, project_id)

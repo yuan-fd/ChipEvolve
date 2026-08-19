@@ -147,7 +147,12 @@ class PlatformReadModel:
         sources = self.knowledge_registry.list_sources()
         benchmarks = self.knowledge_registry.list_benchmarks()
         recommendations = self.recommendation_store.list(owner_id or "local-user")
-        observations = self.tenant_learning_store.list(owner_id or "local-user", "openroad-platform")
+        # Internal no-auth mode uses a fixed "local-user" session; show the
+        # shared observation corpus instead of that tenant's (empty) set.
+        if owner_id and owner_id != "local-user":
+            observations = self.tenant_learning_store.list(owner_id, "openroad-platform")
+        else:
+            observations = self.tenant_learning_store.list_all()
         return {
             "counts": {
                 "knowledge_sources": len(sources),
