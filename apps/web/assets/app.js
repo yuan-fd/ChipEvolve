@@ -1570,6 +1570,18 @@ function formatDate(value) {
 $$('[data-route]').forEach(element => element.addEventListener("click", () => {
   route(element.dataset.route);
   if (element.dataset.backendTarget === "3d") backendMode("3d");
+  if (element.dataset.backendTarget === "2d") backendMode("2d");
+  if (element.dataset.flowFocus === "campaign") setFlowMode("campaign");
+  if (element.dataset.focus) {
+    const FOCUS_IDS = {upload: "rtlFile", spec: "specPrompt", examples: "exampleSelect",
+                       agent: "recommendationList"};
+    const id = FOCUS_IDS[element.dataset.focus];
+    if (id) setTimeout(() => {
+      const el = document.getElementById(id);
+      const target = el ? (el.closest(".task-panel, .source-card, .evolution-content") || el) : null;
+      if (target) target.scrollIntoView({behavior: "smooth", block: "start"});
+    }, 350);
+  }
 }));
 $$('[data-backend-mode]').forEach(btn => btn.addEventListener("click", () => backendMode(btn.dataset.backendMode)));
 $$('[data-scroll]').forEach(element => element.addEventListener("click", () => $("#" + element.dataset.scroll)?.scrollIntoView({behavior: "smooth"})));

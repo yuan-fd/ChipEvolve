@@ -69,6 +69,16 @@ a { color: inherit; }
 .capability-list p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
 .capability-list b { display: block; margin-bottom: 5px; color: var(--heading); font-size: 14px; font-weight: 650; }
 .hero-actions { margin-top: 22px; display: flex; gap: 8px; }
+.hero-cta { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; }
+.hero-cta-btn { min-height: 46px; padding: 0 26px; font-size: 14px; font-weight: 650; border-radius: 10px; }
+.feature-entry-section { padding: 46px 0; }
+.feature-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.feature-group { border: 1px solid var(--line); border-radius: 10px; padding: 14px; background: var(--surface); }
+.feature-group p { margin: 0 0 10px; color: var(--muted); font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .05em; }
+.feature-group button { width: 100%; min-height: 44px; margin-bottom: 8px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface-subtle); color: var(--ink); font-size: 13px; font-weight: 600; cursor: pointer; transition: border-color .15s, background .15s, color .15s; text-align: left; }
+.feature-group button:last-child { margin-bottom: 0; }
+.feature-group button:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+@media (max-width: 800px) { .feature-grid { grid-template-columns: repeat(2, 1fr); } }
 .button { min-height: 36px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 5px; background: var(--surface); color: var(--ink); display: inline-flex; align-items: center; justify-content: center; gap: 14px; font-size: 11px; font-weight: 550; text-decoration: none; transition: background .12s, border-color .12s, color .12s; }
 .button:hover:not(:disabled) { border-color: #aeb7c2; background: var(--surface-subtle); }
 .button.primary { background: var(--accent); border-color: var(--accent); color: white; }

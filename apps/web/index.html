@@ -53,13 +53,14 @@
           <div title="Plugins extend the platform through contracts: TaiWei 3D, RTLScout, and more."><span>05</span><p><b data-i18n="overview.cap5.name">Plugin Ecosystem</b><span data-i18n="overview.cap5">Contract-based plugins: TaiWei 3D, RTLScout, and more.</span></p></div>
           <div title="Traceable knowledge, verified run data, recommendations, and reusable design experience."><span>06</span><p><b data-i18n="overview.cap6.name">Continuous Learning</b><span data-i18n="overview.cap6">Traceable knowledge and reusable design experience.</span></p></div>
         </div>
-        <div class="hero-actions">
-          <button class="button primary" data-route="frontend">Quick Start <span>→</span></button>
-          <button class="button" data-scroll="tutorial">Tutorial <span>↓</span></button>
+        <div class="hero-actions hero-cta">
+          <button class="button hero-cta-btn" data-scroll="project">📖 项目介绍</button>
+          <button class="button hero-cta-btn primary" data-route="frontend">🚀 快速开始</button>
+          <a class="button hero-cta-btn" href="https://github.com/CODA-Team/ChipEvolve/issues" target="_blank" rel="noopener">💬 问题反馈</a>
         </div>
       </section>
 
-      <section class="wrap platform-path">
+      <section class="wrap platform-path" id="project">
         <div class="section-heading"><p class="eyebrow" data-i18n="overview.workflow">A connected workflow</p><h2 data-i18n="overview.workflow.title">One path from intent to learning.</h2><p data-i18n="overview.workflow.help">Each stage produces reviewable outputs that feed the next stage and, after verification, improve future decisions.</p></div>
         <div class="path-diagram" aria-label="Intent to learning platform workflow">
           <article><span>01</span><b data-i18n="overview.path.intent">Design Intent</b><small data-i18n="overview.path.intent.help">Spec, RTL, constraints</small></article><i>→</i>
@@ -67,6 +68,29 @@
           <article><span>03</span><b data-i18n="overview.path.physical">Physical Design</b><small data-i18n="overview.path.physical.help">2D / 3D implementation</small></article><i>→</i>
           <article><span>04</span><b data-i18n="overview.path.optimization">Optimization</b><small data-i18n="overview.path.optimization.help">Experiments and bounded repair</small></article><i>→</i>
           <article><span>05</span><b data-i18n="overview.path.learning">Verified Learning</b><small data-i18n="overview.path.learning.help">Evidence and advice</small></article>
+        </div>
+      </section>
+
+      <section class="wrap feature-entry-section">
+        <div class="section-heading"><p class="eyebrow">功能入口 · 一切皆按钮</p><h2>点开即用，无需翻找</h2><p>所有功能独立成按钮，按分类排列；选择一个设计后，各功能直接对它生效。</p></div>
+        <div class="feature-grid">
+          <div class="feature-group"><p>设计输入</p>
+            <button data-route="frontend" data-focus="upload">📄 上传文件</button>
+            <button data-route="frontend" data-focus="spec">✨ 自然语言生成</button>
+            <button data-route="frontend" data-focus="examples">🧩 示例项目</button>
+          </div>
+          <div class="feature-group"><p>物理设计</p>
+            <button data-route="backend" data-backend-target="2d">▥ 2D 流程</button>
+            <button data-route="backend" data-backend-target="3d">⬒ 3D IC</button>
+          </div>
+          <div class="feature-group"><p>优化</p>
+            <button data-route="backend" data-backend-target="2d" data-flow-focus="campaign">⚙ 批量并行</button>
+            <button data-route="evolution" data-focus="agent">🧠 Agent 智能调参</button>
+          </div>
+          <div class="feature-group"><p>查看与学习</p>
+            <button data-route="projects">📊 项目与结果</button>
+            <button data-route="evolution">📚 自演化知识库</button>
+          </div>
         </div>
       </section>
 
