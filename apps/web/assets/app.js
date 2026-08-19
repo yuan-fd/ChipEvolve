@@ -28,6 +28,7 @@ const ZH = {
   "overview.features.help": "选择设计后，各功能直接对该设计生效。",
   "overview.group.input": "设计输入", "overview.group.physical": "物理设计",
   "overview.group.optimize": "优化", "overview.group.results": "查看与学习",
+  "hero.intro": "项目介绍", "hero.tutorial": "使用教程", "hero.feedback": "问题反馈",
   "overview.cap1": "由自然语言创建设计，经人工审查 RTL 后完成可复现的物理实现。",
   "overview.cap2.name": "EDA 智能助手", "overview.cap2": "通过自然语言控制流程、解读报告、定位问题并给出修复建议。",
   "overview.cap3.name": "流程优化", "overview.cap3": "支持阶段感知实验、有界搜索、BO/GP、Pareto 分析与 RL 建议。",
@@ -51,30 +52,6 @@ const ZH = {
   "overview.optional.backend.action": "打开后端选项 →", "overview.optional.device": "器件与电路研究",
   "overview.optional.device.help": "TCADCraft、MoMCraft 与 CktCraft 分别补充器件物理、S 参数提取和晶体管级仿真，不重复生成 RTL。",
   "overview.optional.device.action": "打开器件工具 →",
-  "tutorial.eyebrow": "端到端使用教程", "tutorial.title": "依次走完平台的各条工作流。",
-  "tutorial.help": "建议先使用小型设计完成一次验收；所有可选支线都会明确标注，且不会自动启动。",
-  "tutorial.1.title": "从规格生成并审查 RTL", "tutorial.1.help": "描述功能与端口，审查服务器模型生成的 RTL，回答待确认问题后批准登记。",
-  "tutorial.key.required": "已包含服务器共享模型 · 无需用户 API Key", "tutorial.frontend.action": "打开前端设计 →",
-  "tutorial.2.title": "运行可验证的 RTL 自探索", "tutorial.2.help": "RTLScout 提出 RTL 改动，由 Verilator 与 Yosys 独立验证并评价每个候选。",
-  "tutorial.key.optional": "可验证离线演示无需 Key · 当前预览站尚未启用完整自定义 Provider 探索",
-  "tutorial.3.title": "检查器件或电路研究支线", "tutorial.3.help": "选择主线设计后，平台会继承项目上下文，并明确列出 TCAD、互连电磁或 SPICE 还需要的专业输入。",
-  "tutorial.device.requirement": "需要器件结构、互连端口或晶体管级网表；不使用固定示例冒充当前设计结果",
-  "tutorial.key.none": "无需 API Key", "tutorial.device.action": "打开器件支线 →",
-  "tutorial.4.title": "生成基线 2D 版图", "tutorial.4.help": "选择已登记 RTL，使用基线模式，从逻辑综合运行至最终 GDS。",
-  "tutorial.backend.action": "打开后端实现 →", "tutorial.5.title": "创建阶段感知批量实验",
-  "tutorial.5.help": "切换到阶段感知批量模式，审查有界参数候选，只提交用户批准的实验。",
-  "tutorial.6.title": "创建 Agent 引导的搜索计划", "tutorial.6.help": "使用 Agent 引导模式进行受监控实验和有界纠错；内部编排不会成为额外的用户操作入口。",
-  "tutorial.agent.status": "计划审查与用户确认后的执行均已可用", "tutorial.7.title": "查看固定版本的 3D IC 工作流",
-  "tutorial.7.help": "对于官方 gcd 验收设计，可打开 TaiWei 支线查看双层布局、跨层指标、3D 视图与重放证据。",
-  "tutorial.8.title": "检查结果并收集验证经验", "tutorial.8.help": "对比版图与 QoR，再将成功执行证据明确收集到学习库；公开论文与 benchmark 元数据已按来源登记。",
-  "tutorial.learning.status": "学习入库需明确触发，避免失败或未验证结果成为事实", "tutorial.results.action": "打开结果管理 →",
-  "api.eyebrow": "模型访问", "api.title": "直接使用共享模型，或连接私有 Provider。",
-  "api.help": "平台登录负责隔离 EDA 工作。Spec-to-RTL 默认使用服务器共享模型；私有 Provider 只作为受支持研究扩展的可选配置。",
-  "api.login.title": "登录个人工作区", "api.login.help": "创建简单的平台账户。登录后只显示你自己的设计、任务、报告和学习记录。",
-  "api.provider.title": "直接使用共享模型", "api.provider.help": "Spec-to-RTL 登录后即可使用服务器模型，不要求用户填写个人 API Key。",
-  "api.secret.title": "API Key 仅保留在会话中", "api.secret.help": "Key 只在当前服务会话的内存中使用，不写入项目文件、设计数据库、产物或 Git。",
-  "api.run.title": "只启动你明确选择的功能", "api.run.help": "连接 Provider 不会自动启动任务。只有主动运行大模型 Spec-to-RTL 或 RTL 探索时才会调用 API。",
-  "api.required": "私有 Provider 可选", "api.required.help": "共享模型已覆盖 Spec-to-RTL。Tool-Evolve 与完整自定义 Provider RTLScout 尚未在当前预览站启用，因此连接私有 Key 不会解锁隐藏的生产流程。",
   "switch.frontend": "前端设计", "switch.backend": "后端实现", "switch.results": "运行结果",
   "frontend.kicker": "交互式设计工作区", "frontend.title": "前端设计",
   "frontend.subtitle": "按清晰顺序创建或导入 RTL、完成综合并查看电路结果。",
@@ -88,7 +65,7 @@ const ZH = {
   "frontend.rtl.source": "RTL 源码", "frontend.upload.action": "导入并综合",
   "frontend.spec.title": "根据自然语言生成 RTL", "frontend.spec.help": "描述功能和接口，在物理实现前先审查生成结果。",
   "frontend.spec.label": "自然语言规格", "frontend.spec.placeholder": "设计一个带使能和高电平复位的四位同步计数器。",
-  "frontend.spec.action": "创建规格会话", "frontend.spec.note": "服务器共享模型可直接生成供审查的 RTL，无需用户填写 API Key；私有 Provider 仍可选。",
+  "frontend.spec.action": "创建规格会话", "frontend.spec.note": "服务器模型生成可审查的 RTL。",
   "frontend.examples.title": "选择经过审计的 RTL 示例", "frontend.examples.subtitle": "包含基础逻辑、ALU、控制器、UART 和教学用 RISC-V。",
   "frontend.examples.selected": "当前示例", "frontend.examples.action": "综合该示例",
   "frontend.results.title": "综合结果", "frontend.results.subtitle": "查看门级统计、电路图、Verilog 源码和综合网表。",
@@ -211,7 +188,13 @@ function renderAuth() {
   const signedIn = state.auth?.authenticated === true;
   const button = $("#accountButton");
   const internal = signedIn && state.auth?.user?.username === "local-user";
-  button.textContent = internal ? ui("Local workspace", "本地工作区") : (signedIn ? state.auth.user.username : ui("Sign in", "登录"));
+  if (internal) {
+    // No-auth deployment: account button is irrelevant to the public UI.
+    button.hidden = true;
+    return;
+  }
+  button.hidden = false;
+  button.textContent = signedIn ? state.auth.user.username : ui("Sign in", "登录");
   button.classList.toggle("authenticated", signedIn);
   if ($("#developerResultControls")) {
     $("#developerResultControls").hidden = !(signedIn && state.auth.developer);
@@ -1669,12 +1652,9 @@ $$('[data-input-mode]').forEach(button => button.addEventListener("click", () =>
 $$('[data-design-view]').forEach(button => button.addEventListener("click", () => { state.designView = button.dataset.designView; renderDesignView(); }));
 $$('[data-open-extension]').forEach(button => button.addEventListener("click", () => openExtension(button.dataset.openExtension)));
 $("#accountButton").addEventListener("click", () => {
-  if (state.auth?.user?.username === "local-user") {
-    message("#demoNotice", ui("You are working in this local workspace.", "你当前工作于此本地工作区。"));
-    return;
-  }
+  if (state.auth?.user?.username === "local-user") return;
   if (state.auth?.authenticated) {
-    if (window.confirm(ui("Sign out of this workspace?", "确认退出当前工作区？"))) logout();
+    if (window.confirm(ui("Sign out?", "确认退出？"))) logout();
   } else {
     openAuth();
   }
@@ -1686,11 +1666,6 @@ $("#keepDesignYes").addEventListener("click", () => keepDesignProceed(true));
 $("#keepDesignNo").addEventListener("click", () => keepDesignProceed(false));
 $("#keepDesignClose").addEventListener("click", () => { const modal = $("#keepDesignModal"); if (modal) { modal.hidden = true; modal.style.display = "none"; } pendingFeatureRoute = null; });
 $("#authPassword").addEventListener("keydown", event => { if (event.key === "Enter") submitAuth("login"); });
-$("#apiAuthAction").addEventListener("click", () => {
-  if (!state.auth?.authenticated) return openAuth(ui("Sign in first, then configure your model provider.", "请先登录，再配置模型 Provider。"));
-  route("frontend");
-  setTimeout(() => $("#providerConfiguration")?.scrollIntoView({behavior: "smooth", block: "center"}), 100);
-});
 $("#exampleSelect").addEventListener("change", updateExampleDescription);
 $("#useExample").addEventListener("click", useExample);
 $("#rtlFile").addEventListener("change", event => { const file = event.target.files?.[0]; if (!file) return; $("#rtlFilename").value = file.name; const reader = new FileReader(); reader.onload = () => { $("#rtlSource").value = String(reader.result || ""); }; reader.readAsText(file); });

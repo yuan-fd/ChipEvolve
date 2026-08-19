@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/assets/app.css?v=20260820b">
+  <link rel="stylesheet" href="/assets/app.css?v=20260820c">
 </head>
 <body>
   <header class="site-header">
@@ -23,7 +23,7 @@
       <button class="tab" data-route="evolution" data-i18n="nav.evolution">Self-Evolution</button>
     </nav>
     <label class="global-design" title="选择当前设计，所有功能按钮直接对它生效"><span>当前设计</span><select id="globalDesign"><option value="">未选择</option></select></label>
-    <div class="header-controls"><div class="language-switch" role="group" aria-label="Language"><button id="langZh" data-locale="zh">中文</button><button id="langEn" data-locale="en" class="active">EN</button></div><button class="account-button" id="accountButton" title="Local workspace">Workspace</button><div class="health" title="Platform status"><span id="healthDot"></span><b id="healthText">Connecting</b></div></div>
+    <div class="header-controls"><div class="language-switch" role="group" aria-label="Language"><button id="langZh" data-locale="zh">中文</button><button id="langEn" data-locale="en" class="active">EN</button></div><button class="account-button" id="accountButton" title="Account" hidden>Sign in</button><div class="health" title="Platform status"><span id="healthDot"></span><b id="healthText">Connecting</b></div></div>
   </header>
 
   <!-- Registration/login is disabled in internal no-auth mode; restore by removing OPENROAD_PLATFORM_NO_AUTH. -->
@@ -60,9 +60,9 @@
         <h1 data-i18n="overview.hero.title">从设计意图<br>到可验证的芯片</h1>
         <p class="hero-tagline" data-i18n="overview.tagline">自然语言驱动 · Spec → RTL → GDS · 全程可验证</p>
         <div class="hero-actions hero-cta">
-          <button class="button hero-cta-btn" data-scroll="features">项目介绍</button>
-          <button class="button hero-cta-btn primary" data-route="frontend">快速开始</button>
-          <a class="button hero-cta-btn" href="https://github.com/CODA-Team/ChipEvolve/issues" target="_blank" rel="noopener">问题反馈</a>
+          <button class="button hero-cta-btn" data-scroll="features" data-i18n="hero.intro">项目介绍</button>
+          <button class="button hero-cta-btn primary" data-scroll="tutorial" data-i18n="hero.tutorial">使用教程</button>
+          <a class="button hero-cta-btn" href="https://github.com/CODA-Team/ChipEvolve/issues" target="_blank" rel="noopener" data-i18n="hero.feedback">问题反馈</a>
         </div>
       </section>
 
@@ -70,21 +70,21 @@
         <div class="section-heading"><p class="eyebrow" data-i18n="overview.features.eyebrow">Platform features</p><h2 data-i18n="overview.features.title">开始使用</h2><p data-i18n="overview.features.help">选择设计后，各功能直接对该设计生效。</p></div>
         <div class="feature-grid">
           <div class="feature-group"><p data-i18n="overview.group.input">设计输入</p>
-            <button data-route="frontend" data-focus="upload">📄 上传文件</button>
-            <button data-route="frontend" data-focus="spec">✨ 自然语言生成</button>
-            <button data-route="frontend" data-focus="examples">🧩 示例项目</button>
+            <button data-route="frontend" data-focus="upload"><span class="f-icon">▤</span>上传文件</button>
+            <button data-route="frontend" data-focus="spec"><span class="f-icon">✦</span>自然语言生成</button>
+            <button data-route="frontend" data-focus="examples"><span class="f-icon">◇</span>示例项目</button>
           </div>
           <div class="feature-group"><p data-i18n="overview.group.physical">物理设计</p>
-            <button data-route="backend" data-backend-target="2d">▥ 2D 流程</button>
-            <button data-route="backend" data-backend-target="3d">⬒ 3D IC</button>
+            <button data-route="backend" data-backend-target="2d"><span class="f-icon">▦</span>2D 流程</button>
+            <button data-route="backend" data-backend-target="3d"><span class="f-icon">⬢</span>3D IC</button>
           </div>
           <div class="feature-group"><p data-i18n="overview.group.optimize">优化</p>
-            <button data-route="backend" data-backend-target="2d" data-flow-focus="campaign">⚙ 批量并行</button>
-            <button data-route="evolution" data-focus="agent">🧠 Agent 智能调参</button>
+            <button data-route="backend" data-backend-target="2d" data-flow-focus="campaign"><span class="f-icon">▥</span>批量并行</button>
+            <button data-route="evolution" data-focus="agent"><span class="f-icon">◎</span>Agent 智能调参</button>
           </div>
           <div class="feature-group"><p data-i18n="overview.group.results">查看与学习</p>
-            <button data-route="projects">📊 项目与结果</button>
-            <button data-route="evolution">📚 自演化知识库</button>
+            <button data-route="projects"><span class="f-icon">▦</span>项目与结果</button>
+            <button data-route="evolution"><span class="f-icon">◇</span>自演化知识库</button>
           </div>
         </div>
       </section>
@@ -95,29 +95,29 @@
 
       <section class="tutorial-section" id="tutorial">
         <div class="wrap">
-          <div class="section-heading"><p class="eyebrow" data-i18n="tutorial.eyebrow">End-to-end tutorial</p><h2 data-i18n="tutorial.title">Complete every platform workflow.</h2><p data-i18n="tutorial.help">Follow the sequence once with a small design. Optional branches are marked clearly and never run automatically.</p></div>
-          <ol class="tutorial-list full-journey">
-            <li><span>1</span><div title="Describe behavior and ports, review the server-generated RTL, answer clarification questions, then approve registration."><b data-i18n="tutorial.1.title">Generate and review RTL from a specification</b><p data-i18n="tutorial.1.help">Describe behavior and ports, review the RTL, then approve.</p><small class="requirement" data-i18n="tutorial.key.required">Shared server model included · no user API key required</small></div><button class="text-link" data-route="frontend" data-i18n="tutorial.frontend.action">Open Frontend →</button></li>
-            <li><span>2</span><div title="Use RTLScout to propose RTL edits; Verilator and Yosys independently verify and score every candidate."><b data-i18n="tutorial.2.title">Run verified RTL exploration</b><p data-i18n="tutorial.2.help">RTLScout proposes edits; Verilator and Yosys verify each candidate.</p><small class="requirement" data-i18n="tutorial.key.optional" title="Verified offline demo needs no key · full custom-provider exploration is not enabled in this preview">Verified offline demo needs no key</small></div><button class="text-link" data-route="frontend">RTLScout →</button></li>
-            <li><span>3</span><div title="Select the registered RTL and run the TaiWei two-tier flow from the Backend 3D mode."><b data-i18n="tutorial.3.title">Produce a 3D IC implementation</b><p data-i18n="tutorial.3.help">Open Backend → 3D IC, pick a design and a 3D platform, then Generate 3D.</p><small class="requirement" data-i18n="tutorial.key.none">No API key required</small></div><button class="text-link" data-route="backend" data-backend-target="3d">Open 3D mode →</button></li>
-            <li><span>4</span><div title="Select the registered RTL, use Baseline flow, and follow synthesis through final GDS."><b data-i18n="tutorial.4.title">Produce a baseline 2D layout</b><p data-i18n="tutorial.4.help">Select the RTL, use Baseline flow, then synthesize to GDS.</p><small class="requirement" data-i18n="tutorial.key.none">No API key required</small></div><button class="text-link" data-route="backend" data-i18n="tutorial.backend.action">Open Backend →</button></li>
-            <li><span>5</span><div title="Switch to Stage-aware batch mode, review the bounded parameter candidates, and submit only the trials you approve."><b data-i18n="tutorial.5.title">Create a stage-aware batch experiment</b><p data-i18n="tutorial.5.help">Review bounded candidates, then submit only the trials you approve.</p><small class="requirement" data-i18n="tutorial.key.none">No API key required</small></div><button class="text-link" data-route="backend" data-i18n="tutorial.backend.action">Open Backend →</button></li>
-            <li><span>6</span><div title="Use Agent-guided search for monitored experiments and bounded repair. The internal orchestration stays behind the user-facing mode."><b data-i18n="tutorial.6.title">Create an agent-guided search plan</b><p data-i18n="tutorial.6.help">Agent-guided search for monitored experiments and bounded repair.</p><small class="requirement" data-i18n="tutorial.agent.status">Plan review and confirmed execution are available</small></div><button class="text-link" data-route="backend" data-i18n="tutorial.backend.action">Open Backend →</button></li>
-            <li><span>7</span><div title="For a registered design, open the Backend 3D mode for two-tier placement, cross-tier metrics, 3D views, and replay evidence."><b data-i18n="tutorial.7.title">Run the TaiWei 3D IC flow</b><p data-i18n="tutorial.7.help">Backend → 3D IC: pick a design and 3D platform, then Generate 3D.</p><small class="requirement" data-i18n="tutorial.key.none">No API key required</small></div><button class="text-link" data-route="backend" data-backend-target="3d">Open 3D mode →</button></li>
-            <li><span>8</span><div title="Compare layouts and QoR, then explicitly collect successful execution evidence into the learning store. Public paper and benchmark metadata is already indexed with provenance."><b data-i18n="tutorial.8.title">Review results and collect verified experience</b><p data-i18n="tutorial.8.help">Compare layouts and QoR, then collect evidence into the learning store.</p><small class="requirement" data-i18n="tutorial.learning.status" title="Learning import is explicit so failed or unverified runs never become ground truth">Only verified execution evidence is imported.</small></div><button class="text-link" data-route="projects" data-i18n="tutorial.results.action">Open Results →</button></li>
-          </ol>
-        </div>
-      </section>
-
-      <section class="api-auth-section" id="api-authentication">
-        <div class="wrap"><div class="section-heading"><p class="eyebrow" data-i18n="api.eyebrow">Model access</p><h2 data-i18n="api.title">Use the shared model, or connect a private Provider.</h2><p data-i18n="api.help">Platform login isolates EDA work. Spec-to-RTL uses the shared server model by default; private Provider credentials are optional for supported research extensions.</p></div>
-          <div class="api-auth-grid">
-            <article title="Create a simple platform account. Only your designs, tasks, reports, and learning records are shown after sign-in."><span>01</span><b data-i18n="api.login.title">Sign in to your workspace</b><p data-i18n="api.login.help">Create a simple account; only your work is shown after sign-in.</p></article>
-            <article title="Spec-to-RTL works immediately with the server model. No personal API key is requested."><span>02</span><b data-i18n="api.provider.title">Start with the shared model</b><p data-i18n="api.provider.help">Spec-to-RTL works immediately with the shared model.</p></article>
-            <article title="The key stays in server memory for the active session. It is not written to project files, design databases, artifacts, or Git."><span>03</span><b data-i18n="api.secret.title">Keep the key session-only</b><p data-i18n="api.secret.help">The key stays in memory only for the active session.</p></article>
-            <article title="Connecting a provider never starts a task. API use begins only when you explicitly launch model-backed Spec-to-RTL or RTL exploration."><span>04</span><b data-i18n="api.run.title">Start only the feature you choose</b><p data-i18n="api.run.help">Connecting a provider never starts a task by itself.</p></article>
+          <div class="section-heading"><p class="eyebrow">使用教程</p><h2>从一句话到一颗芯片</h2><p>四步走完一个完整流程：描述设计、生成 RTL、跑物理实现、查看结果与经验。</p></div>
+          <div class="tutorial-cards">
+            <article class="tutorial-card">
+              <span class="tutorial-num">1</span>
+              <div><b>描述你的设计</b><p>在前端设计页用一句话描述功能，或上传 RTL 文件、选择一个示例项目。平台生成可审查的 RTL 代码。</p></div>
+              <button class="text-link" data-route="frontend" data-focus="spec">打开前端设计 →</button>
+            </article>
+            <article class="tutorial-card">
+              <span class="tutorial-num">2</span>
+              <div><b>完成物理实现</b><p>选择已登记的设计，在后端实现页配置时钟与工艺，运行 2D 或 3D 物理设计流程，产出版图与 QoR 报告。</p></div>
+              <button class="text-link" data-route="backend">打开后端实现 →</button>
+            </article>
+            <article class="tutorial-card">
+              <span class="tutorial-num">3</span>
+              <div><b>优化与批量实验</b><p>批量并行自动搜索参数组合；Agent 智能调参结合历史经验给出下一轮建议，人工确认后执行。</p></div>
+              <button class="text-link" data-route="evolution" data-focus="agent">打开优化功能 →</button>
+            </article>
+            <article class="tutorial-card">
+              <span class="tutorial-num">4</span>
+              <div><b>查看结果与经验</b><p>在项目与结果页对比每次运行的版图与指标，查看自演化知识库沉淀的可复用经验。</p></div>
+              <button class="text-link" data-route="projects">打开结果管理 →</button>
+            </article>
           </div>
-          <div class="api-auth-note"><b data-i18n="api.required">Private Provider is optional</b><span data-i18n="api.required.help" title="The shared model covers Spec-to-RTL. Tool-Evolve and full custom-provider RTLScout are not enabled in this preview, so connecting a private key does not unlock a hidden production flow.">The shared model covers Spec-to-RTL; no hidden production flow.</span><button class="button primary" id="apiAuthAction">Open model settings →</button></div>
         </div>
       </section>
     </section>
@@ -138,7 +138,7 @@
             <article class="source-card"><div><b data-i18n="frontend.upload.title">Upload Verilog / SystemVerilog</b><small data-i18n="frontend.upload.help">Load a local .v or .sv file, review it, then synthesize.</small></div><label class="file-drop"><span data-i18n="frontend.upload.file">RTL source file</span><input id="rtlFile" type="file" accept=".v,.sv,text/plain"></label><details><summary data-i18n="frontend.upload.review">Review or paste source</summary><div class="source-editor"><label><span data-i18n="common.filename">Filename</span><input id="rtlFilename" value="design.v"></label><label><span data-i18n="frontend.rtl.source">RTL source</span><textarea id="rtlSource" rows="9" placeholder="module design(input a, output y); assign y = ~a; endmodule"></textarea></label></div></details><button class="button primary" id="importRtl" data-i18n="frontend.upload.action">Import and synthesize</button></article>
           </div>
           <div class="input-mode active" id="input-spec">
-            <article class="source-card llm-card"><div><b><span data-i18n="frontend.spec.title">Generate RTL from a specification</span> <i class="llm-badge">LLM</i></b><small data-i18n="frontend.spec.help">Describe behavior and interfaces. Review is required before physical implementation.</small></div><label><span data-i18n="frontend.spec.label">Natural-language specification</span><textarea id="specPrompt" rows="7" data-i18n-placeholder="frontend.spec.placeholder" placeholder="Build a four-bit synchronous counter with enable and active-high reset."></textarea></label><button class="button outline-blue" id="createSpec" data-i18n="frontend.spec.action">Create specification session</button><small class="card-footnote" data-i18n="frontend.spec.note" title="The shared server model generates reviewable RTL without asking users for an API key. A private Provider remains optional.">Shared server model generates RTL; a private Provider is optional.</small><div class="agent-trace-heading"><span data-i18n="frontend.agenttrace.title">Agent run trace</span><small data-i18n="frontend.agenttrace.help">LLM generation, review, and registration trace</small></div><div id="agentTraceSpec" class="agent-trace-container"></div><div class="spec-review" id="specReview" hidden><div id="specReviewSummary"></div><pre id="specRtlPreview"></pre><label id="specClarificationLabel" hidden><span>Clarification</span><textarea id="specClarification" rows="3" placeholder="Answer the questions above"></textarea></label><div class="spec-review-actions"><button class="button" id="continueSpec" hidden>Update specification</button><button class="button primary" id="approveSpecRtl" hidden>Approve and register RTL</button></div></div></article>
+            <article class="source-card llm-card"><div><b><span data-i18n="frontend.spec.title">Generate RTL from a specification</span> <i class="llm-badge">LLM</i></b><small data-i18n="frontend.spec.help">Describe behavior and interfaces. Review is required before physical implementation.</small></div><label><span data-i18n="frontend.spec.label">Natural-language specification</span><textarea id="specPrompt" rows="7" data-i18n-placeholder="frontend.spec.placeholder" placeholder="Build a four-bit synchronous counter with enable and active-high reset."></textarea></label><button class="button outline-blue" id="createSpec" data-i18n="frontend.spec.action">Create specification session</button><small class="card-footnote" data-i18n="frontend.spec.note">The server model generates reviewable RTL.</small><div class="agent-trace-heading"><span data-i18n="frontend.agenttrace.title">Agent run trace</span><small data-i18n="frontend.agenttrace.help">LLM generation, review, and registration trace</small></div><div id="agentTraceSpec" class="agent-trace-container"></div><div class="spec-review" id="specReview" hidden><div id="specReviewSummary"></div><pre id="specRtlPreview"></pre><label id="specClarificationLabel" hidden><span>Clarification</span><textarea id="specClarification" rows="3" placeholder="Answer the questions above"></textarea></label><div class="spec-review-actions"><button class="button" id="continueSpec" hidden>Update specification</button><button class="button primary" id="approveSpecRtl" hidden>Approve and register RTL</button></div></div></article>
           </div>
           <div class="input-mode" id="input-examples">
             <div class="example-chips" id="exampleChips"></div><div class="example-toolbar"><label><span data-i18n="frontend.examples.selected">Selected example</span><select id="exampleSelect"><option value="">Loading examples…</option></select></label><button class="button primary" id="useExample" data-i18n="frontend.examples.action">Synthesize example</button></div><p class="selection-note" id="exampleDescription"></p>
@@ -283,7 +283,7 @@
       </section>
     </section>
   </main>
-  <footer><span>OpenROAD Self-Evolving EDA Platform</span><span>Local research workspace · verified evidence</span></footer>
-  <script src="/assets/app.js?v=20260820b"></script>
+  <footer><span>OpenROAD Self-Evolving EDA Platform</span><span>Spec → RTL → GDS · verified evidence</span></footer>
+  <script src="/assets/app.js?v=20260820c"></script>
 </body>
 </html>

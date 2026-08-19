@@ -76,8 +76,19 @@ a { color: inherit; }
 .feature-group button { width: 100%; min-height: 46px; margin-bottom: 9px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface-subtle); color: var(--ink); font-size: 13.5px; font-weight: 600; cursor: pointer; transition: border-color .15s, background .15s, color .15s, transform .15s; text-align: left; }
 .feature-group button:last-child { margin-bottom: 0; }
 .feature-group button:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); transform: translateY(-1px); }
+.feature-group button { display: flex; align-items: center; gap: 10px; }
+.f-icon { width: 26px; height: 26px; flex: 0 0 26px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; background: var(--accent-soft); color: var(--accent); font-size: 14px; font-weight: 700; transition: background .15s, color .15s; }
+.feature-group button:hover .f-icon { background: var(--accent); color: #fff; }
 @media (max-width: 900px) { .feature-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 560px) { .feature-grid { grid-template-columns: 1fr; } }
+/* Tutorial cards (ysyx-style simple guidance, no list) */
+.tutorial-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: 6px; }
+.tutorial-card { display: flex; gap: 14px; align-items: flex-start; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); box-shadow: 0 1px 3px rgba(16,24,40,.04); }
+.tutorial-num { width: 32px; height: 32px; flex: 0 0 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--accent); color: #fff; font-size: 14px; font-weight: 700; }
+.tutorial-card b { display: block; font-size: 15px; color: var(--heading); margin-bottom: 4px; }
+.tutorial-card p { margin: 0 0 8px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.tutorial-card .text-link { align-self: flex-start; }
+@media (max-width: 700px) { .tutorial-cards { grid-template-columns: 1fr; } }
 .button { min-height: 36px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 5px; background: var(--surface); color: var(--ink); display: inline-flex; align-items: center; justify-content: center; gap: 14px; font-size: 11px; font-weight: 550; text-decoration: none; transition: background .12s, border-color .12s, color .12s; }
 .button:hover:not(:disabled) { border-color: #aeb7c2; background: var(--surface-subtle); }
 .button.primary { background: var(--accent); border-color: var(--accent); color: white; }
