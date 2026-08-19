@@ -1,10 +1,10 @@
 :root {
-  /* YSYX-style palette: white canvas, near-black text, strong blue accent, no grey-blue haze. */
+  /* YSYX/VuePress palette: white canvas, near-black text, strong blue accent. */
   --bg: #ffffff;
   --surface: #ffffff;
   --surface-subtle: #f6f7f9;
   --ink: #34404f;
-  --heading: #212b38;
+  --heading: #2c3e50;
   --muted: #5c6b7a;
   --line: #e8eaee;
   --line-strong: #d5d9e0;
@@ -17,7 +17,8 @@
   --amber-soft: #fbf4e4;
   --red: #d02618;
   --red-soft: #fdeeec;
-  --sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* YSYX uses the native system stack: -apple-system / Segoe UI / sans-serif. */
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
   --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   --radius: 4px;
   --shadow-sm: none;
@@ -26,42 +27,49 @@
 
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.7 var(--sans); -webkit-font-smoothing: antialiased; }
-/* Chinese UI: Inter for Latin glyphs, Noto Sans SC + system CJK fallback. */
-html[lang="zh-CN"] { --sans: Inter, "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.7 var(--sans); -webkit-font-smoothing: antialiased; }
 button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
 [title] { cursor: help; }
 a { color: inherit; }
 .wrap { width: min(1080px, calc(100% - 40px)); margin: 0 auto; }
 
-/* YSYX header: white bar, wordmark left, plain horizontal menu right, active tab underlined. */
-.site-header { min-height: 64px; padding: 0 32px; display: flex; align-items: center; justify-content: space-between; gap: 24px; position: sticky; top: 0; z-index: 30; background: #fff; border-bottom: 1px solid var(--line); }
+/* YSYX navbar (VuePress-style): 60px, logo image + site name, centered menu, right actions. */
+.site-header { min-height: 60px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 20px; position: sticky; top: 0; z-index: 30; background: rgba(255,255,255,.9); border-bottom: 1px solid var(--line); }
 .wordmark { display: flex; align-items: center; gap: 10px; color: var(--heading); text-decoration: none; }
-.mark { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: #fff; font-size: 15px; font-weight: 700; }
-.wordmark-text { display: flex; flex-direction: column; line-height: 1.15; }
-.wordmark-text b { font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
-.wordmark-text i { color: var(--muted); font-size: 11px; font-style: normal; font-weight: 450; }
-.tabs { display: flex; gap: 4px; }
-.tab { min-height: 40px; padding: 0 14px; border: 0; background: transparent; color: var(--ink); font-size: 14px; border-bottom: 3px solid transparent; }
+.mark { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: #fff; font-size: 16px; font-weight: 700; }
+.wordmark-text { display: flex; flex-direction: column; line-height: 1.2; }
+.wordmark-text b { font-size: 17px; font-weight: 700; color: var(--heading); }
+.wordmark-text i { color: var(--muted); font-size: 11.5px; font-style: normal; font-weight: 450; }
+.tabs { display: flex; gap: 6px; }
+.tab { min-height: 40px; padding: 0 12px; border: 0; background: transparent; color: var(--ink); font-size: 15.2px; border-bottom: 3px solid transparent; }
 .tab:hover { color: var(--accent); }
 .tab.active { color: var(--accent); font-weight: 600; border-bottom-color: var(--accent); }
+/* Right-side header actions: language dropdown + search (ysyx style). */
+.header-actions { display: flex; align-items: center; gap: 16px; }
+.header-search { display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 999px; background: #fff; color: var(--muted); font-size: 13.3px; cursor: pointer; }
+.header-search:hover { border-color: var(--accent); color: var(--accent); }
+.header-search kbd { font: 11px var(--mono); color: var(--muted); border: 1px solid var(--line-strong); border-radius: 4px; padding: 1px 6px; }
+.header-lang { display: flex; align-items: center; gap: 8px; font-size: 15px; color: var(--muted); white-space: nowrap; }
+.header-lang button { border: 0; background: transparent; color: var(--muted); font-size: 15px; padding: 2px 2px; }
+.header-lang button:hover { color: var(--accent); }
+.header-lang button.active { color: var(--accent); font-weight: 600; }
 /* Inline design selector inside workspace pages (not in the header bar). */
 .global-design-inline { margin-left: auto; display: flex; align-items: center; gap: 10px; }
-.global-design-inline span { font-size: 13px; color: var(--muted); }
-.global-design-inline select { min-height: 34px; min-width: 220px; border: 1px solid var(--line-strong); border-radius: 4px; background: #fff; color: var(--ink); font-size: 13px; padding: 0 10px; }
+.global-design-inline span { font-size: 14px; color: var(--muted); }
+.global-design-inline select { min-height: 34px; min-width: 220px; border: 1px solid var(--line-strong); border-radius: 4px; background: #fff; color: var(--ink); font-size: 14px; padding: 0 10px; }
 .page { display: none; min-height: calc(100vh - 60px); }
 .page.active { display: block; }
 
-.eyebrow { margin: 0 0 8px; color: var(--muted); font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .04em; }
-.hero { padding: 110px 0 92px; text-align: center; border-bottom: 1px solid var(--line); }
+.eyebrow { margin: 0 0 8px; color: var(--muted); font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: .04em; }
+.hero { padding: 108px 0 88px; text-align: center; border-bottom: 1px solid var(--line); }
 .hero .eyebrow { color: var(--accent); }
-.hero h1, .page-head h1 { margin: 0; color: var(--heading); font-size: clamp(46px, 7vw, 78px); font-weight: 700; line-height: 1.08; letter-spacing: -.03em; }
-.hero-tagline { margin: 24px 0 0; color: var(--muted); font-size: 18px; font-weight: 450; }
+.hero h1, .page-head h1 { margin: 0; color: var(--heading); font-size: 57.6px; font-weight: 700; line-height: 1.4; letter-spacing: -.02em; }
+.hero-tagline { margin: 22px 0 0; color: var(--muted); font-size: 18px; font-weight: 450; }
 .hero-actions { margin-top: 40px; display: flex; gap: 8px; }
 .hero-cta { display: flex; justify-content: center; gap: 18px; flex-wrap: wrap; }
-/* YSYX CTA buttons: solid colour blocks, rectangular, large. */
-.hero-cta-btn { min-height: 54px; padding: 0 38px; font-size: 17px; font-weight: 600; border-radius: 4px; border: 1px solid var(--line-strong); background: #fff; color: var(--ink); }
+/* YSYX CTA buttons: el-button large — 45px tall, 20.4px text, rounded. */
+.hero-cta-btn { min-height: 45px; padding: 0 26px; font-size: 20.4px; font-weight: 400; border-radius: 4px; border: 1px solid var(--line-strong); background: #fff; color: var(--ink); }
 .hero-cta-btn:hover { border-color: var(--accent); color: var(--accent); background: #fff; }
 .hero-cta-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .hero-cta-btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
@@ -71,12 +79,12 @@ a { color: inherit; }
 .feature-entry-section .section-heading h2 { font-size: 32px; }
 .feature-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-top: 36px; }
 .feature-group { padding: 0; }
-.feature-group p { margin: 0 0 14px; padding-bottom: 10px; color: var(--muted); font-size: 13px; font-weight: 650; text-transform: uppercase; letter-spacing: .05em; border-bottom: 2px solid var(--accent); display: inline-block; }
+.feature-group p { margin: 0 0 14px; padding-bottom: 10px; color: var(--muted); font-size: 14px; font-weight: 650; text-transform: uppercase; letter-spacing: .05em; border-bottom: 2px solid var(--accent); display: inline-block; }
 /* Feature entries are real buttons: white surface, visible border, accent fill on hover. */
-.feature-group button { width: 100%; min-height: 48px; margin-bottom: 10px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 4px; background: #fff; color: var(--ink); font-size: 14px; font-weight: 550; cursor: pointer; transition: border-color .15s, background .15s, color .15s; text-align: left; display: flex; align-items: center; gap: 10px; }
+.feature-group button { width: 100%; min-height: 52px; margin-bottom: 10px; padding: 0 16px; border: 1px solid var(--line-strong); border-radius: 4px; background: #fff; color: var(--ink); font-size: 16px; font-weight: 500; cursor: pointer; transition: border-color .15s, background .15s, color .15s; text-align: left; display: flex; align-items: center; gap: 10px; }
 .feature-group button:last-child { margin-bottom: 0; }
 .feature-group button:hover { border-color: var(--accent); background: var(--accent); color: #fff; }
-.f-icon { width: 22px; height: 22px; flex: 0 0 22px; display: inline-flex; align-items: center; justify-content: center; color: var(--accent); font-size: 13px; font-weight: 700; transition: color .15s; }
+.f-icon { width: 22px; height: 22px; flex: 0 0 22px; display: inline-flex; align-items: center; justify-content: center; color: var(--accent); font-size: 14px; font-weight: 700; transition: color .15s; }
 .feature-group button:hover .f-icon { color: #fff; }
 @media (max-width: 900px) { .feature-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 560px) { .feature-grid { grid-template-columns: 1fr; } }

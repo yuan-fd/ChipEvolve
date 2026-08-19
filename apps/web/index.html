@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/assets/app.css?v=20260821a">
+  <link rel="stylesheet" href="/assets/app.css?v=20260821b">
 </head>
 <body>
   <header class="site-header">
@@ -23,6 +23,12 @@
       <button class="tab" data-route="evolution" data-i18n="nav.evolution">Self-Evolution</button>
       <button class="tab" data-route="tutorial" data-i18n="nav.tutorial">Tutorial</button>
     </nav>
+    <div class="header-actions">
+      <button class="header-search" id="headerSearch" title="搜索平台功能">🔍 <span>搜索</span><kbd>Ctrl K</kbd></button>
+      <div class="header-lang" role="group" aria-label="Language">
+        <button id="langZh" data-locale="zh">中文</button><span>·</span><button id="langEn" data-locale="en" class="active">English</button>
+      </div>
+    </div>
   </header>
 
   <!-- Registration/login is disabled in internal no-auth mode; restore by removing OPENROAD_PLATFORM_NO_AUTH. -->
@@ -55,8 +61,7 @@
   <main>
     <section class="page active" id="page-overview">
       <section class="hero wrap">
-        <p class="eyebrow" data-i18n="overview.eyebrow">Open-source intelligent chip design infrastructure</p>
-        <h1 data-i18n="overview.hero.title">从设计意图<br>到可验证的芯片</h1>
+        <h1 data-i18n="overview.hero.title">从设计意图到可验证的芯片</h1>
         <p class="hero-tagline" data-i18n="overview.tagline">自然语言驱动 · Spec → RTL → GDS · 全程可验证</p>
         <div class="hero-actions hero-cta">
           <button class="button hero-cta-btn" data-scroll="features" data-i18n="hero.intro">About</button>
@@ -281,7 +286,7 @@
       </section>
     </section>
   </main>
-  <footer><span>OpenROAD Self-Evolving EDA Platform</span><span class="footer-lang" role="group" aria-label="Language"><button id="langZh" data-locale="zh">中文</button><button id="langEn" data-locale="en" class="active">EN</button></span><span class="footer-health" title="Platform status"><i id="healthDot"></i><b id="healthText">Connecting</b></span><span>Spec → RTL → GDS · verified evidence</span></footer>
-  <script src="/assets/app.js?v=20260821a"></script>
+  <footer><span>OpenROAD Self-Evolving EDA Platform</span><span class="footer-health" title="Platform status"><i id="healthDot"></i><b id="healthText">Connecting</b></span><span>Spec → RTL → GDS · verified evidence</span></footer>
+  <script src="/assets/app.js?v=20260821b"></script>
 </body>
 </html>

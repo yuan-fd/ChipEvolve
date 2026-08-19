@@ -1659,6 +1659,19 @@ $$('[data-scroll]').forEach(element => element.addEventListener("click", () => $
 $$('[data-input-mode]').forEach(button => button.addEventListener("click", () => selectInputMode(button.dataset.inputMode)));
 $$('[data-design-view]').forEach(button => button.addEventListener("click", () => { state.designView = button.dataset.designView; renderDesignView(); }));
 $$('[data-open-extension]').forEach(button => button.addEventListener("click", () => openExtension(button.dataset.openExtension)));
+$("#headerSearch").addEventListener("click", () => {
+  route("overview");
+  setTimeout(() => {
+    const features = document.getElementById("features");
+    if (features) features.scrollIntoView({behavior: "smooth", block: "start"});
+  }, 120);
+});
+document.addEventListener("keydown", event => {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    $("#headerSearch")?.click();
+  }
+});
 $("#authClose").addEventListener("click", closeAuth);
 $("#authLogin").addEventListener("click", () => submitAuth("login"));
 $("#authRegister").addEventListener("click", () => submitAuth("register"));
