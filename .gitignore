@@ -32,3 +32,4 @@ memory_snapshots/
 
 # Internal phase task records (not public)
 tasks/
+docs/*.html
