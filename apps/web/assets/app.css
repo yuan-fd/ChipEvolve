@@ -507,6 +507,43 @@ html[lang="zh-CN"] .workspace-head h1::after { content: " — 交互演示"; }
 .workspace-switcher button b { font-size: 11px; font-weight: 600; }
 .workspace-switcher button.active { border-color: var(--accent); background: var(--accent); color: white; }
 .workspace-switcher button.active span { color: rgba(255, 255, 255, .72); }
+/* ---- Agent runtime trace panel (DeepSeek-like restrained style) ---- */
+.agent-trace-container { margin: 12px 0 0; }
+.agent-trace { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden; }
+.agent-trace-head { padding: 10px 14px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); background: var(--surface-subtle); }
+.agent-trace-head b { font-size: 12px; color: var(--heading); letter-spacing: .02em; }
+.trace-agent-kind { padding: 1px 8px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 600; }
+.trace-status { margin-left: auto; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+.trace-status.done, .trace-status.ok { background: var(--green-soft); color: var(--green); }
+.trace-status.failed { background: var(--red-soft); color: var(--red); }
+.trace-status.running { background: var(--accent-soft); color: var(--accent); }
+.agent-trace-goal { padding: 12px 14px; display: flex; gap: 10px; border-bottom: 1px solid var(--line); }
+.agent-trace-goal .trace-icon { color: var(--accent); }
+.agent-trace-goal b { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.agent-trace-goal p { margin: 2px 0 0; color: var(--ink); font-size: 13px; }
+.agent-trace-steps { padding: 8px 0; }
+.trace-step { padding: 8px 14px; display: flex; gap: 10px; border-left: 2px solid transparent; }
+.trace-step .trace-icon { width: 22px; height: 22px; flex: 0 0 22px; display: grid; place-items: center; border-radius: 6px; font-size: 12px; background: var(--surface-subtle); color: var(--muted); }
+.trace-goal .trace-icon, .trace-result .trace-icon { background: var(--accent-soft); color: var(--accent); }
+.trace-plan .trace-icon, .trace-think .trace-icon { background: var(--accent-soft); color: var(--accent); }
+.trace-tool .trace-icon { background: var(--green-soft); color: var(--green); }
+.trace-eval .trace-icon { background: var(--amber-soft); color: var(--amber); }
+.trace-memory .trace-icon { background: var(--surface-subtle); color: var(--muted); }
+.trace-body { flex: 1; min-width: 0; }
+.trace-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.trace-title b { font-size: 12.5px; color: var(--heading); font-weight: 600; }
+.trace-title code { font-size: 11px; }
+.trace-step-status { padding: 0 7px; border-radius: 8px; font-size: 10.5px; font-weight: 600; text-transform: uppercase; }
+.trace-step-status.ok { background: var(--green-soft); color: var(--green); }
+.trace-step-status.failed { background: var(--red-soft); color: var(--red); }
+.trace-step-status.running { background: var(--accent-soft); color: var(--accent); }
+.trace-body p { margin: 3px 0 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.trace-body small { color: var(--soft, #98a2b3); font-size: 11px; }
+.trace-metrics { margin-top: 5px; display: flex; flex-wrap: wrap; gap: 5px; }
+.metric-chip { padding: 1px 7px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-subtle); color: var(--ink); font-size: 11px; font-family: var(--mono); }
+.agent-trace-result { padding: 12px 14px; border-top: 1px solid var(--line); background: var(--surface-subtle); }
+.agent-trace-result b { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
+.agent-trace-result pre { margin: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); font: 11px/1.6 var(--mono); white-space: pre-wrap; word-break: break-all; }
 .backend-mode-switch { padding: 6px 0 14px; display: flex; gap: 10px; }
 .backend-mode-switch button { flex: 1; min-height: 58px; padding: 8px 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; border: 1px solid var(--line-strong); border-radius: 8px; background: white; color: #475467; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
 .backend-mode-switch button b { font-size: 15px; font-weight: 700; }

@@ -572,6 +572,67 @@ async function importRtl() {
   }
 }
 
+const TRACE_META = {
+  goal:      {icon: "◆", label: "目标",   cls: "trace-goal"},
+  plan:      {icon: "◈", label: "规划",   cls: "trace-plan"},
+  think:     {icon: "◎", label: "思考",   cls: "trace-think"},
+  tool_call: {icon: "⚙", label: "工具",   cls: "trace-tool"},
+  evaluate:  {icon: "▤", label: "评价",   cls: "trace-eval"},
+  reflect:   {icon: "↺", label: "反思",   cls: "trace-reflect"},
+  memory:    {icon: "▦", label: "记忆",   cls: "trace-memory"},
+  schedule:  {icon: "⇄", label: "调度",   cls: "trace-schedule"},
+  result:    {icon: "✓", label: "结果",   cls: "trace-result"},
+};
+
+function renderAgentTrace(trace, containerId) {
+  const root = $(containerId);
+  if (!root || !trace) return;
+  const meta = TRACE_META;
+  root.innerHTML = `
+    <div class="agent-trace">
+      <div class="agent-trace-head"><b>Agent 运行过程</b><span class="trace-agent-kind">${esc(trace.agent_kind)}</span><span class="trace-status ${esc(trace.status)}">${esc(trace.status)}</span></div>
+      <div class="agent-trace-goal"><span class="trace-icon">◆</span><div><b>目标</b><p>${esc(trace.goal)}</p></div></div>
+      <div class="agent-trace-steps">
+        ${(trace.steps || []).map(step => {
+          const m = meta[step.kind] || {icon: "•", label: step.kind, cls: ""};
+          const metrics = step.metrics ? Object.entries(step.metrics).map(([k, v]) =>
+            `<span class="metric-chip">${esc(k)}: ${esc(typeof v === "object" ? JSON.stringify(v) : v)}</span>`).join("") : "";
+          return `<div class="trace-step ${m.cls}">
+            <span class="trace-icon">${m.icon}</span>
+            <div class="trace-body">
+              <div class="trace-title"><b>${esc(m.label)} · ${esc(step.title)}</b>${step.tool ? `<code>${esc(step.tool)}</code>` : ""}<span class="trace-step-status ${esc(step.status)}">${esc(step.status)}</span></div>
+              ${step.detail ? `<p>${esc(step.detail)}</p>` : ""}
+              ${metrics ? `<div class="trace-metrics">${metrics}</div>` : ""}
+              ${step.duration_ms ? `<small>${step.duration_ms} ms</small>` : ""}
+            </div>
+          </div>`;
+        }).join("")}
+      </div>
+      ${trace.result ? `<div class="agent-trace-result"><b>结果</b><pre>${esc(JSON.stringify(trace.result, null, 2))}</pre></div>` : ""}
+    </div>`;
+  root.scrollIntoView({behavior: "smooth", block: "nearest"});
+}
+
+async function loadAgentTrace(traceId, containerId) {
+  if (!traceId) return;
+  try {
+    const data = await api(`/api/agent/traces/${encodeURIComponent(traceId)}`);
+    renderAgentTrace(data.trace, containerId);
+  } catch (error) {
+    console.warn("agent trace load failed", error);
+  }
+}
+
+async function loadRecentAgentTraces(containerId, kind) {
+  try {
+    const data = await api("/api/agent/traces");
+    const traces = (data.traces || []).filter(t => !kind || t.agent_kind === kind);
+    if (traces.length) renderAgentTrace(traces[0], containerId);
+  } catch (error) {
+    console.warn("agent traces load failed", error);
+  }
+}
+
 async function createSpec() {
   const prompt = $("#specPrompt").value.trim();
   if (!prompt) return message("#specMessage", "Enter a circuit specification first.", true);
@@ -594,6 +655,7 @@ async function createSpec() {
     const result = await post("/api/spec/sessions", payload);
     state.specSession = result;
     renderSpecReview(result);
+    if (result.agent_trace_id) await loadAgentTrace(result.agent_trace_id, "#agentTraceSpec");
     message("#specMessage", ui("Specification draft created by the shared server model. Review the structured RTL below.", "服务器共享模型已生成规格草案，请在下方审查结构化 RTL。"));
   } catch (error) {
     message("#specMessage", error.message, true);
@@ -1381,6 +1443,7 @@ async function loadEvolution() {
       return `<div class="recommendation-item"><div><b>${esc(recommendation.policy_kind || "Optimizer recommendation")}</b><span>${esc(JSON.stringify(recommendation.parameters || {}))}</span><span>Confidence ${Number(confidence.overall || 0).toFixed(2)} · ${confidence.ood ? "Outside observed support" : "Within observed support"} · ${esc((confidence.reasons || []).join("; "))}</span></div><div class="decision-actions"><small>${esc(recommendation.permission_tier || "T1 advice")}</small><button class="button small" data-recommendation-action="accepted" data-recommendation-id="${esc(recommendation.recommendation_id)}">Approve Plan</button><button class="button small" data-recommendation-action="rejected" data-recommendation-id="${esc(recommendation.recommendation_id)}">Reject</button></div></div>`;
     }).join("") || '<div class="empty-row">Recommendations will appear here with confidence, context, and decision controls.</div>';
     $$('[data-recommendation-action]').forEach(button => button.addEventListener("click", () => decideRecommendation(button.dataset.recommendationId, button.dataset.recommendationAction)));
+    loadRecentAgentTraces("#agentTraceRec", "recommendation");
   } catch (error) {
     $("#knowledgeList").innerHTML = `<div class="empty-row">${esc(error.message)}</div>`;
   }

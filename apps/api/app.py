@@ -52,6 +52,7 @@ from openroad_platform_execution import (  # noqa: E402
     implcraft_plugin_manifest, orfs_plugin_manifest, rtlscout_plugin_manifest,
     TaiWeiToolchainProfile, TAIWEI_3D_PLATFORMS, build_taiwei_task, taiwei_plugin_manifest,
 )
+from openroad_platform_analysis.agent_trace import AgentTraceStore
 from openroad_platform_scheduler import (  # noqa: E402
     ALLOWED_MODELS, CampaignStore, CodexCliSpecProvider, JobStore,
     InMemorySecretBroker, NaturalLanguageTaskCompiler,
@@ -180,6 +181,7 @@ class ApiState:
         self.tenant_learning_store = TenantLearningStore(state_root / "tenant-learning.db")
         self.learning_collector = LearningCollector(self.runtime_store,
                                                     self.tenant_learning_store)
+        self.agent_traces = AgentTraceStore(state_root / "agent-traces.db")
         self.provider_profiles = ProviderProfileStore(state_root / "provider-profiles.db")
         self.auth = AuthStore(auth_db_path or state_root / "web-auth.db")
         self.secret_broker = InMemorySecretBroker(default_ttl_seconds=8 * 3600)
@@ -1110,14 +1112,45 @@ class ApiState:
                                if calibration is not None else None),
             worst_case_cost_seconds=float(payload.get("worst_case_cost_seconds", 7200)),
         )
+        trace = self.agent_traces.create(
+            "参数优化建议（设计 %s）" % study.design_id, "recommendation")
+        obs = self.optimization_store.observations(study_id)
+        trace.add("memory", "读取经验库",
+                  metrics={"观测样本": len(obs),
+                           "设计": study.design_id})
+        trace.add("think", "贝叶斯优化提议下一组参数",
+                  detail=("建议参数: " + ", ".join(
+                      "%s=%.2f" % (k, v) for k, v in proposals[-1].parameters.items())),
+                  metrics={"acquisition": round(proposals[-1].acquisition_value, 4)})
+        step_e = trace.add("evaluate", "校准与置信度评估",
+                           metrics={"held_out_rmse":
+                                    (round(calibration["calibration"]["normalized_rmse"], 4)
+                                     if calibration else None),
+                                    "interval_coverage":
+                                    (round(calibration["calibration"]["interval_coverage"], 4)
+                                     if calibration else None),
+                                    "overall_confidence":
+                                    round(recommendation.confidence.overall, 3)})
+        step_e.detail = "；".join(recommendation.confidence.reasons[:3])[:300]
         self.recommendation_store.save(owner_id, recommendation)
         envelope = automation_envelope(
             recommendation, exact_context=payload.get("exact_context", True) is True,
             study_opt_in=payload.get("study_opt_in") is True,
             budget_available=payload.get("budget_available", True) is True,
         )
+        trace.add("result", "推荐方案",
+                  metrics={"policy": recommendation.policy_kind,
+                           "parameters": recommendation.parameters},
+                  detail=("; ".join(recommendation.rationale[:3]))[:400])
+        trace.status = "done"
+        trace.result = {"recommendation_id":
+                        recommendation.recommendation_id,
+                        "policy_kind": recommendation.policy_kind,
+                        "permission_tier": recommendation.permission_tier}
+        self.agent_traces.save(trace)
         return {"recommendation": recommendation.to_dict(), "calibration": calibration,
-                "automation_envelope": envelope.to_dict()}
+                "automation_envelope": envelope.to_dict(),
+                "agent_trace_id": trace.trace_id}
 
     def decide_recommendation(self, recommendation_id: str,
                               payload: dict[str, Any]) -> dict[str, Any]:
@@ -1380,8 +1413,38 @@ class ApiState:
             message=str(payload.get("message") or ""), design_id=design_id,
             design_context=design, budgets=budgets,
         )
+        trace = self.agent_traces.create(
+            str(payload.get("message") or "Spec-to-RTL"), "spec-to-rtl")
+        trace.add("goal", "目标", detail=str(payload.get("message") or "")[:500])
+        trace.add("plan", "解析设计意图与接口", detail="识别功能、时钟、目标平台与阶段…")
+        step = trace.start_tool(provider.provider_name,
+                                "LLM 生成规范提案（objective / 功能 / 接口 / 假设）")
+        _t0 = time.time()
         result = (self._server_spec_call(owner_id, operation)
                   if provider.provider_name == "codex-cli" else operation())
+        step.duration_ms = int((time.time() - _t0) * 1000)
+        _props = result.get("state") or {}
+        trace.finish_tool(
+            step, ok=True,
+            metrics={"missing_fields": len(_props.get("missing_fields") or []),
+                     "ready": bool(_props.get("ready_for_execution"))},
+            detail=("objective=%s | top=%s | clock=%.1fns | 假设=%d | 追问=%d" % (
+                str(_props.get("objective") or "")[:60],
+                str(_props.get("top") or "-"),
+                float(_props.get("clock_period_ns") or 0),
+                len(_props.get("assumptions") or []),
+                len(_props.get("clarification_questions") or [])))[:400])
+        trace.add("evaluate", "提案自检",
+                  status="ok" if _props.get("ready_for_execution") else "failed",
+                  metrics={"missing_fields": list(_props.get("missing_fields") or [])},
+                  detail=("字段齐全可进入实现" if _props.get("ready_for_execution")
+                          else "缺少字段，等待用户补充"))
+        trace.status = "done"
+        trace.result = {"session_id": result["session_id"],
+                        "ready": bool(_props.get("ready_for_execution")),
+                        "rtl_preview": bool(_props.get("rtl_source"))}
+        self.agent_traces.save(trace)
+        result = {**result, "agent_trace_id": trace.trace_id}
         if owner_id:
             self.auth.bind_resource("spec_session", result["session_id"], owner_id)
         if provider.provider_name == "openai-compatible-byok":
@@ -1945,6 +2008,12 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                     self._json(state.list_recommendations(session.user_id))
                 elif path == "/api/export/si2":
                     self._json(state.export_si2(session.user_id, "openroad-platform"))
+                elif path == "/api/agent/traces":
+                    self._json({"traces": state.agent_traces.list(limit=20)})
+                elif path.startswith("/api/agent/traces/"):
+                    _tr = state.agent_traces.get(
+                        unquote(path.removeprefix("/api/agent/traces/")))
+                    self._json({"trace": _tr.to_dict() if _tr else None})
                 elif path == "/api/learning/observations":
                     self._json(state.list_learning_observations({
                         "tenant_id": [session.user_id], "project_id": ["openroad-platform"]
