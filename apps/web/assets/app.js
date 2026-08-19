@@ -20,7 +20,14 @@ const ZH = {
   "auth.help": "账户会将你的设计、任务、报告、学习记录和模型配置与其他用户分开。",
   "auth.username": "用户名", "auth.password": "密码", "auth.login": "登录",
   "auth.register": "创建账户", "auth.note": "本研究预览站开放注册。密码经加盐哈希保存，浏览器会话七天后失效。",
-  "overview.eyebrow": "开源智能芯片设计基础设施", "overview.tagline": "从设计意图到可验证的芯片证据。",
+  "overview.eyebrow": "开源智能芯片设计基础设施",
+  "overview.hero.title": "从设计意图 到可验证的芯片",
+  "overview.tagline": "自然语言驱动 · Spec → RTL → GDS · 全程可验证",
+  "overview.features.eyebrow": "平台功能",
+  "overview.features.title": "开始使用",
+  "overview.features.help": "选择设计后，各功能直接对该设计生效。",
+  "overview.group.input": "设计输入", "overview.group.physical": "物理设计",
+  "overview.group.optimize": "优化", "overview.group.results": "查看与学习",
   "overview.cap1": "由自然语言创建设计，经人工审查 RTL 后完成可复现的物理实现。",
   "overview.cap2.name": "EDA 智能助手", "overview.cap2": "通过自然语言控制流程、解读报告、定位问题并给出修复建议。",
   "overview.cap3.name": "流程优化", "overview.cap3": "支持阶段感知实验、有界搜索、BO/GP、Pareto 分析与 RL 建议。",
@@ -204,7 +211,7 @@ function renderAuth() {
   const signedIn = state.auth?.authenticated === true;
   const button = $("#accountButton");
   const internal = signedIn && state.auth?.user?.username === "local-user";
-  button.textContent = internal ? ui("Internal · shared workspace", "内部模式 · 共享工作区") : (signedIn ? state.auth.user.username : ui("Sign in", "登录"));
+  button.textContent = internal ? ui("Local workspace", "本地工作区") : (signedIn ? state.auth.user.username : ui("Sign in", "登录"));
   button.classList.toggle("authenticated", signedIn);
   if ($("#developerResultControls")) {
     $("#developerResultControls").hidden = !(signedIn && state.auth.developer);
@@ -1600,7 +1607,7 @@ function formatDate(value) {
   return Number.isNaN(date.valueOf()) ? "" : date.toLocaleDateString(undefined, {year: "numeric", month: "short", day: "2-digit"});
 }
 
-$$('[data-route]').forEach(element => element.addEventListener("click", () => {
+function featureRouteAction(element) {
   route(element.dataset.route);
   if (element.dataset.backendTarget === "3d") backendMode("3d");
   if (element.dataset.backendTarget === "2d") backendMode("2d");
@@ -1619,7 +1626,43 @@ $$('[data-route]').forEach(element => element.addEventListener("click", () => {
       if (target) target.scrollIntoView({behavior: "smooth", block: "start"});
     }, 350);
   }
-}));
+}
+
+// 功能入口之间切换时，若当前已选择设计，询问是否保留继续使用。
+let pendingFeatureRoute = null;
+function maybeConfirmKeepDesign(element) {
+  const gSel = $("#globalDesign");
+  const hasDesign = !!(state.selectedDesign && state.selectedDesign.id)
+    || !!(gSel && gSel.value);
+  const isFeatureEntry = element.matches('[data-route]') && element.closest('.feature-grid, .hero-cta');
+  if (!hasDesign || !isFeatureEntry) { featureRouteAction(element); return; }
+  pendingFeatureRoute = element;
+  const design = state.selectedDesign;
+  const designName = (design && (design.module || design.id)) || (gSel && gSel.value);
+  const modal = $("#keepDesignModal");
+  if (!modal) { featureRouteAction(element); return; }
+  modal.hidden = false;
+  modal.style.display = "flex";
+  $("#keepDesignName").textContent = designName || "";
+}
+
+function keepDesignProceed(keep) {
+  const modal = $("#keepDesignModal");
+  if (modal) { modal.hidden = true; modal.style.display = "none"; }
+  const element = pendingFeatureRoute;
+  pendingFeatureRoute = null;
+  if (!element) return;
+  if (!keep) {
+    state.selectedDesign = null;
+    const gSel = $("#globalDesign");
+    if (gSel) gSel.value = "";
+    $("#frontendDesign").value = "";
+    $("#backendDesign").value = "";
+  }
+  featureRouteAction(element);
+}
+
+$$('[data-route]').forEach(element => element.addEventListener("click", () => maybeConfirmKeepDesign(element)));
 $$('[data-backend-mode]').forEach(btn => btn.addEventListener("click", () => backendMode(btn.dataset.backendMode)));
 $$('[data-scroll]').forEach(element => element.addEventListener("click", () => $("#" + element.dataset.scroll)?.scrollIntoView({behavior: "smooth"})));
 $$('[data-input-mode]').forEach(button => button.addEventListener("click", () => selectInputMode(button.dataset.inputMode)));
@@ -1627,7 +1670,7 @@ $$('[data-design-view]').forEach(button => button.addEventListener("click", () =
 $$('[data-open-extension]').forEach(button => button.addEventListener("click", () => openExtension(button.dataset.openExtension)));
 $("#accountButton").addEventListener("click", () => {
   if (state.auth?.user?.username === "local-user") {
-    message("#demoNotice", ui("Internal mode: this deployment shares one local workspace without registration.", "内部模式：当前部署为共享本地工作区，无需注册登录。"));
+    message("#demoNotice", ui("You are working in this local workspace.", "你当前工作于此本地工作区。"));
     return;
   }
   if (state.auth?.authenticated) {
@@ -1639,6 +1682,9 @@ $("#accountButton").addEventListener("click", () => {
 $("#authClose").addEventListener("click", closeAuth);
 $("#authLogin").addEventListener("click", () => submitAuth("login"));
 $("#authRegister").addEventListener("click", () => submitAuth("register"));
+$("#keepDesignYes").addEventListener("click", () => keepDesignProceed(true));
+$("#keepDesignNo").addEventListener("click", () => keepDesignProceed(false));
+$("#keepDesignClose").addEventListener("click", () => { const modal = $("#keepDesignModal"); if (modal) { modal.hidden = true; modal.style.display = "none"; } pendingFeatureRoute = null; });
 $("#authPassword").addEventListener("keydown", event => { if (event.key === "Enter") submitAuth("login"); });
 $("#apiAuthAction").addEventListener("click", () => {
   if (!state.auth?.authenticated) return openAuth(ui("Sign in first, then configure your model provider.", "请先登录，再配置模型 Provider。"));

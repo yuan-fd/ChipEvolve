@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/assets/app.css?v=20260819d">
+  <link rel="stylesheet" href="/assets/app.css?v=20260820b">
 </head>
 <body>
   <header class="site-header">
@@ -23,7 +23,7 @@
       <button class="tab" data-route="evolution" data-i18n="nav.evolution">Self-Evolution</button>
     </nav>
     <label class="global-design" title="选择当前设计，所有功能按钮直接对它生效"><span>当前设计</span><select id="globalDesign"><option value="">未选择</option></select></label>
-    <div class="header-controls"><div class="language-switch" role="group" aria-label="Language"><button id="langZh" data-locale="zh">中文</button><button id="langEn" data-locale="en" class="active">EN</button></div><button class="account-button" id="accountButton" title="Internal mode: shared local workspace">Internal</button><div class="health" title="Platform status"><span id="healthDot"></span><b id="healthText">Connecting</b></div></div>
+    <div class="header-controls"><div class="language-switch" role="group" aria-label="Language"><button id="langZh" data-locale="zh">中文</button><button id="langEn" data-locale="en" class="active">EN</button></div><button class="account-button" id="accountButton" title="Local workspace">Workspace</button><div class="health" title="Platform status"><span id="healthDot"></span><b id="healthText">Connecting</b></div></div>
   </header>
 
   <!-- Registration/login is disabled in internal no-auth mode; restore by removing OPENROAD_PLATFORM_NO_AUTH. -->
@@ -40,55 +40,49 @@
     </section>
   </div>
 
+  <!-- Keep-current-design confirm when switching between feature entries. -->
+  <div class="auth-modal" id="keepDesignModal" hidden style="display:none">
+    <section class="auth-card" role="dialog" aria-modal="true" aria-labelledby="keepDesignTitle">
+      <button class="auth-close" id="keepDesignClose" aria-label="Close">×</button>
+      <p class="eyebrow">设计上下文</p><h2 id="keepDesignTitle">保留当前设计？</h2>
+      <p>当前设计 <b id="keepDesignName"></b> 仍处于选中状态。<br>是否继续使用它进入下一个功能？</p>
+      <div class="auth-actions">
+        <button class="button primary" id="keepDesignYes">保留并继续</button>
+        <button class="button" id="keepDesignNo">不使用，重新开始</button>
+      </div>
+    </section>
+  </div>
+
   <main>
     <section class="page active" id="page-overview">
       <section class="hero wrap">
         <p class="eyebrow" data-i18n="overview.eyebrow">Open-source intelligent chip design infrastructure</p>
-        <h1>OpenROAD Self-Evolving<br>EDA Platform</h1>
-        <p class="hero-tagline" data-i18n="overview.tagline">From design intent to verified silicon evidence.</p>
-        <div class="capability-list" aria-label="Core platform capabilities">
-          <div title="Natural-language design with reviewable RTL and reproducible physical implementation."><span>01</span><p><b>Spec → RTL → GDS</b><span data-i18n="overview.cap1">Natural-language design with reviewable RTL.</span></p></div>
-          <div title="Natural-language control, report interpretation, diagnosis, and guided repair."><span>02</span><p><b data-i18n="overview.cap2.name">EDA Copilot</b><span data-i18n="overview.cap2">Natural-language control, diagnosis, and guided repair.</span></p></div>
-          <div title="Stage-aware experiments, bounded search, BO/GP, Pareto analysis, and RL advice."><span>03</span><p><b data-i18n="overview.cap3.name">Flow Optimization</b><span data-i18n="overview.cap3">Stage-aware experiments, bounded search, and RL advice.</span></p></div>
-          <div title="OpenROAD 2D flow and TaiWei Pin-3D two-tier implementation, both verified end-to-end."><span>04</span><p><b>2D / 3D Physical Design</b><span data-i18n="overview.cap4">OpenROAD 2D flow and TaiWei Pin-3D two-tier implementation.</span></p></div>
-          <div title="Plugins extend the platform through contracts: TaiWei 3D, RTLScout, and more."><span>05</span><p><b data-i18n="overview.cap5.name">Plugin Ecosystem</b><span data-i18n="overview.cap5">Contract-based plugins: TaiWei 3D, RTLScout, and more.</span></p></div>
-          <div title="Traceable knowledge, verified run data, recommendations, and reusable design experience."><span>06</span><p><b data-i18n="overview.cap6.name">Continuous Learning</b><span data-i18n="overview.cap6">Traceable knowledge and reusable design experience.</span></p></div>
-        </div>
+        <h1 data-i18n="overview.hero.title">从设计意图<br>到可验证的芯片</h1>
+        <p class="hero-tagline" data-i18n="overview.tagline">自然语言驱动 · Spec → RTL → GDS · 全程可验证</p>
         <div class="hero-actions hero-cta">
-          <button class="button hero-cta-btn" data-scroll="project">📖 项目介绍</button>
-          <button class="button hero-cta-btn primary" data-route="frontend">🚀 快速开始</button>
-          <a class="button hero-cta-btn" href="https://github.com/CODA-Team/ChipEvolve/issues" target="_blank" rel="noopener">💬 问题反馈</a>
+          <button class="button hero-cta-btn" data-scroll="features">项目介绍</button>
+          <button class="button hero-cta-btn primary" data-route="frontend">快速开始</button>
+          <a class="button hero-cta-btn" href="https://github.com/CODA-Team/ChipEvolve/issues" target="_blank" rel="noopener">问题反馈</a>
         </div>
       </section>
 
-      <section class="wrap platform-path" id="project">
-        <div class="section-heading"><p class="eyebrow" data-i18n="overview.workflow">A connected workflow</p><h2 data-i18n="overview.workflow.title">One path from intent to learning.</h2><p data-i18n="overview.workflow.help">Each stage produces reviewable outputs that feed the next stage and, after verification, improve future decisions.</p></div>
-        <div class="path-diagram" aria-label="Intent to learning platform workflow">
-          <article><span>01</span><b data-i18n="overview.path.intent">Design Intent</b><small data-i18n="overview.path.intent.help">Spec, RTL, constraints</small></article><i>→</i>
-          <article><span>02</span><b data-i18n="overview.path.frontend">Frontend</b><small data-i18n="overview.path.frontend.help">RTL, netlist, schematic</small></article><i>→</i>
-          <article><span>03</span><b data-i18n="overview.path.physical">Physical Design</b><small data-i18n="overview.path.physical.help">2D / 3D implementation</small></article><i>→</i>
-          <article><span>04</span><b data-i18n="overview.path.optimization">Optimization</b><small data-i18n="overview.path.optimization.help">Experiments and bounded repair</small></article><i>→</i>
-          <article><span>05</span><b data-i18n="overview.path.learning">Verified Learning</b><small data-i18n="overview.path.learning.help">Evidence and advice</small></article>
-        </div>
-      </section>
-
-      <section class="wrap feature-entry-section">
-        <div class="section-heading"><p class="eyebrow">功能入口 · 一切皆按钮</p><h2>点开即用，无需翻找</h2><p>所有功能独立成按钮，按分类排列；选择一个设计后，各功能直接对它生效。</p></div>
+      <section class="wrap feature-entry-section" id="features">
+        <div class="section-heading"><p class="eyebrow" data-i18n="overview.features.eyebrow">Platform features</p><h2 data-i18n="overview.features.title">开始使用</h2><p data-i18n="overview.features.help">选择设计后，各功能直接对该设计生效。</p></div>
         <div class="feature-grid">
-          <div class="feature-group"><p>设计输入</p>
+          <div class="feature-group"><p data-i18n="overview.group.input">设计输入</p>
             <button data-route="frontend" data-focus="upload">📄 上传文件</button>
             <button data-route="frontend" data-focus="spec">✨ 自然语言生成</button>
             <button data-route="frontend" data-focus="examples">🧩 示例项目</button>
           </div>
-          <div class="feature-group"><p>物理设计</p>
+          <div class="feature-group"><p data-i18n="overview.group.physical">物理设计</p>
             <button data-route="backend" data-backend-target="2d">▥ 2D 流程</button>
             <button data-route="backend" data-backend-target="3d">⬒ 3D IC</button>
           </div>
-          <div class="feature-group"><p>优化</p>
+          <div class="feature-group"><p data-i18n="overview.group.optimize">优化</p>
             <button data-route="backend" data-backend-target="2d" data-flow-focus="campaign">⚙ 批量并行</button>
             <button data-route="evolution" data-focus="agent">🧠 Agent 智能调参</button>
           </div>
-          <div class="feature-group"><p>查看与学习</p>
+          <div class="feature-group"><p data-i18n="overview.group.results">查看与学习</p>
             <button data-route="projects">📊 项目与结果</button>
             <button data-route="evolution">📚 自演化知识库</button>
           </div>
@@ -290,6 +284,6 @@
     </section>
   </main>
   <footer><span>OpenROAD Self-Evolving EDA Platform</span><span>Local research workspace · verified evidence</span></footer>
-  <script src="/assets/app.js?v=20260819d"></script>
+  <script src="/assets/app.js?v=20260820b"></script>
 </body>
 </html>
