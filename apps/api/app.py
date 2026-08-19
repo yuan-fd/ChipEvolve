@@ -53,6 +53,9 @@ from openroad_platform_execution import (  # noqa: E402
     TaiWeiToolchainProfile, TAIWEI_3D_PLATFORMS, build_taiwei_task, taiwei_plugin_manifest,
 )
 from openroad_platform_analysis.agent_trace import AgentTraceStore
+from openroad_platform_analysis.iterative_agent import (
+    AnalysisLayer, DisruptorAgent, IterationLedger, OptimizerAgent,
+)  # noqa: E402
 from openroad_platform_scheduler import (  # noqa: E402
     ALLOWED_MODELS, CampaignStore, CodexCliSpecProvider, JobStore,
     InMemorySecretBroker, NaturalLanguageTaskCompiler,
@@ -1137,6 +1140,55 @@ class ApiState:
     def _byok_transport_available(self) -> bool:
         return self.byok_transport_secure
 
+    def run_optimizer_iteration(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Stage 1.1: one OptimizerAgent loop pass over the study observations.
+
+        Planning-only: never executes EDA itself. It produces a reviewable
+        plan (required_gate=human_review) plus headroom/attribution/trend and
+        records the loop into an AgentTrace for the web dashboard.
+        """
+        study_id = str(payload.get("study_id") or "").strip()
+        if not study_id:
+            raise ValueError("study_id is required")
+        study = self.optimization_store.get(study_id)
+        observations = self.optimization_store.observations(study_id)
+        ledger = IterationLedger(Path(os.environ.get(
+            "OPENROAD_PLATFORM_ITERATION_LEDGER",
+            self.local_state_root / "agent-iterations.jsonl")))
+        parameter_bounds = {
+            item.name: (float(item.lower), float(item.upper))
+            for item in study.parameter_space
+        }
+        metric = str(payload.get("metric") or study.objectives[0].metric_name)
+        direction = str(payload.get("direction") or study.objectives[0].direction)
+        max_rounds = int(payload.get("max_rounds", 20))
+        agent = OptimizerAgent(
+            ledger, trace_store=self.agent_traces,
+            parameter_bounds=parameter_bounds, metric=metric,
+            direction=direction, max_rounds=max_rounds,
+        )
+        # Seed the ledger from already-observed runs so the loop continues
+        # from real evidence instead of starting from scratch.
+        for obs in observations:
+            if obs.status != "succeeded":
+                continue
+            round_no = ledger.latest().round + 1 if ledger.latest() else 1
+            ledger.replace_round(round_no, IterationState(
+                round=round_no, parameters=obs.parameters, metrics=obs.metrics,
+                status="succeeded"))
+        trace = self.agent_traces.create(
+            "Optimizer 迭代（设计 %s）" % study.design_id, "optimizer")
+        result = agent.run_iteration(trace=trace)
+        result["study_id"] = study_id
+        result["design_id"] = study.design_id
+        result["agent_trace_id"] = trace.trace_id
+        # Include a stall check so the dashboard can surface redirection.
+        trend = AnalysisLayer().dynamic_trend(ledger.read(), metric, direction)
+        disruptor = DisruptorAgent()
+        result["disruptor"] = disruptor.check(trend)
+        self.agent_traces.save(trace)
+        return result
+
     def create_recommendation(self, study_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         owner_id = str(payload.get("owner_id") or "local-user")
         study = self.optimization_store.get(study_id)
@@ -2195,6 +2247,10 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                     )
                     self._json(state.create_recommendation(
                         study_id, scoped(self._read_json())), HTTPStatus.CREATED)
+                    return
+                if path == "/api/agent/iterate":
+                    self._json(state.run_optimizer_iteration(
+                        scoped(self._read_json())), HTTPStatus.CREATED)
                     return
                 match = re.fullmatch(r"/api/optimization/studies/([^/]+)/calibrate", path)
                 if match:

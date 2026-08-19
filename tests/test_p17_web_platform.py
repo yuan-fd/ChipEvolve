@@ -35,8 +35,8 @@ def test_web_has_five_clear_bilingual_primary_tabs():
 
 def test_web_uses_a_restrained_minimal_visual_system():
     css = (ROOT / "apps" / "web" / "assets" / "app.css").read_text(encoding="utf-8")
-    assert "--accent: #2563eb" in css
-    assert "--radius: 6px" in css
+    assert "--accent: #4d6bfe" in css
+    assert "--radius: 8px" in css
     assert "Georgia" not in css
     assert ".embedded-extension-detail:not(:empty)" in css
     assert "box-shadow: 0 18px" not in css
