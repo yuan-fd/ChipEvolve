@@ -28,6 +28,44 @@ Turning chip design from a manual flow into an **automated + self-learning** ope
 
 *Input RTL (SHA-256 fingerprinted) → two branches: 2D (ORFS 6 stages) and 3D (TaiWei 20 stages) → GDS + metrics → knowledge base (verified runs only) → AI suggestions (GP/BO + behavior cloning) → human approval.*
 
+### Agent architecture (self-evolution)
+
+```mermaid
+graph TD
+    U[User · design intent] -->|natural-language spec| FE[Frontend · spec-to-rtl agent]
+    FE -->|registered RTL| BD[flow-agent · WorkflowRuntime]
+    BD -->|run + evidence| OBS[(observations · verified)]
+    OBS -->|observations| BO[BO/GP optimizer<br/>MultiObjectiveBayesianOptimizer]
+    BO -->|parameter proposal| REC[recommendation · bo-gp]
+    REC -->|human approval| DEC{human in the loop}
+    DEC -->|accepted| CAM[campaign · batch experiments]
+    CAM -->|new observations| OBS
+    OBS -.->|trajectories| BC[behavior-cloning shadow policy · offline RL]
+    OBS -.->|only on improvement| LSN[(lessons)]
+    LSN -.->|distill| SK[(skills)]
+    SK -.->|guide next hypothesis| BO
+    KB[(RAG knowledge base<br/>papers · docs · benchmarks)] -->|prior + rationale| FE
+    KB -->|prior + rationale| BO
+```
+
+### Evolve-agent loop (Optimizer → Disruptor → Coder)
+
+```mermaid
+graph LR
+    subgraph Optimizer[OptimizerAgent · each round]
+        A1[1 analyze<br/>attribution + trend] --> A2[2 hypothesize<br/>single parameter]
+        A2 --> A3[3 plan<br/>execution_allowed=False]
+        A3 --> A4[4 execute<br/>via scheduler, human-approved]
+        A4 --> A5[5 score + record + lessons]
+        A5 --> A1
+    end
+    LG[(IterationLedger<br/>file-backed state)] <--> Optimizer
+    Optimizer --> TR[(AgentTrace<br/>auditable)]
+    TR --> D[DisruptorAgent<br/>stall detection → redirect]
+    D -->|widen exploration / objective shift| A2
+    C[CoderAgent<br/>future · source edits] -.->|isolated validation gate| A3
+```
+
 ---
 
 ## Feature Status
@@ -36,12 +74,16 @@ Turning chip design from a manual flow into an **automated + self-learning** ope
 | --- | --- | --- |
 | 2D physical design (ORFS 6-stage) | ✅ Working | Nangate45 RTL→GDS verified end-to-end |
 | 3D physical design (TaiWei) | ✅ Working | 3 platforms × any design; 3 real variants verified |
-| Web workspace (6 pages) | ✅ Available | Overview / Frontend / Backend / Projects / Extensions / Self-Evolution |
-| Natural-language RTL generation | ✅ Available | Spec-to-RTL, human review before registration |
-| Self-evolution (knowledge + AI suggestions) | ✅ Available | Collection verified (admitted); GP/BO + behavior cloning |
+| Web workspace | ✅ Available | Overview / Frontend / Backend / Projects / Self-Evolution / Tutorial |
+| Natural-language RTL generation | ✅ Available | Spec-to-RTL via server codex model, human review before registration |
+| Frontend LLM entry | ✅ Available | Three entry buttons (upload / LLM spec / examples), agent run trace dashboard |
+| Agent architecture | ✅ Working | OptimizerAgent loop (analyze→hypothesize→plan→score→record) + Disruptor + Coder interface |
+| Self-evolution (knowledge + AI suggestions) | ✅ Working | Verified collection only; GP/BO + behavior cloning + lessons/skills + feedback loop |
+| Lessons & skills | ✅ Working | Improvement-only distillation; context-scoped retrieval; planning-side skill application |
+| Agent trace dashboard | ✅ Working | Every LLM/agent operation traced; step durations & metric comparison |
 | Plugin ecosystem | ✅ Ready | TaiWei / RTLScout / AgenticPD / EDACraft / ImplCraft / DPLEvolve |
+| Batch experiments (Campaign / Agent search) | ✅ Working | 12 campaigns / 68 members executed; reviewable plans, human-confirmed |
 | No-auth internal mode | ✅ Available | `OPENROAD_PLATFORM_NO_AUTH=1` skips registration |
-| Batch experiments (Campaign / Agent search) | 🚧 Partial | Creates reviewable candidate plans, human-confirmed execution |
 | LLM online optimization | 🚧 Needs config | BYOK or shared model; credentials in memory only |
 
 > Full capability map: Overview page + [Tutorial 01](docs/tutorials/01_openroad_platform_overview.md).
@@ -81,7 +123,7 @@ openroad-platform/
   file pair, ② an export in `execution/__init__.py`, ③ a manifest mount in `app.py`.
   Developers of different plugins never conflict.
 - **Branch flow**: feature branch → commit → full test suite → merge to main.
-- **Testing**: `python3 -m pytest -q` (currently 215 passed / 2 failed, both environmental).
+- **Testing**: `python3 -m pytest -q` (currently 233 passed).
 
 > Plugin guide: [docs/PLUGINS.md](docs/PLUGINS.md) · [CONTRIBUTING.md](CONTRIBUTING.md)
 
@@ -96,6 +138,8 @@ REST API (every web feature is callable via API):
 | `/api/auth/*` | Login / register (skippable in no-auth mode) |
 | `/api/designs/*` | Design registration / import / generation |
 | `/api/runtime/runs/*` | 2D/3D task submit, progress, cancel, artifacts |
+| `/api/agent/iterate` | Run one OptimizerAgent loop (planning-only, human review) |
+| `/api/agent/traces` | Agent run traces (every LLM/agent operation, auditable) |
 | `/api/extensions/taiwei/run` | 3D task submit (platform / parameters) |
 | `/api/extensions/edacraft/*` | Specialist tools (TCAD / SPICE / ...) |
 | `/api/platform/results` | Projects and results |

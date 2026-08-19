@@ -28,6 +28,44 @@
 
 *输入 RTL（含 SHA-256 指纹）→ 双分支：2D（ORFS 六阶段）/ 3D（TaiWei 20 道工序）→ GDS + 指标 → 知识库（验证通过才入库）→ AI 建议（GP/BO + 行为克隆）→ 人工批准。*
 
+### Agent 架构（自演化）
+
+```mermaid
+graph TD
+    U[用户 · 设计意图] -->|自然语言 Spec| FE[前端 · spec-to-rtl Agent]
+    FE -->|登记 RTL| BD[flow-agent · WorkflowRuntime]
+    BD -->|运行 + 证据| OBS[(观测库 · 已验证)]
+    OBS -->|观测| BO[BO/GP 优化器<br/>MultiObjectiveBayesianOptimizer]
+    BO -->|参数建议| REC[推荐建议 · bo-gp]
+    REC -->|人工批准| DEC{人在决策环}
+    DEC -->|接受| CAM[批量并行实验 · campaign]
+    CAM -->|新观测| OBS
+    OBS -.->|轨迹| BC[行为克隆影子策略 · 离线 RL]
+    OBS -.->|仅改进时| LSN[(lessons 教训库)]
+    LSN -.->|提炼| SK[(skills 技能库)]
+    SK -.->|指导下一轮假设| BO
+    KB[(RAG 知识库<br/>论文 · 文档 · benchmark)] -->|先验与理由| FE
+    KB -->|先验与理由| BO
+```
+
+### Evolve-agent 循环（Optimizer → Disruptor → Coder）
+
+```mermaid
+graph LR
+    subgraph Optimizer[OptimizerAgent · 每一轮]
+        A1[1 分析<br/>归因 + 趋势] --> A2[2 假设<br/>单参数]
+        A2 --> A3[3 计划<br/>execution_allowed=False]
+        A3 --> A4[4 执行<br/>经调度、人工批准]
+        A4 --> A5[5 打分 + 记录 + lessons]
+        A5 --> A1
+    end
+    LG[(IterationLedger<br/>文件化状态)] <--> Optimizer
+    Optimizer --> TR[(AgentTrace<br/>全程可回放)]
+    TR --> D[DisruptorAgent<br/>停滞检测 → 换向]
+    D -->|扩大探索 / 目标切换| A2
+    C[CoderAgent<br/>远期 · 源码编辑] -.->|隔离验证门| A3
+```
+
 ---
 
 ## 功能清单
@@ -36,12 +74,16 @@
 | --- | --- | --- |
 | 2D 物理设计（ORFS 六阶段） | ✅ 已跑通 | Nangate45 RTL→GDS 全流程真实验证 |
 | 3D 物理设计（TaiWei） | ✅ 已跑通 | 3 种工艺库 × 任意设计，3 个真实变体验证 |
-| 网页工作台（六页） | ✅ 已可用 | Overview / Frontend / Backend / Projects / Extensions / Self-Evolution |
-| 自然语言生成 RTL | ✅ 已可用 | Spec-to-RTL，需人工确认后登记 |
-| 自演化学习（知识入库 + AI 建议） | ✅ 已可用 | 入库链路实测通过（admitted）；建议采用 GP/BO + 行为克隆 |
+| 网页工作台 | ✅ 已可用 | Overview / Frontend / Backend / Projects / Self-Evolution / Tutorial |
+| 自然语言生成 RTL | ✅ 已可用 | Spec-to-RTL（服务器 codex 模型），需人工确认后登记 |
+| 前端 LLM 入口 | ✅ 已可用 | 三按钮入口（上传 / LLM Spec / 示例），Agent 运行轨迹 dashboard |
+| Agent 架构 | ✅ 已实现 | OptimizerAgent 迭代循环（分析→假设→计划→打分→记录）+ Disruptor + Coder 接口 |
+| 自演化学习（知识入库 + AI 建议） | ✅ 已实现 | 仅验证通过才入库；GP/BO + 行为克隆 + lessons/skills + 反馈闭环 |
+| lessons 与 skills | ✅ 已实现 | 仅改进时提炼；按上下文检索；规划侧技能应用 |
+| Agent 轨迹 dashboard | ✅ 已实现 | 所有 LLM/agent 操作接入轨迹；步骤耗时与指标对比 |
 | 插件生态 | ✅ 架构就绪 | TaiWei / RTLScout / AgenticPD / EDACraft / ImplCraft / DPLEvolve |
+| 批量实验（Campaign / Agent 搜索） | ✅ 已跑通 | 12 个 campaign / 68 个成员已执行；计划可审查、人工确认 |
 | 免登录内部模式 | ✅ 已可用 | `OPENROAD_PLATFORM_NO_AUTH=1` 跳过注册，共享工作区 |
-| 批量实验（Campaign / Agent 搜索） | 🚧 部分可用 | 创建候选计划并人工确认后执行 |
 | LLM 在线优化（需模型服务） | 🚧 需配置 | BYOK 或共享模型，凭据仅存内存 |
 
 > 完整能力地图见网页 Overview 页与 [教程 01](docs/tutorials/01_openroad_platform_overview.md)。
@@ -54,7 +96,7 @@
 openroad-platform/
 ├── apps/
 │   ├── api/                 # 后台服务：HTTP 接口、设计/任务/学习服务
-│   └── web/                 # 前端网页（六页工作台，中英双语）
+│   └── web/                 # 前端网页（中英双语）
 ├── packages/
 │   ├── contracts/           # 数据契约：任务单(TaskSpec)/插件声明/产物规则
 │   ├── scheduler/           # 调度：SQLite 队列、Runtime、worker、campaign
@@ -80,7 +122,7 @@ openroad-platform/
   插件之间零依赖；新插件只需 ①新建自己的文件对 ②在 `execution/__init__.py` 导出
   ③在 `app.py` 挂载 manifest。不同插件的开发者互不冲突。
 - **分支流程**：功能分支开发 → 本地提交 → 跑全量测试 → 合入 main。
-- **测试**：`python3 -m pytest -q`（当前 215 passed / 2 failed，2 个为环境性）。
+- **测试**：`python3 -m pytest -q`（当前 233 passed）。
 
 > 插件开发详细指南见 [docs/PLUGINS.md](docs/PLUGINS.md) 与 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
@@ -95,6 +137,8 @@ openroad-platform/
 | `/api/auth/*` | 登录注册（免登录模式可跳过） |
 | `/api/designs/*` | 设计登记 / 导入 / 生成 |
 | `/api/runtime/runs/*` | 2D/3D 任务提交、进度、取消、产物 |
+| `/api/agent/iterate` | 运行一轮 OptimizerAgent（仅规划、人工审查） |
+| `/api/agent/traces` | Agent 运行轨迹（所有 LLM/agent 操作，可审计） |
 | `/api/extensions/taiwei/run` | 3D 任务提交（工艺库/参数） |
 | `/api/extensions/edacraft/*` | 专业小工具（TCAD/SPICE 等） |
 | `/api/platform/results` | 项目与结果列表 |
