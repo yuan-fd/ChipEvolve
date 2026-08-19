@@ -142,11 +142,16 @@ class PlatformReadModel:
         design_ids = {item["id"] for item in self.designs.list(
             limit=100, owner_id=owner_id, include_legacy=include_legacy
         )}
-        studies = [item for item in self.optimization_store.list()
-                   if owner_id is None or item.get("design_id") in design_ids]
+        if owner_id and owner_id != "local-user":
+            studies = [item for item in self.optimization_store.list()
+                       if item.get("design_id") in design_ids]
+            recommendations = self.recommendation_store.list(owner_id)
+        else:
+            # internal no-auth mode: shared corpus across users
+            studies = self.optimization_store.list()
+            recommendations = self.recommendation_store.list_all()
         sources = self.knowledge_registry.list_sources()
         benchmarks = self.knowledge_registry.list_benchmarks()
-        recommendations = self.recommendation_store.list(owner_id or "local-user")
         # Internal no-auth mode uses a fixed "local-user" session; show the
         # shared observation corpus instead of that tenant's (empty) set.
         if owner_id and owner_id != "local-user":

@@ -282,6 +282,12 @@ class RecommendationStore:
                 WHERE owner_id = ? ORDER BY created_at DESC""", (owner_id,)).fetchall()
         return [json.loads(row[0]) for row in rows]
 
+    def list_all(self) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute("""SELECT payload_json FROM policy_recommendations_v1
+                ORDER BY created_at DESC""").fetchall()
+        return [json.loads(row[0]) for row in rows]
+
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, timeout=30)
         connection.execute("PRAGMA foreign_keys = ON")
