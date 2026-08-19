@@ -235,7 +235,14 @@ class OpenAICompatibleSpecProvider:
             "temperature": 0,
             "response_format": {"type": "json_object"},
             "messages": [{"role": "system", "content":
-                "Return one conservative ASIC SpecProposal JSON object only. Never invoke tools. "
+                "Return one conservative ASIC SpecProposal JSON object only, as a FLAT object with EXACTLY these keys: "
+                "objective (string), functionality (string), top (string or null), clock (string or null), "
+                "reset (string or null), target_platform (\"nangate45\"), target_stage (one of synth/floorplan/place/cts/route/finish), "
+                "clock_period_ns (number), core_utilization_pct (number), place_density (number), "
+                "rtl_source (string or null, containing the full synthesizable Verilog module), "
+                "missing_fields (array of strings), assumptions (array of strings), "
+                "clarification_questions (array of strings), ready_for_execution (boolean). "
+                "Do NOT wrap the object under another key such as \"spec\". Never invoke tools. "
                 "Use Nangate45 and synth/floorplan/place/cts/route/finish."},
                 {"role": "user", "content": json.dumps({
                     "conversation": list(messages), "current": dict(current),
