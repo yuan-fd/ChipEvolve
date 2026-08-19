@@ -469,16 +469,20 @@ async function loadDesigns(preferred = null) {
     const options = `<option value="">${ui("Select a registered design", "选择已登记设计")}</option>` + state.designs.map((design, index) => `<option value="${esc(design.id)}">${ui("Design", "设计")} ${String(index + 1).padStart(2, "0")} · ${esc(design.module)}</option>`).join("");
     $("#frontendDesign").innerHTML = options;
     $("#backendDesign").innerHTML = options;
+    const gSel = $("#globalDesign");
+    if (gSel) gSel.innerHTML = `<option value="">${ui("No design", "未选择")}</option>` + state.designs.map(d => `<option value="${esc(d.id)}">${esc(d.module)} · ${esc(d.id.slice(0, 8))}</option>`).join("");
     renderDesignChips();
     const id = preferred || state.selectedDesign?.id;
     if (id) {
       $("#frontendDesign").value = id;
       $("#backendDesign").value = id;
+      if (gSel) gSel.value = id;
       await selectDesign(id);
     } else {
       state.selectedDesign = null;
       $("#frontendDesign").value = "";
       $("#backendDesign").value = "";
+      if (gSel) gSel.value = "";
       resetDesignResult();
     }
   } catch (error) {
@@ -509,6 +513,8 @@ async function selectDesign(id) {
   state.selectedDesign = design;
   $("#frontendDesign").value = id;
   $("#backendDesign").value = id;
+  const gSel = $("#globalDesign");
+  if (gSel) gSel.value = id;
   renderDesignChips();
   const analysis = design.analysis || {};
   const ports = (analysis.inputs || []).length + (analysis.outputs || []).length;
@@ -1613,6 +1619,8 @@ $("#useExample").addEventListener("click", useExample);
 $("#rtlFile").addEventListener("change", event => { const file = event.target.files?.[0]; if (!file) return; $("#rtlFilename").value = file.name; const reader = new FileReader(); reader.onload = () => { $("#rtlSource").value = String(reader.result || ""); }; reader.readAsText(file); });
 $("#frontendDesign").addEventListener("change", event => selectDesign(event.target.value));
 $("#backendDesign").addEventListener("change", event => selectDesign(event.target.value));
+const gSel = $("#globalDesign");
+if (gSel) gSel.addEventListener("change", event => { if (event.target.value) selectDesign(event.target.value); });
 $("#importRtl").addEventListener("click", importRtl);
 $("#createSpec").addEventListener("click", createSpec);
 $("#continueSpec").addEventListener("click", continueSpec);

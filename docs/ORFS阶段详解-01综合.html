@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ORFS 阶段详解 ① · 综合 Synthesis —— 从 RTL 到网表</title>
+<style>
+  :root{
+    --bg:#faf7f2; --card:#ffffff; --ink:#3a3229; --soft:#8a7f70;
+    --line:#e8e0d4; --accent:#c8642a; --accent2:#2a6f5c; --accent3:#3a5a8c;
+    --warn:#a05620; --ok:#2a7a4a;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--ink); font-family:"Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif; line-height:1.9; font-size:17px;}
+  .wrap{max-width:980px; margin:0 auto; padding:30px 22px 80px;}
+  header.hero{background:linear-gradient(135deg,#4a3229,#8c5a3a); color:#fff; border-radius:18px; padding:38px 32px; margin-bottom:26px;}
+  header.hero h1{font-size:30px; margin-bottom:10px;}
+  header.hero p{opacity:.92; font-size:18px;}
+  .toc{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:22px 26px; margin-bottom:28px;}
+  .toc h2{font-size:20px; color:var(--accent); margin-bottom:12px;}
+  .toc a{color:var(--accent2); text-decoration:none; display:block; padding:5px 0; border-bottom:1px dashed var(--line);}
+  .toc a:hover{color:var(--accent);}
+  section{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:26px 28px; margin-bottom:26px;}
+  section h2{font-size:24px; color:var(--accent); border-left:6px solid var(--accent); padding-left:12px; margin-bottom:16px;}
+  section h3{font-size:19px; color:var(--accent2); margin:20px 0 10px;}
+  p{margin-bottom:12px;}
+  .story{background:#f3ecdf; border-left:5px solid var(--accent); padding:14px 18px; border-radius:8px; margin:14px 0;}
+  .story b{color:var(--accent);}
+  .ok{background:#e8f3ec; border-left:5px solid var(--ok); padding:14px 18px; border-radius:8px; margin:14px 0;}
+  .warn{background:#fdf0e3; border-left:5px solid var(--warn); padding:14px 18px; border-radius:8px; margin:14px 0;}
+  pre{background:#2e2a26; color:#e8dcc8; border-radius:10px; padding:16px 18px; overflow-x:auto; font-size:14px; line-height:1.6; margin:12px 0;}
+  pre b{color:#f0c674;}
+  code{background:#efe9dd; color:#7a4a1a; border-radius:4px; padding:1px 6px; font-size:15px;}
+  table{width:100%; border-collapse:collapse; margin:14px 0; font-size:15.5px;}
+  th{background:#f0e9dc; color:var(--accent); text-align:left; padding:9px 12px; border:1px solid var(--line);}
+  td{padding:9px 12px; border:1px solid var(--line); vertical-align:top;}
+  tr:nth-child(even) td{background:#fcf9f4;}
+  .flow{display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:16px 0;}
+  .flow .step{background:var(--accent2); color:#fff; border-radius:22px; padding:9px 16px; font-size:15px; font-weight:bold;}
+  .flow .arrow{color:var(--accent); font-size:22px; font-weight:bold;}
+  .flow .step.light{background:var(--accent3);}
+  ul,ol{margin:10px 0 10px 26px;}
+  li{margin-bottom:8px;}
+  .footer{text-align:center; color:var(--soft); font-size:14px; margin-top:30px;}
+  @media (max-width:700px){ body{font-size:16px;} header.hero h1{font-size:24px;} .wrap{padding:16px 12px 60px;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1>① 综合 Synthesis</h1>
+  <p>从 RTL 到门级网表 —— Yosys、ABC、逻辑优化与工艺映射，一次讲透</p>
+</header>
+
+<div class="toc">
+  <h2>📋 目录</h2>
+  <a href="#s1">一、综合是干什么的？—— 把"图纸语言"翻译成"零件清单"</a>
+  <a href="#s2">二、综合的四步内部流程</a>
+  <a href="#s3">三、ABC 是什么？—— 逻辑综合的"数学大脑"</a>
+  <a href="#s4">四、Yosys 和 ABC 怎么配合（附真实命令）</a>
+  <a href="#s5">五、网表是什么样子的</a>
+  <a href="#s6">六、关键概念速查</a>
+  <a href="#s7">七、工业界的综合工具（老师资料里那些名字）</a>
+  <a href="#s8">八、常见疑问</a>
+</div>
+
+<section id="s1">
+  <h2>一、综合是干什么的？—— 把"图纸语言"翻译成"零件清单"</h2>
+  <p><b>综合（Synthesis）</b>是整个流程的起点：输入是 RTL 代码（描述芯片<b>行为</b>："这个模块应该算什么"），输出是<b>门级网表</b>（描述芯片<b>结构</b>："用哪些门、怎么连"）。</p>
+  <div class="story"><b>打个比方：</b>RTL 是建筑师的<b>设计意图</b>（"这里要一堵承重墙，那里要一个客厅"）；综合就是<b>施工图设计</b>（"用 200 块标准砖、12 根钢筋，按这张图砌"）。门级网表就是那张施工图。</div>
+  <p>综合要遵守两本"法规"：</p>
+  <ul>
+    <li><b>工艺库</b>（.lib）：这家工厂只有这些"标准零件"（AND 门、OR 门、触发器…每个多大、多快、多费电）；</li>
+    <li><b>时序约束</b>（SDC）：芯片要在多快时钟下工作、哪些路径必须准时。</li>
+  </ul>
+  <p>所以综合的完整答案 = <b>行为翻译 + 逻辑化简 + 用规定的零件拼出来 + 保证能跑得动</b>。</p>
+</section>
+
+<section id="s2">
+  <h2>二、综合的四步内部流程</h2>
+  <div class="flow">
+    <span class="step">① RTL 解析</span><span class="arrow">→</span>
+    <span class="step light">② 行为综合</span><span class="arrow">→</span>
+    <span class="step">③ 逻辑优化</span><span class="arrow">→</span>
+    <span class="step light">④ 工艺映射</span>
+  </div>
+  <table>
+    <tr><th>子步骤</th><th>大白话</th><th>输出</th></tr>
+    <tr><td><b>① RTL 解析（elaboration）</b></td><td>把 Verilog 读进来，理解每个模块、每个 always 块、"展开"成电路结构</td><td>内部电路表示（还没用具体门）</td></tr>
+    <tr><td><b>② 行为综合</b></td><td>把"行为描述"变成"逻辑表达式"：加法器展开成一位位全加器、多路选择器展开成逻辑门、状态机编码</td><td>与工艺无关的逻辑网络</td></tr>
+    <tr><td><b>③ 逻辑优化</b></td><td>用布尔代数化简：<code>A·B + A·¬B = A</code> 这种合并；去掉多余逻辑，减少门数/深度</td><td>化简后的逻辑</td></tr>
+    <tr><td><b>④ 工艺映射</b></td><td>把化简后的逻辑"翻译"成工艺库里的真实单元（AND2 门、NAND2 门、DFF…），并做时序优化</td><td><b>门级网表</b></td></tr>
+  </table>
+  <div class="ok"><b>关键认识：</b>③④ 两步才是综合的"灵魂"，也是最难的部分——它们由 <b>ABC</b> 这个工具完成（见下节）。这也是为什么老师资料里会反复出现"ABC"。</div>
+</section>
+
+<section id="s3">
+  <h2>三、ABC 是什么？—— 逻辑综合的"数学大脑"</h2>
+  <p><b>ABC</b>（berkeley-abc，github.com/berkeley-abc/abc）是加州伯克利大学开源的一个<b>逻辑综合与验证工具</b>，几十年来学术界和工业界都在用。Yosys 把最难的逻辑优化和工艺映射外包给它。</p>
+  <p>ABC 内部干的事（都是数学）：</p>
+  <ul>
+    <li><b>AIG 表示</b>：把所有逻辑表示成"与门 + 反相器"的图（And-Inverter Graph）——一种统一、好优化的数学形式；</li>
+    <li><b>布尔优化</b>：在 AIG 上做化简（节点合并、冗余消除），目标是面积小或延迟短；</li>
+    <li><b>工艺映射</b>：把 AIG 的节点"覆盖"成工艺库里的门（每个门覆盖一小块图），像拼图一样；</li>
+    <li><b>时序驱动</b>：结合单元延迟，让关键路径尽量短。</li>
+  </ul>
+  <div class="story"><b>你听到的"ABC 对齐"大概指：</b>用 ABC 把 RTL 综合出来的逻辑，<b>对齐/映射</b>到某个工艺库的单元集合上（"对齐"= 映射、适配）。老师发的西门子资料里讲综合时，也会讲同样的概念——只是工业工具把 ABC 的逻辑封装在内部。</div>
+  <p>一句话：<b>ABC = 逻辑综合的数学引擎（化简 + 映射）</b>，Yosys 是它的"外壳"（负责读 RTL、管理流程、输出网表）。</p>
+</section>
+
+<section id="s4">
+  <h2>四、Yosys 和 ABC 怎么配合（附真实命令）</h2>
+  <p>ORFS 的综合阶段实际执行的 Yosys 脚本（简化版）：</p>
+<pre><b># 1. 读入 RTL 和工艺库</b>
+read_verilog designs/src/gcd/gcd.v
+read_liberty -lib platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
+
+<b># 2. 层次展开 + 行为综合（变成逻辑网络）</b>
+hierarchy -top gcd
+proc        <b># 展开 always 块（行为 → 逻辑）</b>
+opt         <b># 逻辑化简（技术无关优化）</b>
+fsm         <b># 状态机编码优化</b>
+memory      <b># 存储器展开</b>
+
+<b># 3. 调用 ABC 做逻辑优化 + 工艺映射（关键！）</b>
+abc -liberty platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib \
+    -script +strash;scorr;ifraig;retime;strash;dch;strash;map
+
+<b># 4. 时序优化（用真实单元延迟再优化一次）</b>
+opt_clean
+
+<b># 5. 输出门级网表</b>
+write_verilog results/synth/gcd.v   <b>← "artengen" 类概念：网表就是这么生成的</b></pre>
+  <div class="warn"><b>澄清你记不清的"artengen 生成网表"：</b>综合输出网表的动作在 Yosys 里叫 <code>write_verilog</code>（写出门级网表文件）。你可能记的是工具链里某个"网表生成器"或 ABC 的某个生成命令——本质都一样：<b>综合的最后一步就是把映射好的逻辑写成网表文件</b>。不用担心术语记混，知道"网表 = 综合的输出、由 Yosys/ABC 生成"就够了。</div>
+  <p>ORFS 里综合的产物：<code>results/…/1_synth.v</code>（门级网表）+ <code>reports/…/1_synth.stat.rpt</code>（统计：用了多少单元、面积多大）。</p>
+</section>
+
+<section id="s5">
+  <h2>五、网表是什么样子的</h2>
+  <p>门级网表就是"用标准单元名 + 连线"写的 Verilog：</p>
+<pre>module gcd(clk, req_msg, req_val, …);
+  input clk;
+  // 用工艺库里的单元拼出来
+  NAND2_X1 u1 (.A(n1), .B(n2), .ZN(n3));   <b>← 一个与非门</b>
+  DFF_X1  d1 (.D(n3), .CK(clk), .Q(n4));    <b>← 一个触发器</b>
+  INV_X1  v1 (.A(n4), .ZN(n5));
+  …
+endmodule</pre>
+  <p>这段网表就是后面所有阶段（布局、布线…）的"输入零件清单"。综合阶段到此结束。</p>
+</section>
+
+<section id="s6">
+  <h2>六、关键概念速查</h2>
+  <table>
+    <tr><th>概念</th><th>大白话</th></tr>
+    <tr><td>RTL</td><td>行为级描述（Verilog），综合的输入</td></tr>
+    <tr><td>门级网表</td><td>结构级描述（用工艺库单元拼），综合的输出</td></tr>
+    <tr><td>ABC</td><td>伯克利开源逻辑综合工具：布尔优化 + 工艺映射的数学引擎</td></tr>
+    <tr><td>AIG</td><td>And-Inverter Graph，"与门+反相器"的统一图表示，ABC 优化时的中间形式</td></tr>
+    <tr><td>工艺映射（mapping）</td><td>把逻辑"对齐"到工艺库的真实单元上</td></tr>
+    <tr><td>逻辑深度（levels）</td><td>从输入到输出最多经过几级门——越深越慢</td></tr>
+    <tr><td>DFF / Latch</td><td>触发器/锁存器，存状态的基本单元</td></tr>
+    <tr><td>SDC 约束</td><td>时钟周期、输入输出延迟等"必须满足的法规"</td></tr>
+    <tr><td>面积 / 延迟权衡</td><td>综合时要选：同样的功能，用大而快的门还是小而慢的门</td></tr>
+  </table>
+</section>
+
+<section id="s7">
+  <h2>七、工业界的综合工具（老师资料里那些名字）</h2>
+  <p>工业界做同样的事，工具是商业的，但原理完全一样：</p>
+  <table>
+    <tr><th>工具</th><th>公司</th><th>和 Yosys/ABC 的关系</th></tr>
+    <tr><td>Design Compiler (DC)</td><td>Synopsys</td><td>工业标准综合工具，内部也是"解析→优化→映射"，只是封装了商业逻辑引擎</td></tr>
+    <tr><td>Genus</td><td>Cadence</td><td>另一大综合工具</td></tr>
+    <tr><td>Quartus / Vivado（综合部分）</td><td>Intel / AMD(Xilinx)</td><td>FPGA 综合，面向查找表 LUT 而非标准单元</td></tr>
+    <tr><td>西门子 EDA 相关流程</td><td>Siemens</td><td>老师发的资料如果是西门子的，讲的也是同一套"综合方法论"：RTL→优化→映射→网表</td></tr>
+  </table>
+  <div class="ok"><b>给你的定心丸：</b>不管老师资料里是哪个工具的名字，底层都是"逻辑综合三件事：解析、优化、映射"。把 Yosys/ABC 学明白了，看任何综合工具的资料都能对上号。</div>
+</section>
+
+<section id="s8">
+  <h2>八、常见疑问</h2>
+  <h3>Q1：综合和"逻辑综合""物理综合"有什么区别？</h3>
+  <p>传统综合（我们这里讲的）只看逻辑和门延迟；<b>物理综合</b>还把布局的线延迟也考虑进来（更准但更复杂）。ORFS 的综合阶段是传统逻辑综合。</p>
+  <h3>Q2：为什么输出网表里全是 NAND/INV，没有 AND/OR？</h3>
+  <p>工艺库里 NAND/NOR 比 AND/OR 更快更小（晶体管少），映射器会优先选它们——所以网表看起来"反相门特别多"，这是正常的。</p>
+  <h3>Q3：综合结果不满意（太慢/太大）怎么办？</h3>
+  <p>先看综合报告（单元数、逻辑深度），再调：换综合策略（面积优先/延迟优先）、改 RTL（减少逻辑层级）、放宽时钟约束。平台里就是调"目标阶段+参数"重新跑。</p>
+  <h3>Q4：3D 流程里也有综合吗？</h3>
+  <p>有。TaiWei 3D 的第 1 道工序就是综合（综合 → 2D 布局规划 → …），只是它后面要再拆层做 3D。所以综合是 2D/3D 共用的第一步。</p>
+</section>
+
+<div class="footer">ORFS 阶段详解 ① 综合 · 系列之一 · 下一篇：② 布局规划 Floorplan</div>
+
+</div>
+</body>
+</html>

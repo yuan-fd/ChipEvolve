@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ORFS 阶段详解 ② · 布局规划 Floorplan —— 先给芯片定个"房型"</title>
+<style>
+  :root{
+    --bg:#faf7f2; --card:#ffffff; --ink:#3a3229; --soft:#8a7f70;
+    --line:#e8e0d4; --accent:#c8642a; --accent2:#2a6f5c; --accent3:#3a5a8c;
+    --warn:#a05620; --ok:#2a7a4a;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--ink); font-family:"Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif; line-height:1.9; font-size:17px;}
+  .wrap{max-width:980px; margin:0 auto; padding:30px 22px 80px;}
+  header.hero{background:linear-gradient(135deg,#3a4a32,#5a8c4a); color:#fff; border-radius:18px; padding:38px 32px; margin-bottom:26px;}
+  header.hero h1{font-size:30px; margin-bottom:10px;}
+  header.hero p{opacity:.92; font-size:18px;}
+  .toc{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:22px 26px; margin-bottom:28px;}
+  .toc h2{font-size:20px; color:var(--accent); margin-bottom:12px;}
+  .toc a{color:var(--accent2); text-decoration:none; display:block; padding:5px 0; border-bottom:1px dashed var(--line);}
+  .toc a:hover{color:var(--accent);}
+  section{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:26px 28px; margin-bottom:26px;}
+  section h2{font-size:24px; color:var(--accent); border-left:6px solid var(--accent); padding-left:12px; margin-bottom:16px;}
+  section h3{font-size:19px; color:var(--accent2); margin:20px 0 10px;}
+  p{margin-bottom:12px;}
+  .story{background:#f3ecdf; border-left:5px solid var(--accent); padding:14px 18px; border-radius:8px; margin:14px 0;}
+  .story b{color:var(--accent);}
+  .ok{background:#e8f3ec; border-left:5px solid var(--ok); padding:14px 18px; border-radius:8px; margin:14px 0;}
+  .warn{background:#fdf0e3; border-left:5px solid var(--warn); padding:14px 18px; border-radius:8px; margin:14px 0;}
+  pre{background:#2e2a26; color:#e8dcc8; border-radius:10px; padding:16px 18px; overflow-x:auto; font-size:14px; line-height:1.6; margin:12px 0;}
+  pre b{color:#f0c674;}
+  code{background:#efe9dd; color:#7a4a1a; border-radius:4px; padding:1px 6px; font-size:15px;}
+  table{width:100%; border-collapse:collapse; margin:14px 0; font-size:15.5px;}
+  th{background:#f0e9dc; color:var(--accent); text-align:left; padding:9px 12px; border:1px solid var(--line);}
+  td{padding:9px 12px; border:1px solid var(--line); vertical-align:top;}
+  tr:nth-child(even) td{background:#fcf9f4;}
+  .flow{display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:16px 0;}
+  .flow .step{background:var(--accent2); color:#fff; border-radius:22px; padding:9px 16px; font-size:15px; font-weight:bold;}
+  .flow .arrow{color:var(--accent); font-size:22px; font-weight:bold;}
+  .flow .step.light{background:var(--accent3);}
+  ul,ol{margin:10px 0 10px 26px;}
+  li{margin-bottom:8px;}
+  .footer{text-align:center; color:var(--soft); font-size:14px; margin-top:30px;}
+  @media (max-width:700px){ body{font-size:16px;} header.hero h1{font-size:24px;} .wrap{padding:16px 12px 60px;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1>② 布局规划 Floorplan</h1>
+  <p>先给芯片定个"房型"：多大面积、门开在哪、电线怎么铺、仓库放哪</p>
+</header>
+
+<div class="toc">
+  <h2>📋 目录</h2>
+  <a href="#s1">一、布局规划是干什么的？—— 芯片的"户型设计"</a>
+  <a href="#s2">二、要定哪几件事（四个关键决策）</a>
+  <a href="#s3">三、核心利用率：你网页上填的那个数字</a>
+  <a href="#s4">四、电源网络（PDN）—— 给全芯片供电的"电网"</a>
+  <a href="#s5">五、宏单元摆放 —— 仓库（内存）放哪</a>
+  <a href="#s6">六、输入输出（IO）—— 门开在哪</a>
+  <a href="#s7">七、这一步的输入输出</a>
+  <a href="#s8">八、常见疑问</a>
+</div>
+
+<section id="s1">
+  <h2>一、布局规划是干什么的？—— 芯片的"户型设计"</h2>
+  <p>综合给出了"零件清单"（网表），但这堆零件要放在一块<b>芯片上</b>。布局规划就是先定这块芯片的<b>户型</b>：</p>
+  <ul>
+    <li>房子（die）建多大？—— 面积</li>
+    <li>卧室客厅怎么分？—— 功能区划分</li>
+    <li>门（IO 引脚）开在哪？—— 输入输出位置</li>
+    <li>电线（电源网络）怎么铺？—— 供电</li>
+    <li>仓库（大内存块）放哪？—— 宏单元</li>
+  </ul>
+  <div class="story"><b>打个比方：</b>综合是把"要什么"想清楚；布局规划是<b>画户型图</b>——还没开始摆家具（布局），但房子多大、哪是客厅、电怎么进，都要先定。</div>
+</section>
+
+<section id="s2">
+  <h2>二、要定哪几件事（四个关键决策）</h2>
+  <table>
+    <tr><th>决策</th><th>大白话</th><th>谁决定</th></tr>
+    <tr><td><b>Die 尺寸</b></td><td>芯片核心区多大（长×宽）</td><td>由"单元总面积 ÷ 目标利用率"算出，也可手动指定</td></tr>
+    <tr><td><b>核心利用率</b></td><td>核心区被占满的程度（见下节）</td><td>用户参数</td></tr>
+    <tr><td><b>电源网络</b></td><td>供电的金属网格怎么铺</td><td>工艺库的 PDN 配置</td></tr>
+    <tr><td><b>宏单元摆放</b></td><td>大模块（SRAM、PLL）先占好位置</td><td>工具自动 + 可手动</td></tr>
+  </table>
+</section>
+
+<section id="s3">
+  <h2>三、核心利用率：你网页上填的那个数字</h2>
+  <p>核心利用率（core utilization）= <b>单元总面积 ÷ 核心区面积</b>。它是整个流程最常用的"旋钮"：</p>
+  <table>
+    <tr><th>利用率</th><th>后果</th></tr>
+    <tr><td>高（如 80%）</td><td>芯片小、省成本，但布局挤 → 布线难、时序差、DRC 多</td></tr>
+    <tr><td>低（如 40%）</td><td>芯片大、浪费面积，但布局宽松 → 好布线、好收敛</td></tr>
+    <tr><td>中（如 60%）</td><td>常见折中</td></tr>
+  </table>
+  <div class="ok"><b>经验：</b>实际单元面积 ≠ 网表里简单相加（还要留布线通道、时钟树、宏单元空隙），所以利用率很少超过 80%。平台里默认 30~60% 是稳妥区间。</div>
+</section>
+
+<section id="s4">
+  <h2>四、电源网络（PDN）—— 给全芯片供电的"电网"</h2>
+  <p>芯片里每个门都要供电（VDD/VSS）。电源网络是一层金属网格（粗的电源轨 + 密的电源条），布局规划时就要铺好：</p>
+  <ul>
+    <li><b>电源环（ring）</b>：绕芯片一圈的粗电源线；</li>
+    <li><b>电源条（stripes）</b>：横竖交错的供电条，把电送进核心区；</li>
+    <li><b>电源轨（rails）</b>：每个标准单元行上的细电源线（布局阶段接上）。</li>
+  </ul>
+  <div class="warn"><b>为什么重要：</b>如果电源网络设计不好，芯片内部会"电压降"（IR drop）——离电源近的地方电压高、远的地方电压低，可能导致部分电路工作不正常。所以电源规划是布局规划的重点之一。</div>
+</section>
+
+<section id="s5">
+  <h2>五、宏单元摆放 —— 仓库（内存）放哪</h2>
+  <p>网表里除了小门，还有<b>宏单元</b>：SRAM（内存）、PLL（时钟源）、模拟模块等。它们体积大、形状不规则，不能像小门那样随便摆，要提前占位：</p>
+  <ul>
+    <li>工具根据连线关系自动把宏单元放在"附近"（减少到逻辑的长连线）；</li>
+    <li>通常放在核心区边缘或角落，避免挡住小单元的"行"。</li>
+  </ul>
+  <p>这一步做得好不好，直接影响后面布局的质量——宏单元摆错了，后面再改代价很大。</p>
+</section>
+
+<section id="s6">
+  <h2>六、输入输出（IO）—— 门开在哪</h2>
+  <p>芯片要和外界通信（时钟进来、数据进出），IO 引脚（焊盘 pad）通常分布在芯片四周：</p>
+  <ul>
+    <li>工具根据网表的输入输出信号自动分配 IO 位置（把有连线关系的 IO 放近些）；</li>
+    <li>时钟引脚位置要特殊照顾（影响时钟树，见第 ④ 篇）。</li>
+  </ul>
+  <div class="story"><b>3D 视角：</b>3D 芯片有两层 die，每层都有自己的 IO 和电源——TaiWei 3D 流程里"3D 布局规划 + IO"是独立的一道工序（第 6 道）。</div>
+</section>
+
+<section id="s7">
+  <h2>七、这一步的输入输出</h2>
+  <table>
+    <tr><th>输入</th><th>输出</th></tr>
+    <tr><td>门级网表（1_synth.v）</td><td>带轮廓的版图（die 尺寸、IO 位置、电源网格）</td></tr>
+    <tr><td>工艺库（LEF：单元外壳、宏单元、电源规则）</td><td>布局规划的 DEF（2_floorplan.def）</td></tr>
+    <tr><td>利用率/长宽比/IO 约束</td><td>报告：面积、电源网格图</td></tr>
+  </table>
+  <p>ORFS 产物：<code>results/…/2_floorplan.def</code> + <code>reports/…/2_floorplan.log</code>。</p>
+</section>
+
+<section id="s8">
+  <h2>八、常见疑问</h2>
+  <h3>Q1：布局规划能跳过吗？</h3>
+  <p>不能——没有户型图就没法摆家具。工具会自动做默认的布局规划，但想优化（面积/时序/电源）就得理解这些参数。</p>
+  <h3>Q2：长宽比（aspect ratio）是什么？</h3>
+  <p>核心区的宽高比。1.0 是正方形；细长形可能布线拥塞不均。ORFS 默认由工具优化。</p>
+  <h3>Q3：平台里我能调什么？</h3>
+  <p>主要是 <b>core_utilization_pct</b>（利用率）。别的（电源网络、IO 分配）工具自动处理，先不用管。</p>
+  <h3>Q4：3D 的布局规划有什么不同？</h3>
+  <p>两层 die 各自有 floorplan，还有"跨层网络拆分"（哪些线要上下楼）——这是 3D 特有的复杂度（TaiWei 第 4-7 道工序）。</p>
+</section>
+
+<div class="footer">ORFS 阶段详解 ② 布局规划 · 系列之二 · 下一篇：③ 布局 Placement</div>
+
+</div>
+</body>
+</html>

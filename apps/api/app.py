@@ -1989,8 +1989,9 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                 elif path == "/api/projects":
                     self._json(state.projects())
                 elif path == "/api/designs":
+                    no_auth_all = bool(session and session.user_id == "local-user")
                     self._json({"designs": state.designs.list(
-                        owner_id=list_owner,
+                        owner_id=None if (developer_all or no_auth_all) else list_owner,
                         include_legacy=session.legacy_access or developer_all,
                     )})
                 elif path == "/api/designs/examples":

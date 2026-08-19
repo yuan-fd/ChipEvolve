@@ -50,6 +50,9 @@ a { color: inherit; }
 .tab:hover { background: var(--surface-subtle); color: var(--heading); }
 .tab.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .health { justify-self: end; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.global-design { display: grid; gap: 2px; min-width: 180px; }
+.global-design span { font-size: 10px; color: var(--muted); letter-spacing: .04em; }
+.global-design select { min-height: 30px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface); color: var(--ink); font-size: 12px; padding: 0 8px; }
 .health span { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); }
 .health span.ok { background: var(--green); }
 .health span.bad { background: var(--red); }

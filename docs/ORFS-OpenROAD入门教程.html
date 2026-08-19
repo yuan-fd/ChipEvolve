@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ORFS &amp; OpenROAD 入门 · 从黑盒到明白</title>
+<style>
+  :root{
+    --bg:#faf7f2; --card:#ffffff; --ink:#3a3229; --soft:#8a7f70;
+    --line:#e8e0d4; --accent:#c8642a; --accent2:#2a6f5c; --accent3:#3a5a8c;
+    --warn:#a05620; --ok:#2a7a4a;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--ink); font-family:"Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif; line-height:1.9; font-size:17px;}
+  .wrap{max-width:980px; margin:0 auto; padding:30px 22px 80px;}
+  header.hero{background:linear-gradient(135deg,#3a3229,#5a4a36); color:#fff; border-radius:18px; padding:38px 32px; margin-bottom:26px;}
+  header.hero h1{font-size:30px; margin-bottom:10px;}
+  header.hero p{opacity:.9; font-size:18px;}
+  .toc{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:22px 26px; margin-bottom:28px;}
+  .toc h2{font-size:20px; color:var(--accent); margin-bottom:12px;}
+  .toc a{color:var(--accent2); text-decoration:none; display:block; padding:5px 0; border-bottom:1px dashed var(--line);}
+  .toc a:hover{color:var(--accent);}
+  section{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:26px 28px; margin-bottom:26px;}
+  section h2{font-size:24px; color:var(--accent); border-left:6px solid var(--accent); padding-left:12px; margin-bottom:16px;}
+  section h3{font-size:19px; color:var(--accent2); margin:20px 0 10px;}
+  p{margin-bottom:12px;}
+  .story{background:#f3ecdf; border-left:5px solid var(--accent); padding:14px 18px; border-radius:8px; margin:14px 0;}
+  .story b{color:var(--accent);}
+  .ok{background:#e8f3ec; border-left:5px solid var(--ok); padding:14px 18px; border-radius:8px; margin:14px 0;}
+  .warn{background:#fdf0e3; border-left:5px solid var(--warn); padding:14px 18px; border-radius:8px; margin:14px 0;}
+  pre{background:#2e2a26; color:#e8dcc8; border-radius:10px; padding:16px 18px; overflow-x:auto; font-size:14px; line-height:1.6; margin:12px 0;}
+  pre b{color:#f0c674;}
+  code{background:#efe9dd; color:#7a4a1a; border-radius:4px; padding:1px 6px; font-size:15px;}
+  table{width:100%; border-collapse:collapse; margin:14px 0; font-size:15.5px;}
+  th{background:#f0e9dc; color:var(--accent); text-align:left; padding:9px 12px; border:1px solid var(--line);}
+  td{padding:9px 12px; border:1px solid var(--line); vertical-align:top;}
+  tr:nth-child(even) td{background:#fcf9f4;}
+  .tree{background:#2e2a26; color:#e8dcc8; border-radius:10px; padding:18px 20px; font-size:14.5px; line-height:1.75; overflow-x:auto; margin:12px 0;}
+  .tree .dir{color:#f0c674; font-weight:bold;}
+  .tree .cmt{color:#8f9c8a;}
+  .flow{display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:16px 0;}
+  .flow .step{background:var(--accent2); color:#fff; border-radius:22px; padding:9px 16px; font-size:15px; font-weight:bold;}
+  .flow .arrow{color:var(--accent); font-size:22px; font-weight:bold;}
+  .flow .step.light{background:var(--accent3);}
+  ul,ol{margin:10px 0 10px 26px;}
+  li{margin-bottom:8px;}
+  .footer{text-align:center; color:var(--soft); font-size:14px; margin-top:30px;}
+  @media (max-width:700px){ body{font-size:16px;} header.hero h1{font-size:24px;} .wrap{padding:16px 12px 60px;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1>🔧 ORFS &amp; OpenROAD 入门</h1>
+  <p>一直把 ORFS / OpenROAD 当黑盒用？这一篇带你打开盒子：它们是什么、一条 RTL 怎么变成 GDS、平台是怎么调它们的。</p>
+</header>
+
+<div class="toc">
+  <h2>📋 目录</h2>
+  <a href="#s1">一、先分清两个名字：OpenROAD 和 ORFS 不是一回事</a>
+  <a href="#s2">二、OpenROAD 是什么？—— 开源的芯片"车间机器"</a>
+  <a href="#s3">三、ORFS 是什么？—— 把机器串成流水线的"工艺手册"</a>
+  <a href="#s4">四、一条 RTL 怎么变成 GDS（六阶段，每阶段干什么）</a>
+  <a href="#s5">五、关键名词速查表</a>
+  <a href="#s6">六、我们平台是怎么用 ORFS 的</a>
+  <a href="#s7">七、想自己动手？从跑 gcd 开始</a>
+  <a href="#s8">八、黑盒使用者常问的</a>
+</div>
+
+<section id="s1">
+  <h2>一、先分清两个名字：OpenROAD 和 ORFS 不是一回事</h2>
+  <p>很多人（包括曾经的我）把这两个名字混着用，其实是两个层次的东西：</p>
+  <table>
+    <tr><th>名字</th><th>是什么</th><th>类比</th></tr>
+    <tr><td><b>OpenROAD</b></td><td>一个开源的<b>EDA 工具引擎</b>（C++ 写的单个程序）：能做综合、布局、布线、时钟树、时序分析、DRC 检查</td><td>一台"多功能车间机器"</td></tr>
+    <tr><td><b>ORFS</b>（OpenROAD Flow Scripts）</td><td>一套<b>流程脚本 + 设计 + 工艺库</b>的完整仓库：把 OpenROAD 按正确顺序串成"RTL → GDS"流水线，还附带一堆现成设计和工艺文件</td><td>"车间流水线的工艺手册 + 备料仓库"</td></tr>
+  </table>
+  <div class="story"><b>记住一句话：</b>OpenROAD 是<b>机器</b>，ORFS 是<b>用机器的方式</b>（以及配套的材料）。我们平台里说的"2D 工具链 ORFS + OpenROAD + Yosys"就是"用 Yosys 做综合、OpenROAD 做布局布线、ORFS 把它们串起来"。</div>
+</section>
+
+<section id="s2">
+  <h2>二、OpenROAD 是什么？—— 开源的芯片"车间机器"</h2>
+  <p><b>OpenROAD</b>（github.com/The-OpenROAD-Project/OpenROAD）是一个开源、免费的芯片物理设计工具，目标是把"从门级网表到最终版图"的物理设计全流程自动化。它主要干这些活：</p>
+  <ul>
+    <li><b>综合（接 Yosys）</b>：把 RTL 代码翻译成门电路网表；</li>
+    <li><b>布局规划（floorplan）</b>：定芯片多大、输入输出放哪、电源网络怎么铺；</li>
+    <li><b>布局（placement）</b>：把成千上万个标准单元摆到合适位置；</li>
+    <li><b>时钟树（CTS）</b>：把时钟信号送到每个触发器，保证同时到达；</li>
+    <li><b>布线（routing）</b>：用金属线把所有单元连起来；</li>
+    <li><b>检查</b>：DRC（设计规则检查）、时序分析（STA）、功耗分析。</li>
+  </ul>
+  <p>它是个<b>命令行工具</b>（一个二进制文件 <code>openroad</code>），可以用脚本（Tcl）驱动，也可以跑别人写好的流程脚本（ORFS 就是）。</p>
+  <div class="ok"><b>为什么它重要：</b>传统商业工具（Cadence、Synopsys）贵且闭源；OpenROAD 开源免费，还能定制、能对接研究——所以学术界和我们的平台都用它。</div>
+</section>
+
+<section id="s3">
+  <h2>三、ORFS 是什么？—— 把机器串成流水线的"工艺手册"</h2>
+  <p><b>ORFS</b>（OpenROAD Flow Scripts，github.com/ieee-ceda-datc/OpenROAD-flow-scripts）是 OpenROAD 官方配套的完整流程仓库，里面三样东西：</p>
+  <div class="tree">
+OpenROAD-flow-scripts/
+├── <span class="dir">flow/</span>          ← 流水线本体（Makefile 驱动）
+│   ├── <span class="dir">scripts/</span>    ← 每阶段的 OpenROAD Tcl 脚本（综合/布局/布线…）
+│   ├── <span class="dir">designs/</span>    ← 现成设计（gcd、aes、ariane、ibex…几十个）
+│   │   └── <span class="dir">src/</span>gcd/ ← 每个设计有自己的 RTL 和约束
+│   └── <span class="dir">platforms/</span>  ← 工艺库（nangate45、asap7、sky130hd、gf180mcu…）
+├── <span class="dir">tools/</span>          ← OpenROAD、Yosys 等工具源码
+└── <span class="dir">build_openroad.sh</span> ← 一键编译脚本
+  </div>
+  <p>它的用法很"傻瓜"——在 <code>flow/</code> 目录里指定一个设计配置，跑 <code>make</code> 就从头跑到尾：</p>
+<pre>cd OpenROAD-flow-scripts/flow
+make DESIGN_CONFIG=./designs/nangate45/gcd/config.mk   <b>← 一条命令，RTL 到 GDS 全流程</b></pre>
+  <div class="story"><b>关键理解：</b>ORFS 的价值不只是"脚本"，而是它把<b>设计 + 工艺 + 流程</b>打包成了可复现、可对比的标准环境——这也是它成为学术界事实标准的原因。我们的 3D 工具链用的 ORFS-Research 就是这个仓库的 3D 扩展版。</div>
+</section>
+
+<section id="s4">
+  <h2>四、一条 RTL 怎么变成 GDS（六阶段，每阶段干什么）</h2>
+  <div class="flow">
+    <span class="step">① 综合 Synth</span><span class="arrow">→</span>
+    <span class="step light">② 布局规划 Floorplan</span><span class="arrow">→</span>
+    <span class="step">③ 布局 Place</span><span class="arrow">→</span>
+    <span class="step light">④ 时钟树 CTS</span><span class="arrow">→</span>
+    <span class="step">⑤ 布线 Route</span><span class="arrow">→</span>
+    <span class="step light">⑥ 终检 Finish</span>
+  </div>
+  <table>
+    <tr><th>阶段</th><th>大白话</th><th>输入 → 输出</th><th>典型耗时占比</th></tr>
+    <tr><td><b>① 综合（synth）</b></td><td>把"图纸语言"（RTL）翻译成"零件清单"（门电路网表）</td><td>RTL + 工艺库 → 网表 netlist</td><td>低</td></tr>
+    <tr><td><b>② 布局规划（floorplan）</b></td><td>定芯片多大、长什么样：核心区尺寸、IO 引脚位置、电源网格</td><td>网表 → 版图轮廓 + 电源网络</td><td>低</td></tr>
+    <tr><td><b>③ 布局（place）</b></td><td>把几万~几百万个标准单元摆进芯片，摆得下、不打架、好连线</td><td>轮廓 → 带位置的版图</td><td>中</td></tr>
+    <tr><td><b>④ 时钟树（CTS）</b></td><td>把"心跳信号"（时钟）送到每个触发器，保证同时到达（建平衡树）</td><td>版图 → 带时钟的版图</td><td>中</td></tr>
+    <tr><td><b>⑤ 布线（route）</b></td><td>用金属线把所有单元连起来（先全局后详细，还要过设计规则）</td><td>版图 → 完全连通的版图</td><td>高</td></tr>
+    <tr><td><b>⑥ 终检（finish）</b></td><td>DRC 设计规则检查、时序签核、导出最终文件</td><td>版图 → <b>GDS 版图文件 + 指标报告</b></td><td>中</td></tr>
+  </table>
+  <div class="warn"><b>注意：</b>这里说的是"标准流程"。3D 流程（TaiWei）是另一套——它内部会先做一层楼的初步设计（相当于阶段①②），再拆成上下两层继续（分层、双 die 布局、3D CTS、跨层布线），一共 20 道工序。</div>
+</section>
+
+<section id="s5">
+  <h2>五、关键名词速查表</h2>
+  <table>
+    <tr><th>名词</th><th>大白话</th><th>在流程里的角色</th></tr>
+    <tr><td>PDK / 工艺库</td><td>芯片的"建材标准"（这家工厂用哪套规则造芯片）</td><td>整个流程的根基</td></tr>
+    <tr><td>LEF</td><td>单元的"外壳尺寸图"（每个零件多大、引脚在哪）</td><td>布局布线时用</td></tr>
+    <tr><td>LIB / .db</td><td>单元的"性能表"（每个零件多快、多费电）</td><td>时序/功耗分析用</td></tr>
+    <tr><td>DEF</td><td>设计的"摆放清单"（哪个单元放哪个坐标）</td><td>布局阶段的输出</td></tr>
+    <tr><td>GDS / GDSII</td><td>芯片的"最终图形文件"——能拿去制造的那种</td><td>流程的最终产物</td></tr>
+    <tr><td>SDC</td><td>时序约束（时钟多快、哪里必须准时）</td><td>综合/时序分析的依据</td></tr>
+    <tr><td>CTS</td><td>时钟树综合（见上）</td><td>阶段 ④</td></tr>
+    <tr><td>Core utilization（核心利用率）</td><td>芯片核心区被单元"占了多少面积"（高了挤、低了浪费）</td><td>布局规划参数</td></tr>
+    <tr><td>Place density（放置密度）</td><td>布局时单位面积放多少单元（和利用率类似，另一个视角）</td><td>布局参数</td></tr>
+    <tr><td>WNS / TNS</td><td>最差/总时序余量（负数 = 时序违例，芯片可能跑不到目标频率）</td><td>时序报告</td></tr>
+    <tr><td>DRC</td><td>设计规则检查（金属线间距够不够、孔对不对）</td><td>终检</td></tr>
+  </table>
+  <div class="ok"><b>记不住也没关系：</b>你只需要知道"利用率/密度/时钟周期"是主要旋钮，"GDS/指标/DRC"是主要产物，剩下的按需查这张表。</div>
+</section>
+
+<section id="s6">
+  <h2>六、我们平台是怎么用 ORFS 的</h2>
+  <p>平台把 ORFS 当<b>一个插件</b>挂进来（orfs 插件，能力标签 <code>eda.rtl_to_gds</code>），你不需要碰命令行：</p>
+  <table>
+    <tr><th>网页上的参数</th><th>对应 ORFS 流程里的东西</th></tr>
+    <tr><td>Clock port / Clock period（时钟端口/周期）</td><td>SDC 约束的时钟定义（<code>clock_period_ns</code>）</td></tr>
+    <tr><td>Core utilization（核心利用率）</td><td>布局规划密度（<code>core_utilization_pct</code>）</td></tr>
+    <tr><td>Placement density（放置密度）</td><td>布局密度（<code>place_density</code>）</td></tr>
+    <tr><td>Target stage（目标阶段）</td><td>跑到哪一步停（synth/floorplan/place/cts/route/finish）</td></tr>
+    <tr><td>PDK / platform</td><td>用哪套工艺库（nangate45 / asap7…）</td></tr>
+  </table>
+  <p>提交任务后，平台 worker 会：把参数翻译成 ORFS 能懂的配置 → 在隔离工作区跑 <code>make</code> 全流程 → 收集产物（GDS/DEF/网表/指标/日志）→ 每个文件算 SHA-256 存档 → 结果进数据库。你看到的就是：提交 → 六阶段进度条 → 版图 + 指标报告。</p>
+  <div class="story"><b>对我们研究的意义：</b>因为 ORFS 是可复现的标准流程，我们的每一次运行都可以被任何人重跑验证——这正是平台"证据优先"的基础。想深入的同学直接去看 <code>docs/tutorials/01_openroad_platform_overview.md</code> 的目录树讲解。</div>
+</section>
+
+<section id="s7">
+  <h2>七、想自己动手？从跑 gcd 开始</h2>
+  <p>最经典的最小设计 <b>gcd</b>（最大公约数计算器），流程大约几分钟：</p>
+<pre><b># 1. 装（服务器上通常已装好，这里给全新机器）</b>
+git clone --recursive https://github.com/ieee-ceda-datc/OpenROAD-flow-scripts
+cd OpenROAD-flow-scripts
+./build_openroad.sh --local   <b># 编译 OpenROAD + Yosys（约 1-2 小时）</b>
+
+<b># 2. 跑 gcd（nangate45 工艺）</b>
+cd flow
+make DESIGN_CONFIG=./designs/nangate45/gcd/config.mk
+
+<b># 3. 看结果</b>
+ls results/nangate45/gcd/base/          <b># 6_final.gds、6_final.def、报告…</b>
+cat reports/nangate45/gcd/base/6_final.gds 2>/dev/null   <b># 或用平台直接看渲染</b></pre>
+  <div class="warn"><b>建议：</b>第一次跑如果报缺工具，先看 <code>env.sh</code> 和 README 的依赖要求（gcc、cmake、boost 等）。服务器上我们平台的 2D 工具链就是装好的 ORFS（<code>~/OpenROAD-flow-scripts</code>），3D 用的是 ORFS-Research 定制版（<code>.tools/taiwei-official-3d</code>）。</div>
+</section>
+
+<section id="s8">
+  <h2>八、黑盒使用者常问的</h2>
+  <h3>Q1：我改了利用率/密度，结果会差多少？</h3>
+  <p>利用率高 → 面积小但布线挤、时序容易差、DRC 多；利用率低 → 面积大但好布线。平台用批量并行模式（L1）可以一次跑多组参数对比，不用一个个试。</p>
+  <h3>Q2：2D 和 3D 的关系？</h3>
+  <p>两条独立流水线。2D 是 ORFS 六阶段；3D 是 TaiWei 20 道工序（内部自带 2D 预步骤）。不跑 2D 也能跑 3D，2D 结果可选作对比基线。</p>
+  <h3>Q3：报错看不懂怎么办？</h3>
+  <p>每个阶段都有日志文件（<code>logs/</code> 下），平台后端页的进度条点开能看阶段事件。最常见的两类：工具链缺失（缺 LD_LIBRARY_PATH）和设计约束问题（时钟/面积配置不合理）。</p>
+  <h3>Q4：OpenROAD 和商业工具的区别？</h3>
+  <p>功能覆盖核心流程，但收敛性、先进工艺支持、易用性不如商业工具（Cadence/Synopsys）。它的优势是开源、可复现、可研究——我们平台就是建立在它之上的。</p>
+</section>
+
+<div class="footer">ORFS &amp; OpenROAD 入门 · 从黑盒到明白 · 2026-08-17</div>
+
+</div>
+</body>
+</html>
