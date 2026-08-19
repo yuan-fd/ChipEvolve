@@ -547,6 +547,22 @@ class ApiState:
                        **({"owner_id": owner_id} if owner_id else {})})
         task = dataclasses.replace(task, labels=labels)
         run = self.runtime.submit(task, capability="eda.3d.pin3d")
+        trace = self.agent_traces.create(
+            "TaiWei 3D 流程（设计 %s）" % case, "taiwei-3d")
+        trace.add("goal", "目标",
+                  detail="双层（Pin-3D）物理实现 · %s · %s" % (case, tech))
+        trace.add("plan", "配置 3D 实现参数",
+                  metrics={"clock_period_ns": clock_period_ns,
+                           "parameters": parameters})
+        trace.add("tool_call", "提交到 3D 工具链", tool="taiwei-pin3d",
+                  detail="run %s · RTL sha256 %s" % (run.run_id, rtl["sha256"][:12]))
+        trace.add("evaluate", "任务已入队",
+                  metrics={"status": run.status.value,
+                           "design": case})
+        trace.status = "done"
+        trace.result = {"run_id": run.run_id, "design_id": design_id,
+                        "tech": tech}
+        self.agent_traces.save(trace)
         return self.get_runtime_run(run.run_id, owner_id=owner_id,
                                     include_legacy=include_legacy)
 
@@ -1708,15 +1724,38 @@ class ApiState:
                                  include_legacy=include_legacy)
 
     def submit_campaign(self, campaign_id: str, *, owner_id: str | None = None,
-                        include_legacy: bool = False) -> dict[str, Any]:
-        self.get_campaign(campaign_id, owner_id=owner_id, include_legacy=include_legacy)
-        run_ids = self.stage_campaigns.ensure_runs(campaign_id)
+                         include_legacy: bool = False) -> dict[str, Any]:
+        campaign = self.get_campaign(campaign_id, owner_id=owner_id,
+                                     include_legacy=include_legacy)
+        trace = self.agent_traces.create(
+            "批量并行实验（campaign %s）" % campaign_id, "batch-search")
+        trace.add("goal", "目标", detail=(
+            "设计 %s · %d 个候选参数点" % (
+                campaign.get("design_id") or "-",
+                len(campaign.get("grid") or {}),
+            )))
+        try:
+            run_ids = self.stage_campaigns.ensure_runs(campaign_id)
+        except Exception as exc:
+            trace.add("evaluate", "提交失败", status="failed",
+                      detail=str(exc)[:300])
+            self.agent_traces.save(trace)
+            raise
+        trace.add("plan", "生成参数网格", metrics={"run_ids": list(run_ids)[:8]})
+        trace.add("tool_call", "提交到执行队列", tool="scheduler",
+                  detail="run count: %d" % len(run_ids))
+        trace.add("result", "批量实验已启动",
+                  metrics={"started_runs": len(run_ids)})
+        trace.status = "done"
+        trace.result = {"campaign_id": campaign_id, "run_ids": list(run_ids)}
+        self.agent_traces.save(trace)
         return {
             "campaign": self.get_campaign(
                 campaign_id, owner_id=owner_id, include_legacy=include_legacy,
             ),
             "run_ids": list(run_ids),
             "execution_started": True,
+            "agent_trace_id": trace.trace_id,
         }
 
     def submit_design_run(self, payload: dict[str, Any]) -> dict[str, Any]:

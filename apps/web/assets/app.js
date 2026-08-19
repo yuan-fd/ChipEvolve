@@ -599,12 +599,28 @@ function renderAgentTrace(trace, containerId) {
   const root = $(containerId);
   if (!root || !trace) return;
   const meta = TRACE_META;
+  const steps = trace.steps || [];
+  const totalMs = steps.reduce((sum, step) => sum + (step.duration_ms || 0), 0);
+  const doneSteps = steps.filter(step => step.status === "ok" || step.status === "done").length;
+  // 4.2: step-duration bars for a quick cost comparison across the loop.
+  const maxDuration = Math.max(1, ...steps.map(step => step.duration_ms || 0));
+  const durationBars = steps.filter(step => step.duration_ms).map(step => {
+    const pct = Math.round((step.duration_ms / maxDuration) * 100);
+    return `<div class="duration-row" title="${esc(step.title)} · ${step.duration_ms} ms">
+      <span class="duration-label">${esc(step.kind)}</span>
+      <span class="duration-track"><i style="width:${pct}%"></i></span>
+      <small>${step.duration_ms} ms</small>
+    </div>`;
+  }).join("");
   root.innerHTML = `
     <div class="agent-trace">
       <div class="agent-trace-head"><b>Agent 运行过程</b><span class="trace-agent-kind">${esc(trace.agent_kind)}</span><span class="trace-status ${esc(trace.status)}">${esc(trace.status)}</span></div>
+      <div class="agent-trace-summary">
+        <span>${steps.length} 步</span><span>${doneSteps}/${steps.length} 完成</span><span>${totalMs} ms</span>
+      </div>
       <div class="agent-trace-goal"><span class="trace-icon">◆</span><div><b>目标</b><p>${esc(trace.goal)}</p></div></div>
       <div class="agent-trace-steps">
-        ${(trace.steps || []).map(step => {
+        ${steps.map(step => {
           const m = meta[step.kind] || {icon: "•", label: step.kind, cls: ""};
           const metrics = step.metrics ? Object.entries(step.metrics).map(([k, v]) =>
             `<span class="metric-chip">${esc(k)}: ${esc(typeof v === "object" ? JSON.stringify(v) : v)}</span>`).join("") : "";
@@ -614,11 +630,12 @@ function renderAgentTrace(trace, containerId) {
               <div class="trace-title"><b>${esc(m.label)} · ${esc(step.title)}</b>${step.tool ? `<code>${esc(step.tool)}</code>` : ""}<span class="trace-step-status ${esc(step.status)}">${esc(step.status)}</span></div>
               ${step.detail ? `<p>${esc(step.detail)}</p>` : ""}
               ${metrics ? `<div class="trace-metrics">${metrics}</div>` : ""}
-              ${step.duration_ms ? `<small>${step.duration_ms} ms</small>` : ""}
+              ${step.duration_ms ? `<small>⏱ ${step.duration_ms} ms</small>` : ""}
             </div>
           </div>`;
         }).join("")}
       </div>
+      ${durationBars ? `<div class="agent-trace-durations"><b>各步骤耗时对比</b>${durationBars}</div>` : ""}
       ${trace.result ? `<div class="agent-trace-result"><b>结果</b><pre>${esc(JSON.stringify(trace.result, null, 2))}</pre></div>` : ""}
     </div>`;
   root.scrollIntoView({behavior: "smooth", block: "nearest"});
@@ -1256,9 +1273,12 @@ function renderTaiwei3dPane() {
     <div class="compatibility ${esc(compatibility.tone)}"><span>${ui("Compatibility", "兼容性")}</span><b>${esc(compatibility.label)}</b><p>${esc(compatibility.reason)}</p></div>
     ${taiwei3dConfigForm()}
     <div class="extension-actions">${action}</div>
+    <div class="agent-trace-heading"><span>${ui("3D flow agent trace", "3D 流程 Agent 轨迹")}</span><small>${ui("Two-tier implementation scheduling and evidence", "双层实现调度与证据")}</small></div>
+    <div id="agentTraceTaiwei" class="agent-trace-container"></div>
     <p class="message" id="extensionMessage"></p>`;
   const taiwei = root.querySelector("[data-run-taiwei]");
   if (taiwei) taiwei.addEventListener("click", () => submitTaiweiExtension(design.id, baseline?.run_id || ""));
+  loadRecentAgentTraces("#agentTraceTaiwei", "taiwei-3d");
 }
 
 async function importTaiweiRtl(source, filename) {
@@ -1335,10 +1355,11 @@ function selectExtension(id) {
   const taiweiSupport = id === "taiwei-3d" ? `<div style="margin-top:10px;padding:9px 11px;border:1px dashed var(--line-strong);display:grid;gap:4px"><span style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em">${ui("Supported scope", "支持范围")}</span><b style="color:var(--heading);font-size:11px">${ui("Registered design + 3D platform; 2D baseline optional", "已登记设计 + 3D 工艺库；2D 基线可选")}</b></div>` : "";
   root.innerHTML = `<div class="embedded-extension-head"><div><small>${esc(extension.layer)}</small><b>${esc(extension.name)}</b><span>${esc(extension.summary)}</span></div><button type="button" aria-label="Close extension detail" id="closeExtensionDetail">×</button></div>
     <div class="embedded-extension-body"><div class="extension-context"><div><span>${ui("Current design", "当前设计")}</span><b>${esc(designLabel)}</b></div><div><span>${ui("Main-flow evidence", "主线证据")}</span><b>${esc(baselineLabel)}</b></div></div>${taiweiSupport}<div class="extension-meta"><div><span>${ui("Required component input", "扩展所需输入")}</span><b>${esc(extension.input)}</b></div><div><span>${ui("Execution", "执行方式")}</span><b>${esc(extension.execution_class)}</b></div></div>
-    <div class="compatibility ${esc(compatibility.tone)}"><span>${ui("Compatibility", "兼容性")}</span><b>${esc(compatibility.label)}</b><p>${esc(compatibility.reason)}</p></div>${id === "taiwei-3d" ? taiwei3dConfigForm() : ""}${action ? `<div class="extension-actions">${action}</div>` : ""}<p class="message" id="extensionMessage"></p></div>`;
+    <div class="compatibility ${esc(compatibility.tone)}"><span>${ui("Compatibility", "兼容性")}</span><b>${esc(compatibility.label)}</b><p>${esc(compatibility.reason)}</p></div>${id === "taiwei-3d" ? taiwei3dConfigForm() : ""}${action ? `<div class="extension-actions">${action}</div>` : ""}${id === "taiwei-3d" ? `<div class="agent-trace-heading"><span>${ui("3D flow agent trace", "3D 流程 Agent 轨迹")}</span><small>${ui("Two-tier implementation scheduling and evidence", "双层实现调度与证据")}</small></div><div id="agentTraceTaiwei" class="agent-trace-container"></div>` : ""}<p class="message" id="extensionMessage"></p></div>`;
   $("#closeExtensionDetail").addEventListener("click", () => { root.innerHTML = ""; state.selectedExtension = null; });
   const taiwei = $('[data-run-taiwei]', root);
   if (taiwei) taiwei.addEventListener("click", () => submitTaiweiExtension(design.id, baseline?.run_id || ""));
+  if (id === "taiwei-3d") loadRecentAgentTraces("#agentTraceTaiwei", "taiwei-3d");
   const specialist = $('[data-run-specialist]', root);
   if (specialist) specialist.addEventListener("click", () => submitSpecialistExtension(compatibility.action, design?.id));
   root.scrollIntoView({behavior: "smooth", block: "nearest"});
@@ -1428,6 +1449,7 @@ async function submitTaiweiExtension(designId, baselineRunId) {
     }
     message("#extensionMessage", ui("The 3D task is saved. Configured parameters and evidence remain recorded with the run.", "3D 任务已保存；配置参数与运行证据会随任务记录。"));
     await loadRuns(detail.run?.run_id);
+    loadRecentAgentTraces("#agentTraceTaiwei", "taiwei-3d");
   } catch (error) {
     message("#extensionMessage", error.message, true);
   } finally {

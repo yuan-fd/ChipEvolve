@@ -525,6 +525,16 @@ html[lang="zh-CN"] .workspace-head h1::after { content: " — 交互演示"; }
 .agent-trace { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden; }
 .agent-trace-head { padding: 10px 14px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); background: var(--surface-subtle); }
 .agent-trace-head b { font-size: 12px; color: var(--heading); letter-spacing: .02em; }
+.agent-trace-summary { padding: 8px 14px; display: flex; gap: 14px; border-bottom: 1px solid var(--line); background: var(--surface-subtle); }
+.agent-trace-summary span { font-size: 11px; color: var(--muted); }
+.agent-trace-summary span:first-child { color: var(--heading); font-weight: 650; }
+.agent-trace-durations { padding: 10px 14px; border-top: 1px solid var(--line); background: var(--surface-subtle); }
+.agent-trace-durations > b { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
+.duration-row { display: grid; grid-template-columns: 74px 1fr 60px; align-items: center; gap: 8px; margin-bottom: 4px; }
+.duration-label { font-size: 11px; color: var(--muted); }
+.duration-track { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.duration-track i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+.duration-row small { font: 11px var(--mono); color: var(--muted); text-align: right; }
 .trace-agent-kind { padding: 1px 8px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 600; }
 .trace-status { margin-left: auto; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
 .trace-status.done, .trace-status.ok { background: var(--green-soft); color: var(--green); }
