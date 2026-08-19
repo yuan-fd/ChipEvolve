@@ -1048,6 +1048,50 @@ class ApiState:
                 "observations": [item.to_dict() for item in observations],
                 "source": "observed", "shared": False}
 
+    def auto_optimize(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """One-click: pick the design with the most same-context observations,
+        create an optimization study, run BO propose, and generate a recommendation."""
+        import uuid as _uuid
+        owner_id = str(payload.get("owner_id") or "local-user")
+        observations = (self.tenant_learning_store.list_all()
+                        if owner_id == "local-user" else
+                        self.tenant_learning_store.list(owner_id, "openroad-platform"))
+        if len(observations) < 4:
+            raise ValueError("需要至少 4 条观测才能建立优化研究（当前 %d 条）" % len(observations))
+        groups = {}
+        for item in observations:
+            groups.setdefault(item.context.fingerprint, []).append(item)
+        best = max(groups.values(), key=len)
+        if len(best) < 4:
+            raise ValueError("同一设计/流程的观测不足（需要 ≥4，最大组仅 %d 条）" % len(best))
+        ctx = best[0].context
+        from openroad_platform_contracts import (  # noqa: E402
+            ObjectiveSpec, OptimizationStudy, ParameterSpec,
+        )
+        study = OptimizationStudy(
+            study_id=f"study-{_uuid.uuid4().hex[:16]}",
+            design_id=ctx.design_id, context_fingerprint=ctx.fingerprint,
+            parameter_space=(ParameterSpec(name="core_utilization_pct",
+                                           lower=1, upper=99),),
+            objectives=(ObjectiveSpec(metric_name="area", direction="min"),),
+            max_runs=64, seed=1,
+        )
+        study_id = self.optimization_store.create(study)
+        for item in best:
+            self.optimization_store.add_observation(study_id, item)
+        from openroad_platform_analysis import (  # noqa: E402
+            MultiObjectiveBayesianOptimizer,
+        )
+        study_obs = self.optimization_store.observations(study_id)
+        proposal = MultiObjectiveBayesianOptimizer(
+            pool_size=512, exploration=0.05).propose(study, study_obs)
+        self.optimization_store.save_proposal(proposal)
+        result = self.create_recommendation(
+            study_id, {"owner_id": owner_id, "worst_case_cost_seconds": 1800})
+        result["study_id"] = study_id
+        result["observation_count"] = len(best)
+        return result
+
     def export_si2(self, owner_id: str, project_id: str) -> dict[str, Any]:
         """Export the tenant's observations in Si2 AI-for-EDA style structure."""
         observations = self.tenant_learning_store.list(owner_id, project_id)
@@ -2185,6 +2229,9 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                     self._json(state.register_spec_design(
                         unquote(match.group(1)), scoped(self._read_json())),
                         HTTPStatus.CREATED)
+                    return
+                if path == "/api/optimization/auto":
+                    self._json(state.auto_optimize(scoped(self._read_json())), HTTPStatus.CREATED)
                     return
                 if path == "/api/campaigns/stage-aware":
                     self._json(state.create_stage_campaign(scoped(self._read_json())), HTTPStatus.CREATED)

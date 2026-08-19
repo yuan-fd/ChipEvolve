@@ -545,6 +545,17 @@ html[lang="zh-CN"] .workspace-head h1::after { content: " — 交互演示"; }
 .agent-trace-result b { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
 .agent-trace-result pre { margin: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); font: 11px/1.6 var(--mono); white-space: pre-wrap; word-break: break-all; }
 .backend-mode-switch { padding: 6px 0 14px; display: flex; gap: 10px; }
+.flow-mode { display: grid; gap: 6px; }
+.flow-mode-label { color: var(--muted); font-size: 11px; font-weight: 500; letter-spacing: .04em; }
+.flow-mode-buttons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.flow-mode-btn { min-height: 54px; padding: 8px 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); cursor: pointer; transition: border-color .15s, box-shadow .15s, background .15s; }
+.flow-mode-btn:hover { border-color: var(--line-strong); background: var(--surface-subtle); }
+.flow-mode-btn b { font-size: 13px; font-weight: 700; }
+.flow-mode-btn small { font-size: 10.5px; color: var(--muted); }
+.flow-mode-btn.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: var(--accent-soft); color: var(--accent); }
+.flow-mode-btn.active small { color: var(--accent); }
+.flow-mode-note { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.evolution-toolbar { margin-top: 14px; display: flex; gap: 8px; }
 .backend-mode-switch button { flex: 1; min-height: 58px; padding: 8px 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; border: 1px solid var(--line-strong); border-radius: 8px; background: white; color: #475467; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
 .backend-mode-switch button b { font-size: 15px; font-weight: 700; }
 .backend-mode-switch button small { font-size: 11px; color: #98a2b3; }

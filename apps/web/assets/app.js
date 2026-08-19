@@ -10,7 +10,7 @@ const state = {
   requestedExtension: null, rtlscoutPoll: null, runtimePoll: null, healthPoll: null,
   health: null, auth: null, workspaceLoaded: false, locale: "en",
   specSession: null, pendingCampaign: null, developerView: false,
-  backendMode: "2d",
+  backendMode: "2d", flowMode: "baseline",
 };
 const stages = ["synth", "floorplan", "place", "cts", "route", "finish"];
 const ZH = {
@@ -1081,7 +1081,7 @@ async function submitFlow() {
   if (!id) return message("#flowMessage", ui("Select a registered design first.", "请先选择已登记设计。"), true);
   const button = $("#submitFlow");
   button.disabled = true;
-  const mode = $("#flowMode").value;
+  const mode = state.flowMode || "baseline";
   if (mode === "baseline") {
     state.pendingCampaign = null;
     $("#batchPlanReview").hidden = true;
@@ -1143,13 +1143,25 @@ async function approveBatchPlan() {
   finally { button.disabled = false; }
 }
 
+function setFlowMode(mode) {
+  state.flowMode = mode;
+  $$("[data-flow-mode]").forEach(btn => btn.classList.toggle("active", btn.dataset.flowMode === mode));
+  updateFlowMode();
+}
+
 function updateFlowMode() {
-  const mode = $("#flowMode").value;
+  const mode = state.flowMode || "baseline";
   const baseline = mode === "baseline";
-  $("#submitFlow").textContent = baseline ? ui("Start RTL-to-GDS", "开始 RTL-to-GDS") : ui("Create Batch Plan", "创建批量实验计划");
+  $("#submitFlow").textContent = baseline
+    ? ui("Start RTL-to-GDS", "开始 RTL-to-GDS")
+    : mode === "agent"
+      ? ui("Create Agent Plan", "生成 Agent 智能方案")
+      : ui("Create Batch Plan", "创建批量实验计划");
   $("#flowModeNote").textContent = baseline
     ? ui("Baseline starts one design task using the values above.", "基线模式会按照上方参数启动一个设计任务。")
-    : ui("Batch modes create three bounded candidates for review; they do not execute automatically.", "批量模式会创建三个有界候选供审查，不会自动执行。")
+    : mode === "agent"
+      ? ui("Agent mode reads the knowledge base, proposes parameters with reasons; you review before execution.", "Agent 模式会读取经验库，带理由给出参数建议；执行前由你审核。")
+      : ui("Batch mode creates bounded neighbor candidates for review; they do not execute automatically.", "批量模式会创建相邻参数候选供审查，不会自动执行。");
 }
 
 function backendMode(mode) {
@@ -1425,6 +1437,22 @@ async function collectLearning(runId, task) {
   } finally { button.disabled = false; }
 }
 
+async function runAutoOptimize() {
+  const button = $("#runAutoOptimize");
+  if (button) button.disabled = true;
+  message("#evolutionActionMessage", ui("Running optimization study over the observed corpus…", "正在基于观测数据运行优化研究……"));
+  try {
+    const result = await post("/api/optimization/auto", {});
+    message("#evolutionActionMessage", ui(`Study created with ${result.observation_count} observations; recommendation ready (${result.recommendation?.policy_kind}).`, `已基于 ${result.observation_count} 条观测创建研究并生成建议（${result.recommendation?.policy_kind}）。`));
+    await loadEvolution();
+    if (result.agent_trace_id) await loadAgentTrace(result.agent_trace_id, "#agentTraceRec");
+  } catch (error) {
+    message("#evolutionActionMessage", error.message, true);
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 async function loadEvolution() {
   try {
     const data = await api("/api/platform/evolution");
@@ -1533,7 +1561,9 @@ $("#runRtlscout").addEventListener("click", submitRtlscout);
 $("#runSelect").addEventListener("change", event => selectRun(event.target.value));
 $("#submitFlow").addEventListener("click", submitFlow);
 $("#approveBatchPlan").addEventListener("click", approveBatchPlan);
-$("#flowMode").addEventListener("change", updateFlowMode);
+$$("[data-flow-mode]").forEach(btn => btn.addEventListener("click", () => setFlowMode(btn.dataset.flowMode)));
+const autoBtn = $("#runAutoOptimize");
+if (autoBtn) autoBtn.addEventListener("click", runAutoOptimize);
 $$('[data-locale]').forEach(button => button.addEventListener("click", () => { applyLocale(button.dataset.locale); updateFlowMode(); if (!state.selectedRun) renderStageRail(new Map()); }));
 $("#refreshResults").addEventListener("click", loadResults);
 $("#developerScope").addEventListener("click", async () => {
