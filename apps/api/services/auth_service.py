@@ -94,24 +94,6 @@ class AuthStore:
             connection.execute(
                 "UPDATE web_users_v1 SET role = 'developer' WHERE legacy_access = 1"
             )
-            # Local no-auth mode identifies every visitor as "local-user".
-            # That identity must exist in web_users_v1 so resource binding
-            # (web_resource_owners_v1 FK) never fails in the shared workspace.
-            # A random unrecoverable password keeps it a non-login identity.
-            if connection.execute(
-                "SELECT 1 FROM web_users_v1 WHERE user_id = 'local-user'"
-            ).fetchone() is None:
-                salt = secrets.token_bytes(16)
-                digest = self._derive(secrets.token_urlsafe(32), salt,
-                                      PBKDF2_ITERATIONS)
-                connection.execute(
-                    """INSERT INTO web_users_v1
-                       (user_id, username, password_salt, password_hash,
-                        password_iterations, legacy_access, role, created_at)
-                       VALUES (?, ?, ?, ?, ?, 1, 'developer', ?)""",
-                    ("local-user", "local-user", salt, digest,
-                     PBKDF2_ITERATIONS, time.time()),
-                )
 
     def register(self, username: str, password: str) -> tuple[AuthSession, str]:
         normalized = self._username(username)
@@ -188,25 +170,63 @@ class AuthStore:
                 "DELETE FROM web_sessions_v1 WHERE token_hash = ?", (token_hash,)
             )
 
+    def ensure_local_user(self) -> bool:
+        """Create the no-auth shared identity if missing (FK target for
+        resource binding in OPENROAD_PLATFORM_NO_AUTH mode). Returns True
+        when the identity exists after this call. A random unrecoverable
+        password keeps it a non-login identity."""
+        with self._connect() as connection:
+            if connection.execute(
+                "SELECT 1 FROM web_users_v1 WHERE user_id = 'local-user'"
+            ).fetchone() is not None:
+                return True
+            salt = secrets.token_bytes(16)
+            digest = self._derive(secrets.token_urlsafe(32), salt,
+                                  PBKDF2_ITERATIONS)
+            connection.execute(
+                """INSERT OR IGNORE INTO web_users_v1
+                   (user_id, username, password_salt, password_hash,
+                    password_iterations, legacy_access, role, created_at)
+                   VALUES (?, ?, ?, ?, ?, 1, 'developer', ?)""",
+                ("local-user", "local-user", salt, digest,
+                 PBKDF2_ITERATIONS, time.time()),
+            )
+            return True
+
     def bind_resource(self, resource_type: str, resource_id: str, user_id: str) -> None:
         if not resource_type or not resource_id or not user_id:
             raise ValueError("Resource ownership requires type, id, and user")
-        with self._connect() as connection:
-            try:
+        try:
+            with self._connect() as connection:
                 connection.execute(
                     """INSERT INTO web_resource_owners_v1
                        (resource_type, resource_id, user_id, created_at)
                        VALUES (?, ?, ?, ?)""",
                     (resource_type, resource_id, user_id, time.time()),
                 )
-            except sqlite3.IntegrityError as exc:
+        except sqlite3.IntegrityError as exc:
+            # A missing user row (FK) in no-auth mode is auto-healed by
+            # seeding the local-user identity, then retried once.
+            if user_id == "local-user" and self.ensure_local_user():
+                try:
+                    with self._connect() as connection:
+                        connection.execute(
+                            """INSERT OR IGNORE INTO web_resource_owners_v1
+                               (resource_type, resource_id, user_id, created_at)
+                               VALUES (?, ?, ?, ?)""",
+                            (resource_type, resource_id, user_id, time.time()),
+                        )
+                    return
+                except sqlite3.IntegrityError:
+                    pass
+            with self._connect() as connection:
                 row = connection.execute(
                     """SELECT user_id FROM web_resource_owners_v1
                        WHERE resource_type = ? AND resource_id = ?""",
                     (resource_type, resource_id),
                 ).fetchone()
-                if row is None or row[0] != user_id:
-                    raise PermissionError("Resource belongs to another user") from exc
+            if row is None or row[0] != user_id:
+                raise PermissionError("Resource belongs to another user") from exc
 
     def owns_resource(self, resource_type: str, resource_id: str, user_id: str,
                       *, include_legacy: bool = False) -> bool:
