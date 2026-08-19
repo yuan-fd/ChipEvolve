@@ -94,6 +94,24 @@ class AuthStore:
             connection.execute(
                 "UPDATE web_users_v1 SET role = 'developer' WHERE legacy_access = 1"
             )
+            # Local no-auth mode identifies every visitor as "local-user".
+            # That identity must exist in web_users_v1 so resource binding
+            # (web_resource_owners_v1 FK) never fails in the shared workspace.
+            # A random unrecoverable password keeps it a non-login identity.
+            if connection.execute(
+                "SELECT 1 FROM web_users_v1 WHERE user_id = 'local-user'"
+            ).fetchone() is None:
+                salt = secrets.token_bytes(16)
+                digest = self._derive(secrets.token_urlsafe(32), salt,
+                                      PBKDF2_ITERATIONS)
+                connection.execute(
+                    """INSERT INTO web_users_v1
+                       (user_id, username, password_salt, password_hash,
+                        password_iterations, legacy_access, role, created_at)
+                       VALUES (?, ?, ?, ?, ?, 1, 'developer', ?)""",
+                    ("local-user", "local-user", salt, digest,
+                     PBKDF2_ITERATIONS, time.time()),
+                )
 
     def register(self, username: str, password: str) -> tuple[AuthSession, str]:
         normalized = self._username(username)

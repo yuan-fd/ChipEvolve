@@ -595,6 +595,26 @@ html[lang="zh-CN"] .workspace-head h1::after { content: " — 交互演示"; }
 .worker-indicator.ready { color: var(--green); }
 .worker-indicator.ready i { background: var(--green); }
 .task-panel-body { padding: 12px; }
+/* Stage 3.4 — Frontend entry: three buttons in one row (upload / LLM spec / examples) */
+.frontend-entry { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 14px 14px 4px; }
+.frontend-entry-btn { min-height: 92px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface-subtle); color: var(--ink); cursor: pointer; transition: border-color .15s, background .15s, box-shadow .15s, transform .15s; padding: 10px; }
+.frontend-entry-btn:hover { border-color: var(--accent); background: var(--accent-soft); transform: translateY(-1px); }
+.frontend-entry-btn.active { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 -2px var(--accent); }
+.frontend-entry-btn .entry-ico { font-size: 20px; line-height: 1; }
+.frontend-entry-btn b { font-size: 14px; font-weight: 650; display: inline-flex; align-items: center; gap: 6px; }
+.frontend-entry-btn small { color: var(--muted); font-size: 11px; }
+.frontend-entry-btn.llm-emphasis { border-color: var(--accent); background: linear-gradient(180deg, var(--accent-soft), var(--surface-subtle)); }
+.frontend-entry-btn.llm-emphasis.active { box-shadow: inset 0 -2px var(--accent), 0 0 0 1px var(--accent); }
+.llm-badge { display: inline-block; padding: 1px 7px; border-radius: 20px; background: linear-gradient(90deg, var(--accent), #7c3aed); color: #fff; font-size: 9px; font-weight: 700; letter-spacing: .06em; font-style: normal; vertical-align: middle; }
+.source-card.llm-card { border-color: var(--accent); background: linear-gradient(180deg, var(--accent-soft), white); }
+.agent-trace-heading { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line-strong); display: flex; flex-direction: column; gap: 2px; }
+.agent-trace-heading span { font-size: 12px; font-weight: 650; color: var(--heading); }
+.agent-trace-heading small { color: var(--muted); font-size: 11px; }
+#frontendSourcePanel .input-mode { min-height: 0; padding: 12px 14px 14px; display: none; grid-template-columns: 1fr; gap: 0; }
+#frontendSourcePanel .input-mode.active { display: grid; }
+#frontendSourcePanel .input-mode .source-card { min-height: 0; }
+@media (max-width: 800px) { .frontend-entry { grid-template-columns: 1fr; } }
+
 .source-grid { padding: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .source-card { min-height: 235px; padding: 13px; display: flex; flex-direction: column; gap: 11px; border: 1px solid var(--line); border-radius: 5px; background: white; }
 .source-card > div:first-child > b, .source-card > div:first-child > small { display: block; }

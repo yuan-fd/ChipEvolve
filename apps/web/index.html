@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/assets/app.css?v=20260817b">
+  <link rel="stylesheet" href="/assets/app.css?v=20260819c">
 </head>
 <body>
   <header class="site-header">
@@ -133,22 +133,27 @@
       <nav class="workspace-switcher workspace-wrap" aria-label="Design workspace"><button class="active" data-route="frontend"><b data-i18n="switch.frontend">Frontend Design</b></button><button data-route="backend"><b data-i18n="switch.backend">Backend Implementation</b></button><button data-route="projects"><b data-i18n="switch.results">Run Results</b></button></nav>
 
       <div class="workspace-stack workspace-wrap">
-        <section class="task-panel">
+        <section class="task-panel" id="frontendSourcePanel">
           <header class="task-panel-head"><span>①</span><div><b data-i18n="frontend.source.title">Create or upload RTL</b><small data-i18n="frontend.source.subtitle">Choose one input path. Both create the same registered design record.</small></div></header>
-          <div class="source-grid">
+          <div class="frontend-entry" role="tablist" aria-label="RTL input method">
+            <button type="button" class="frontend-entry-btn" data-input-mode="upload" data-i18n="frontend.entry.upload"><span class="entry-ico">📄</span><b data-i18n="frontend.entry.upload.title">Upload file</b><small data-i18n="frontend.entry.upload.help">Upload Verilog / SystemVerilog</small></button>
+            <button type="button" class="frontend-entry-btn llm-emphasis" data-input-mode="spec" data-i18n="frontend.entry.spec"><span class="entry-ico">✨</span><b><span data-i18n="frontend.entry.spec.title">Natural-language Spec</span> <i class="llm-badge">LLM</i></b><small data-i18n="frontend.entry.spec.help">Generate RTL from a specification</small></button>
+            <button type="button" class="frontend-entry-btn" data-input-mode="examples" data-i18n="frontend.entry.examples"><span class="entry-ico">🧩</span><b data-i18n="frontend.entry.examples.title">Example projects</b><small data-i18n="frontend.entry.examples.help">Choose an audited RTL example</small></button>
+          </div>
+          <div class="input-mode" id="input-upload">
             <article class="source-card"><div><b data-i18n="frontend.upload.title">Upload Verilog / SystemVerilog</b><small data-i18n="frontend.upload.help">Load a local .v or .sv file, review it, then synthesize.</small></div><label class="file-drop"><span data-i18n="frontend.upload.file">RTL source file</span><input id="rtlFile" type="file" accept=".v,.sv,text/plain"></label><details><summary data-i18n="frontend.upload.review">Review or paste source</summary><div class="source-editor"><label><span data-i18n="common.filename">Filename</span><input id="rtlFilename" value="design.v"></label><label><span data-i18n="frontend.rtl.source">RTL source</span><textarea id="rtlSource" rows="9" placeholder="module design(input a, output y); assign y = ~a; endmodule"></textarea></label></div></details><button class="button primary" id="importRtl" data-i18n="frontend.upload.action">Import and synthesize</button></article>
-            <article class="source-card"><div><b data-i18n="frontend.spec.title">Generate RTL from a specification</b><small data-i18n="frontend.spec.help">Describe behavior and interfaces. Review is required before physical implementation.</small></div><label><span data-i18n="frontend.spec.label">Natural-language specification</span><textarea id="specPrompt" rows="7" data-i18n-placeholder="frontend.spec.placeholder" placeholder="Build a four-bit synchronous counter with enable and active-high reset."></textarea></label><button class="button outline-blue" id="createSpec" data-i18n="frontend.spec.action">Create specification session</button><small class="card-footnote" data-i18n="frontend.spec.note" title="The shared server model generates reviewable RTL without asking users for an API key. A private Provider remains optional.">Shared server model generates RTL; a private Provider is optional.</small><div id="agentTraceSpec" class="agent-trace-container"></div><div class="spec-review" id="specReview" hidden><div id="specReviewSummary"></div><pre id="specRtlPreview"></pre><label id="specClarificationLabel" hidden><span>Clarification</span><textarea id="specClarification" rows="3" placeholder="Answer the questions above"></textarea></label><div class="spec-review-actions"><button class="button" id="continueSpec" hidden>Update specification</button><button class="button primary" id="approveSpecRtl" hidden>Approve and register RTL</button></div></div></article>
+          </div>
+          <div class="input-mode active" id="input-spec">
+            <article class="source-card llm-card"><div><b><span data-i18n="frontend.spec.title">Generate RTL from a specification</span> <i class="llm-badge">LLM</i></b><small data-i18n="frontend.spec.help">Describe behavior and interfaces. Review is required before physical implementation.</small></div><label><span data-i18n="frontend.spec.label">Natural-language specification</span><textarea id="specPrompt" rows="7" data-i18n-placeholder="frontend.spec.placeholder" placeholder="Build a four-bit synchronous counter with enable and active-high reset."></textarea></label><button class="button outline-blue" id="createSpec" data-i18n="frontend.spec.action">Create specification session</button><small class="card-footnote" data-i18n="frontend.spec.note" title="The shared server model generates reviewable RTL without asking users for an API key. A private Provider remains optional.">Shared server model generates RTL; a private Provider is optional.</small><div class="agent-trace-heading"><span data-i18n="frontend.agenttrace.title">Agent run trace</span><small data-i18n="frontend.agenttrace.help">LLM generation, review, and registration trace</small></div><div id="agentTraceSpec" class="agent-trace-container"></div><div class="spec-review" id="specReview" hidden><div id="specReviewSummary"></div><pre id="specRtlPreview"></pre><label id="specClarificationLabel" hidden><span>Clarification</span><textarea id="specClarification" rows="3" placeholder="Answer the questions above"></textarea></label><div class="spec-review-actions"><button class="button" id="continueSpec" hidden>Update specification</button><button class="button primary" id="approveSpecRtl" hidden>Approve and register RTL</button></div></div></article>
+          </div>
+          <div class="input-mode" id="input-examples">
+            <div class="example-chips" id="exampleChips"></div><div class="example-toolbar"><label><span data-i18n="frontend.examples.selected">Selected example</span><select id="exampleSelect"><option value="">Loading examples…</option></select></label><button class="button primary" id="useExample" data-i18n="frontend.examples.action">Synthesize example</button></div><p class="selection-note" id="exampleDescription"></p>
           </div>
           <p class="message" id="specMessage" aria-live="polite"></p>
         </section>
 
         <section class="task-panel">
-          <header class="task-panel-head"><span>②</span><div><b data-i18n="frontend.examples.title">Choose an audited RTL example</b><small data-i18n="frontend.examples.subtitle" title="Start with simple logic or a larger ALU, controller, UART, or teaching RISC-V core.">Start with simple logic or a teaching RISC-V core.</small></div></header>
-          <div class="task-panel-body"><div class="example-chips" id="exampleChips"></div><div class="example-toolbar"><label><span data-i18n="frontend.examples.selected">Selected example</span><select id="exampleSelect"><option value="">Loading examples…</option></select></label><button class="button primary" id="useExample" data-i18n="frontend.examples.action">Synthesize example</button></div><p class="selection-note" id="exampleDescription"></p></div>
-        </section>
-
-        <section class="task-panel">
-          <header class="task-panel-head result-panel-head"><span>③</span><div><b data-i18n="frontend.results.title">Synthesis results</b><small data-i18n="frontend.results.subtitle">Gate statistics, circuit schematic, Verilog source, and synthesized netlist.</small></div><label><span data-i18n="common.design">Registered design</span><select id="frontendDesign"><option value="">Select a design</option></select></label></header>
+          <header class="task-panel-head result-panel-head"><span>②</span><div><b data-i18n="frontend.results.title">Synthesis results</b><small data-i18n="frontend.results.subtitle">Gate statistics, circuit schematic, Verilog source, and synthesized netlist.</small></div><label><span data-i18n="common.design">Registered design</span><select id="frontendDesign"><option value="">Select a design</option></select></label></header>
           <div class="design-summary" id="designMeta"><div><b>No design selected</b><span>Choose an example, upload RTL, or select an existing design.</span></div><div class="metric"><strong>—</strong><small>Gate instances</small></div><div class="metric"><strong>—</strong><small>Ports</small></div></div>
           <div class="result-viewer">
             <div class="viewer-tabs"><button class="active" data-design-view="schematic" data-i18n="frontend.view.schematic">Circuit schematic</button><button data-design-view="rtl" data-i18n="frontend.view.rtl">Verilog source</button><button data-design-view="netlist" data-i18n="frontend.view.netlist">Gate netlist</button><div class="viewer-downloads"><a id="downloadRtl" href="#" data-i18n="frontend.download.rtl">Download RTL</a><a id="downloadNetlist" href="#" data-i18n="frontend.download.netlist">Download netlist</a></div></div>
@@ -157,7 +162,7 @@
         </section>
 
         <section class="task-panel extension-task">
-          <header class="task-panel-head"><span>④</span><div><b>RTLScout <i data-i18n="common.optional">Optional</i></b><small data-i18n="rtlscout.subtitle" title="Optimize benchmark RTL while correctness remains a hard verification gate.">Optimize benchmark RTL with verified correctness.</small></div></header>
+          <header class="task-panel-head"><span>③</span><div><b>RTLScout <i data-i18n="common.optional">Optional</i></b><small data-i18n="rtlscout.subtitle" title="Optimize benchmark RTL while correctness remains a hard verification gate.">Optimize benchmark RTL with verified correctness.</small></div></header>
           <div class="extension-task-body">
 
           <section class="rtlscout-explainer panel">
@@ -285,6 +290,6 @@
     </section>
   </main>
   <footer><span>OpenROAD Self-Evolving EDA Platform</span><span>Local research workspace · verified evidence</span></footer>
-  <script src="/assets/app.js?v=20260817b"></script>
+  <script src="/assets/app.js?v=20260819c"></script>
 </body>
 </html>

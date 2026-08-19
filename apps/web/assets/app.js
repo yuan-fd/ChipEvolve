@@ -72,6 +72,10 @@ const ZH = {
   "frontend.kicker": "交互式设计工作区", "frontend.title": "前端设计",
   "frontend.subtitle": "按清晰顺序创建或导入 RTL、完成综合并查看电路结果。",
   "frontend.source.title": "创建或上传 RTL", "frontend.source.subtitle": "选择一种输入方式，最终都会生成统一的设计记录。",
+  "frontend.entry.upload": "上传文件", "frontend.entry.upload.title": "上传文件", "frontend.entry.upload.help": "上传 Verilog / SystemVerilog",
+  "frontend.entry.spec": "自然语言 Spec", "frontend.entry.spec.title": "自然语言 Spec", "frontend.entry.spec.help": "从自然语言规格生成 RTL",
+  "frontend.entry.examples": "示例项目", "frontend.entry.examples.title": "示例项目", "frontend.entry.examples.help": "选择经过审计的 RTL 示例",
+  "frontend.agenttrace.title": "Agent 运行轨迹", "frontend.agenttrace.help": "LLM 生成、审查与登记过程",
   "frontend.upload.title": "上传 Verilog / SystemVerilog", "frontend.upload.help": "加载本地 .v 或 .sv 文件，确认内容后进行综合。",
   "frontend.upload.file": "RTL 源文件", "frontend.upload.review": "查看或粘贴源码", "common.filename": "文件名",
   "frontend.rtl.source": "RTL 源码", "frontend.upload.action": "导入并综合",
@@ -265,6 +269,8 @@ async function loadAuthenticatedWorkspace() {
   await loadDesigns();
   await loadRuns();
   state.workspaceLoaded = true;
+  // Stage 3.4: prefill the Spec (LLM) agent dashboard with the most recent spec-to-rtl agent trace.
+  loadRecentAgentTraces("#agentTraceSpec", "spec-to-rtl");
 }
 
 function message(selector, value, error = false) {
@@ -292,7 +298,6 @@ function selectInputMode(name) {
   $$('[data-input-mode]').forEach(button => button.classList.toggle("active", button.dataset.inputMode === name));
   $$(".input-mode").forEach(panel => panel.classList.toggle("active", panel.id === `input-${name}`));
 }
-
 function buildExtensions(platform) {
   const special = [
     {
@@ -1581,10 +1586,14 @@ $$('[data-route]').forEach(element => element.addEventListener("click", () => {
   if (element.dataset.focus) {
     const FOCUS_IDS = {upload: "rtlFile", spec: "specPrompt", examples: "exampleSelect",
                        agent: "recommendationList"};
+    // Stage 3.4: homepage entry buttons also switch the frontend input-mode tab.
+    const INPUT_MODES = {upload: "upload", spec: "spec", examples: "examples"};
+    const mode = INPUT_MODES[element.dataset.focus];
+    if (mode) selectInputMode(mode);
     const id = FOCUS_IDS[element.dataset.focus];
     if (id) setTimeout(() => {
       const el = document.getElementById(id);
-      const target = el ? (el.closest(".task-panel, .source-card, .evolution-content") || el) : null;
+      const target = el ? (el.closest(".task-panel, .source-card, .input-mode, .evolution-content") || el) : null;
       if (target) target.scrollIntoView({behavior: "smooth", block: "start"});
     }, 350);
   }
@@ -1651,6 +1660,8 @@ let initialLocale = "en";
 try { initialLocale = new URLSearchParams(location.search).get("lang") || localStorage.getItem("openroad-platform-locale") || "en"; } catch (_) { /* storage may be disabled */ }
 applyLocale(initialLocale);
 updateFlowMode();
+// Stage 3.4: the natural-language Spec tab is the emphasized default entry.
+selectInputMode("spec");
 (async () => {
   await Promise.all([loadPlatform(), loadAuth()]);
   route(location.hash.slice(1) || "overview");
