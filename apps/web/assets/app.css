@@ -545,17 +545,23 @@ html[lang="zh-CN"] .workspace-head h1::after { content: " — 交互演示"; }
 .agent-trace-result b { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
 .agent-trace-result pre { margin: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); font: 11px/1.6 var(--mono); white-space: pre-wrap; word-break: break-all; }
 .backend-mode-switch { padding: 6px 0 14px; display: flex; gap: 10px; }
-.flow-mode { display: grid; gap: 6px; }
+.flow-mode { display: grid; gap: 6px; width: 100%; }
 .flow-mode-label { color: var(--muted); font-size: 11px; font-weight: 500; letter-spacing: .04em; }
-.flow-mode-buttons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.flow-mode-btn { min-height: 54px; padding: 8px 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); cursor: pointer; transition: border-color .15s, box-shadow .15s, background .15s; }
+.flow-mode-buttons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: 100%; }
+.flow-mode-btn { min-height: 54px; padding: 8px 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); cursor: pointer; transition: border-color .15s, box-shadow .15s, background .15s; text-align: center; }
 .flow-mode-btn:hover { border-color: var(--line-strong); background: var(--surface-subtle); }
-.flow-mode-btn b { font-size: 13px; font-weight: 700; }
-.flow-mode-btn small { font-size: 10.5px; color: var(--muted); }
+.flow-mode-btn b { font-size: 13px; font-weight: 700; display: block; text-align: center; }
+.flow-mode-btn small { font-size: 10.5px; color: var(--muted); display: block; text-align: center; }
 .flow-mode-btn.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: var(--accent-soft); color: var(--accent); }
 .flow-mode-btn.active small { color: var(--accent); }
-.flow-mode-note { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.flow-mode-note { color: var(--muted); font-size: 11px; line-height: 1.5; text-align: center; }
 .evolution-toolbar { margin-top: 14px; display: flex; gap: 8px; }
+.taiwei-design-bar { display: grid; gap: 10px; margin-bottom: 12px; }
+.taiwei-select-row { display: flex; align-items: flex-end; gap: 8px; }
+.taiwei-select-row label { flex: 1; }
+.taiwei-import { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+.taiwei-import summary { cursor: pointer; color: var(--accent); font-size: 12px; font-weight: 600; }
+.taiwei-import-body { display: grid; gap: 8px; margin-top: 8px; }
 .backend-mode-switch button { flex: 1; min-height: 58px; padding: 8px 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; border: 1px solid var(--line-strong); border-radius: 8px; background: white; color: #475467; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
 .backend-mode-switch button b { font-size: 15px; font-weight: 700; }
 .backend-mode-switch button small { font-size: 11px; color: #98a2b3; }
@@ -613,7 +619,7 @@ html[lang="zh-CN"] .workspace-head h1::after { content: " — 交互演示"; }
 .objective-options legend { padding: 0 6px; color: #475467; font-size: 11px; font-weight: 500; text-transform: none; }
 .objective-options label { display: flex; align-items: center; gap: 6px; font-size: 11px; text-transform: none; }
 .objective-options input { width: auto; margin: 0; accent-color: var(--accent); }
-.flow-mode { margin-top: 12px; max-width: 280px; }
+.flow-mode { margin-top: 12px; width: 100%; max-width: 640px; }
 .field-note { margin: 7px 0 0; color: var(--muted); font-size: 12px; }
 .wide-select { margin-top: 11px; max-width: 440px; }
 .run-controls { padding: 12px 12px 4px; display: flex; gap: 7px; }

@@ -1179,11 +1179,49 @@ function renderTaiwei3dPane() {
   const root = $("#taiwei3dPane");
   if (!root) return;
   const design = state.selectedDesign;
-  // 3D output requires a design imported/selected in the 2D flow first.
+  // 3D is an independent flow: choose/import a design right here; 2D is optional.
   if (!design) {
-    root.innerHTML = `<div class="empty" style="text-align:center;padding:26px 18px"><span>⬒</span><h3>${ui("Import a design in 2D first", "请先在 2D 分区导入/选择设计")}</h3><p>${ui("3D output needs a registered RTL design. Go to 2D Design step ① (or Frontend Design) to import one, then come back here.", "3D 输出需要一个已登记的设计。请先在 2D Design 步骤①（或 Frontend Design 页）导入/选择一个设计，再回到这里。")}</p><button class="button" id="jumpTo2d">${ui("Go to 2D Design →", "前往 2D Design →")}</button></div>`;
-    const jump = root.querySelector("#jumpTo2d");
-    if (jump) jump.addEventListener("click", () => backendMode("2d"));
+    const options = (state.designs || []).map(d =>
+      `<option value="${esc(d.id)}">${esc(d.module)} · ${esc(d.id.slice(0, 8))}</option>`).join("");
+    root.innerHTML = `
+      <div class="taiwei-design-bar">
+        <div class="taiwei-select-row">
+          <label><span>${ui("Design for 3D", "3D 设计（独立选择）")}</span>
+            <select id="taiweiDesignSelect"><option value="">${ui("Select a registered design…", "选择已注册设计…")}</option>${options}</select></label>
+          <button class="button" id="taiweiUseSelected">${ui("Use this design", "使用该设计")}</button>
+        </div>
+        <details class="taiwei-import">
+          <summary>${ui("Or import new RTL for 3D (independent of 2D)", "或导入新 RTL 用于 3D（与 2D 完全独立）")}</summary>
+          <div class="taiwei-import-body">
+            <label><span>${ui("RTL source file", "RTL 源文件")}</span><input id="taiweiRtlFile" type="file" accept=".v,.sv,text/plain"></label>
+            <label><span>${ui("Paste RTL", "粘贴 RTL 源码")}</span><textarea id="taiweiRtlSource" rows="4" placeholder="module top(...); ... endmodule"></textarea></label>
+            <button class="button small" id="taiweiImportBtn">${ui("Import and use for 3D", "导入并用于 3D")}</button>
+          </div>
+        </details>
+      </div>
+      <div class="empty" style="text-align:center;padding:20px 16px">
+        <h3>${ui("TaiWei 3D runs independently from RTL", "TaiWei 3D 直接从 RTL 独立运行")}</h3>
+        <p>${ui("Choose or import a design above, then configure the 3D flow. A 2D run is never required — it is only optional comparison evidence.", "在上方选择或导入设计后即可配置 3D 流程。2D 运行不是必须的，只是可选的对比证据。")}</p>
+      </div>`;
+    const sel = root.querySelector("#taiweiDesignSelect");
+    const useBtn = root.querySelector("#taiweiUseSelected");
+    if (sel && useBtn) {
+      useBtn.addEventListener("click", () => {
+        if (sel.value) selectDesign(sel.value);
+        else message("#extensionMessage", "Choose a design first.", true);
+      });
+    }
+    const file = root.querySelector("#taiweiRtlFile");
+    const src = root.querySelector("#taiweiRtlSource");
+    if (file) file.addEventListener("change", e => {
+      const f = e.target.files?.[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => { if (src) src.value = String(reader.result || ""); };
+      reader.readAsText(f);
+    });
+    const imp = root.querySelector("#taiweiImportBtn");
+    if (imp) imp.addEventListener("click", () => importTaiweiRtl(src?.value || "", file?.files?.[0]?.name || "design.v"));
     return;
   }
   const baseline = successfulBaselineForDesign(design.id);
@@ -1210,6 +1248,21 @@ function renderTaiwei3dPane() {
     <p class="message" id="extensionMessage"></p>`;
   const taiwei = root.querySelector("[data-run-taiwei]");
   if (taiwei) taiwei.addEventListener("click", () => submitTaiweiExtension(design.id, baseline?.run_id || ""));
+}
+
+async function importTaiweiRtl(source, filename) {
+  if (!source || !source.trim()) return message("#extensionMessage", "Paste RTL source first.", true);
+  try {
+    const design = await post("/api/designs/import", {
+      filename: filename || "design.v", rtl_source: source,
+      description: "Imported for TaiWei 3D (independent)",
+    });
+    await loadDesigns(design.id);
+    await selectDesign(design.id);
+    message("#extensionMessage", `${design.module} imported and selected for 3D.`);
+  } catch (error) {
+    message("#extensionMessage", error.message, true);
+  }
 }
 
 function openExtension(id) {
