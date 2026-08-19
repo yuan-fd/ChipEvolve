@@ -22,6 +22,9 @@ from .iterative_agent import (
     HeadroomEntry, IterationLedger, IterationState, OptimizerAgent,
     OptimizerHypothesis, OptimizerPlan,
 )
+from .lessons import LessonsStore, Lesson, distill_lesson, lesson_from_iteration
+from .skills import SkillsStore, Skill, apply_skill
+from .feedback_loop import FeedbackLoop, FeedbackOutcome
 from .offline_policy import (
     BehaviorCloningShadowPolicy,
     OfflineLinearQShadowPolicy,

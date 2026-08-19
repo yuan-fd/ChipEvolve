@@ -18,7 +18,8 @@ def test_frontend_exposes_readable_code_and_evidence_dashboard() -> None:
 
     assert "RTLScout run dashboard" in html
     assert "How RTLScout works" in html
-    assert "TCADCraft" in html and "MoMCraft" in html and "CktCraft" in html
+    assert "TCADCraft" in javascript and "MoMCraft" in javascript
+    assert "CktCraft" in javascript  # craft extensions render dynamically via /api/platform
     assert "RTLCraft" not in html and "EDACode" not in html
     assert ".code-viewer" in css and "background: #fff" in css
     assert ".provider-connect" in css and "background: #111827" in css
