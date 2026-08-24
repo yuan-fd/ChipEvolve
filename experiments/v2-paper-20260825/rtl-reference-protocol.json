@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "protocol_id": "openroad-agenticeda-v2-rtl-reference-20260825",
+  "frozen_before_reference_results": true,
+  "purpose": "Measure the hidden benchmark golden RTL under the same backend constraints used by generated RTL; golden RTL and benchmark testbench remain unavailable to generation agents.",
+  "designs": ["gcd", "fifo", "uart_tx", "ibex_alu"],
+  "platform": "sky130hd",
+  "target_stage": "finish",
+  "clock_period_ns": 10.0,
+  "core_utilization_pct": 10.0,
+  "place_density": 0.45,
+  "replicas": 3,
+  "paired_or_seed_experiment_seed": 61001,
+  "metrics": ["area_um2", "setup_wns_ns", "power_W", "drc_errors"],
+  "claim_boundary": "fixed-suite engineering reference, not a claim that benchmark golden RTL is globally optimal"
+}
