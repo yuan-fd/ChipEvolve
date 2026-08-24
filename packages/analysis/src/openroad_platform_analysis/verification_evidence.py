@@ -103,7 +103,10 @@ def independent_verification_gate(*, candidate_generator: str, verifier_identity
                                   testbench_origin: str, report: Mapping[str, Any]) -> dict[str, Any]:
     """Fail closed when an unreviewed self-authored oracle is used as evidence."""
     independent = candidate_generator.strip() != verifier_identity.strip()
-    valid_origin = testbench_origin in {"user_authored", "project_existing", "reference_model", "approved_generated"}
+    valid_origin = testbench_origin in {
+        "user_authored", "project_existing", "reference_model",
+        "approved_generated", "independent_verifier_agent",
+    }
     return {"independent_author": independent, "accepted_origin": valid_origin,
             "mutation_eligible": report.get("eligible") is True,
             "accepted": independent and valid_origin and report.get("eligible") is True,

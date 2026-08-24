@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import pytest
 
 from openroad_platform_contracts import RunRequest, RunStage, RunStatus
 from openroad_platform_execution import ORFSRunner
@@ -60,6 +61,44 @@ def test_runner_executes_stages_and_applies_finish_hard_gate(tmp_path):
     }
     assert (Path(plan.workdir) / "analysis/report.json").is_file()
     assert (Path(plan.workdir) / "run_result.json").is_file()
+
+
+def test_runner_bounds_orfs_parallelism_by_server_policy(tmp_path, monkeypatch):
+    orfs, bin_dir = _fake_runtime(tmp_path)
+    rtl = tmp_path / "top.v"
+    rtl.write_text("module top; endmodule\n")
+    runner = ORFSRunner(
+        orfs_root=orfs, work_root=tmp_path / "runs",
+        openroad_bin=bin_dir / "openroad", yosys_bin=bin_dir / "yosys",
+    )
+    plan = runner.prepare(RunRequest(rtl_path=str(rtl), top="top"))
+    assert "NUM_CORES=16" in runner._make_command(plan, "synth")
+    monkeypatch.setenv("OPENROAD_PLATFORM_ORFS_CORES", "7")
+    assert "NUM_CORES=7" in runner._make_command(plan, "synth")
+    monkeypatch.setenv("OPENROAD_PLATFORM_ORFS_CORES", "0")
+    with pytest.raises(ValueError, match="between 1 and 64"):
+        runner._make_command(plan, "synth")
+
+
+def test_runner_registers_native_finish_timing_report(tmp_path):
+    orfs, bin_dir = _fake_runtime(tmp_path)
+    rtl = tmp_path / "top.v"
+    rtl.write_text("module top; endmodule\n")
+    runner = ORFSRunner(
+        orfs_root=orfs, work_root=tmp_path / "runs",
+        openroad_bin=bin_dir / "openroad", yosys_bin=bin_dir / "yosys",
+    )
+    plan = runner.prepare(RunRequest(rtl_path=str(rtl), top="top"))
+    report = Path(plan.workdir) / "reports/nangate45/top/base/6_finish.rpt"
+    report.parent.mkdir(parents=True)
+    report.write_text("Startpoint: a\nEndpoint: y\nPath Type: max\n1.0 data arrival time\n0.2 slack (MET)\n")
+    empty_drc = report.with_name("5_route_drc.rpt")
+    empty_drc.write_text("")
+    artifacts = runner._collect_artifacts(plan)
+    timing = next(item for item in artifacts if item.path.endswith("6_finish.rpt"))
+    assert timing.kind.value == "report"
+    assert timing.sha256
+    assert not any(item.path.endswith("5_route_drc.rpt") for item in artifacts)
 
 
 def test_runner_fails_when_process_succeeds_without_required_artifact(tmp_path):

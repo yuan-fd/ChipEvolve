@@ -1,5 +1,7 @@
 # P17 EDACraft extension pack and web delivery
 
+> Historical delivery record. BYOK, standalone baseline/stage-aware modes, and recommendation approval described below were retired from the v2 product surface. The current browser uses the platform-managed Terra model and one autonomous BO/GP backend entry.
+
 P17 corrects the earlier product-level “IC Craft” label. EDACraft is a
 monorepo with six materially different projects, so the platform exposes six
 independent plugin identities and one umbrella catalog. The existing

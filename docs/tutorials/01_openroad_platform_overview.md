@@ -73,14 +73,14 @@ openroad-platform/  ← 工厂大门
 | 接口 | 大白话 | 谁在用 |
 | --- | --- | --- |
 | /api/auth/* | 登录、注册、退出（工厂大门登记） | 所有人 |
-| /api/designs/* | 查看/导入/生成设计图纸（RTL） | Frontend 页 |
-| /api/runtime/runs/* | 提交 2D 任务、看进度、取消 | Backend 页 |
+| /api/spec/sessions → /api/rtl/specs/<id>/run-to-baseline | 自然语言规格经独立验证 Agent 与 RTLScout 自动产出 RTL | Frontend 唯一生成入口 |
+| /api/designs/* | 查看设计证据，或明确导入已有 RTL | Frontend 页 |
+| /api/v2/closed-loops | 自动重复 baseline、BO/GP 组合探索、停滞诊断和证据学习 | Backend 唯一优化入口 |
+| /api/runtime/runs/* | 查看/取消闭环内部子任务 | Backend 证据页 |
 | /api/extensions/taiwei/run | 提交 3D 任务（选工艺库/参数） | Backend 页 3D 面板 |
 | /api/extensions/edacraft/* | 跑专业小工具（TCAD/SPICE 等） | Extensions 页 |
 | /api/platform/results | 列出所有项目/结果 | Projects 页 |
-| /api/runtime/runs/<id>/collect-learning | **知识入库**：把这次成功经验存进图书馆 | Projects 页按钮 |
-| /api/learning/observations | 查看已入库的知识 | Self-Evolution 页 |
-| /api/recommendations/* | 看 AI 建议、做决定 | Self-Evolution 页 |
+| /api/learning/observations | 只读查看闭环自动形成、带来源的知识 | Self-Evolution 页 |
 | /api/health | 体检：工厂各设备是否正常 | 监控 |
 
 

@@ -17,6 +17,9 @@ def _mutants(source, maximum):
 def _report(mutants,outcomes,tb_sha,verifier,minimum):
     rows=[{key:value for key,value in item.items() if key!="mutated_source"}|{"outcome":outcomes.get(item["mutation_id"],"not_run")} for item in mutants]; executable=[row for row in rows if row["outcome"] in {"killed","survived"}]; killed=sum(row["outcome"]=="killed" for row in executable);score=killed/len(executable) if executable else 0.0
     return {"schema_version":1,"kind":"mutation_evidence","verifier_identity":verifier,"testbench_sha256":tb_sha,"source_sha256":mutants[0]["source_sha256"] if mutants else None,"mutants":rows,"generated_count":len(rows),"executable_count":len(executable),"killed_count":killed,"survived_count":len(executable)-killed,"invalid_count":sum(row["outcome"]=="invalid" for row in rows),"timed_out_count":sum(row["outcome"]=="timed_out" for row in rows),"not_run_count":sum(row["outcome"]=="not_run" for row in rows),"mutation_score":score,"minimum_score":minimum,"eligible":bool(executable) and score>=minimum,"claim":"testbench fault-detection evidence only; not a proof of functional correctness","execution_allowed":False}
+def _oracle_passed(output):
+    matches=re.findall(r"TB_SUMMARY\s+total=(\d+)\s+errors=(\d+)",output)
+    return bool(matches) and int(matches[-1][0])>0 and int(matches[-1][1])==0 and bool(re.search(r"(?m)^PASS\s*$",output))
 def main() -> int:
     parser=argparse.ArgumentParser(); parser.add_argument("--request",type=Path,required=True);parser.add_argument("--result",type=Path,required=True);args=parser.parse_args();started=_now()
     try:
@@ -33,7 +36,7 @@ def main() -> int:
                 except subprocess.TimeoutExpired as exc:
                     log.write(f"$ {os.environ['VVP_BIN']} {image}\nTIMEOUT after {params.get('per_mutant_timeout_seconds',30)}s\n{(exc.stdout or '')}\n")
                     outcomes[item["mutation_id"]]="timed_out";continue
-                log.write(f"$ {os.environ['VVP_BIN']} {image}\n{run.stdout}\n");outcomes[item["mutation_id"]]="killed" if run.returncode else "survived"
+                log.write(f"$ {os.environ['VVP_BIN']} {image}\n{run.stdout}\n");outcomes[item["mutation_id"]]="survived" if run.returncode==0 and _oracle_passed(run.stdout) else "killed"
         report=_report(mutants,outcomes,ins["testbench"]["sha256"],str(params["verifier_identity"]),float(params["minimum_score"]));_write(out/"mutation.json",report)
         _write(args.result,{"schema_version":1,"status":"succeeded","exit_code":0,"started_at":started,"ended_at":_now(),"metrics":[{"name":"rtl.mutation_score","value":report["mutation_score"],"unit":"ratio"}],"artifacts":[{"kind":"mutation_report","path":"outputs/mutation.json"},{"kind":"log","path":"outputs/mutation.log"}],"failure":None,"provenance":{"adapter":"rtl-mutation-v1","eligible":report["eligible"],"source_sha256":report.get("source_sha256")}});return 0
     except Exception as exc:

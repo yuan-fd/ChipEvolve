@@ -123,6 +123,13 @@ class EvidenceRAG:
                 CREATE INDEX IF NOT EXISTS idx_evidence_rag_context_v2
                 ON evidence_knowledge_v2(platform, pdk_id, toolchain_id, flow_stage,
                                          design_id, design_fingerprint);
+                CREATE TABLE IF NOT EXISTS evidence_knowledge_revocations_v2 (
+                    record_id TEXT PRIMARY KEY,
+                    reason TEXT NOT NULL,
+                    evidence_sha256 TEXT NOT NULL,
+                    revoked_at TEXT NOT NULL,
+                    FOREIGN KEY(record_id) REFERENCES evidence_knowledge_v2(record_id)
+                );
             """)
 
     def add(self, record: EvidenceKnowledgeRecordV2) -> str:
@@ -146,6 +153,26 @@ class EvidenceRAG:
             )
         return record.record_id
 
+    def revoke_by_evidence_ref(self, evidence_ref: str, *, reason: str,
+                               evidence_sha256: str) -> tuple[str, ...]:
+        """Retire previously actionable cards without rewriting their history."""
+        if not evidence_ref.strip() or not reason.strip() or len(evidence_sha256) != 64:
+            raise ValueError("revocation requires an evidence ref, reason and SHA-256")
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT record_id FROM evidence_knowledge_v2 WHERE evidence_ref = ?",
+                (evidence_ref,),
+            ).fetchall()
+            now = datetime.now(timezone.utc).isoformat()
+            for row in rows:
+                connection.execute(
+                    """INSERT OR IGNORE INTO evidence_knowledge_revocations_v2
+                       (record_id, reason, evidence_sha256, revoked_at)
+                       VALUES (?, ?, ?, ?)""",
+                    (row["record_id"], reason.strip(), evidence_sha256, now),
+                )
+        return tuple(row["record_id"] for row in rows)
+
     def retrieve(self, query: str, context: LearningContext, *, limit: int = 8,
                  action_eligible_only: bool = False) -> EvidenceBundle:
         context.validate()
@@ -155,15 +182,19 @@ class EvidenceRAG:
         limit = max(1, min(int(limit), 20))
         with self._connect() as connection:
             rows = connection.execute(
-                """SELECT * FROM evidence_knowledge_v2
+                """SELECT k.* FROM evidence_knowledge_v2 AS k
+                   LEFT JOIN evidence_knowledge_revocations_v2 AS r
+                     ON r.record_id = k.record_id
                    WHERE platform = ? AND pdk_id = ? AND toolchain_id = ?
                      AND metric_parser_version = ? AND flow_stage = ?
                      AND ((scope = 'exact_design' AND design_id = ?
-                           AND design_fingerprint = ?)
-                          OR scope = 'platform_general')""",
+                           AND design_fingerprint = ? AND context_fingerprint = ?)
+                          OR scope = 'platform_general')
+                     AND r.record_id IS NULL""",
                 (context.platform, context.pdk_id, context.toolchain_id,
                  context.metric_parser_version, context.flow_stage,
-                 context.design_id, context.design_fingerprint),
+                 context.design_id, context.design_fingerprint,
+                 context.fingerprint),
             ).fetchall()
         if action_eligible_only:
             rows = [row for row in rows if row["knowledge_type"] in AUTO_KNOWLEDGE_TYPES
@@ -219,10 +250,16 @@ class EvidenceRAG:
         with self._connect() as connection:
             for item in bundle.records:
                 row = connection.execute(
-                    "SELECT fingerprint, evidence_ref, evidence_sha256 FROM evidence_knowledge_v2 WHERE record_id = ?",
+                    """SELECT k.fingerprint, k.evidence_ref, k.evidence_sha256,
+                              r.record_id AS revoked_record_id
+                       FROM evidence_knowledge_v2 AS k
+                       LEFT JOIN evidence_knowledge_revocations_v2 AS r
+                         ON r.record_id = k.record_id
+                       WHERE k.record_id = ?""",
                     (item["record_id"],),
                 ).fetchone()
-                if row is None or row["fingerprint"] != item["record_fingerprint"]:
+                if (row is None or row["revoked_record_id"] is not None
+                        or row["fingerprint"] != item["record_fingerprint"]):
                     raise ValueError("Evidence record is missing or stale")
                 if (row["evidence_ref"], row["evidence_sha256"]) != (
                     item["evidence"]["ref"], item["evidence"]["sha256"],

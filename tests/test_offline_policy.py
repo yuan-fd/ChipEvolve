@@ -22,7 +22,6 @@ from openroad_platform_contracts import (
     TrajectoryStep,
 )
 
-
 def _context():
     return LearningContext(
         design_id="gcd", design_fingerprint="a" * 64, platform="nangate45",
@@ -149,28 +148,3 @@ def test_interaction_shadow_policy_can_rank_a_compound_parameter_condition():
     assert proposal.action == {"core_utilization_pct": 1.0, "place_density": 1.0}
     assert proposal.expected_return > 9.9
     assert proposal.execution_allowed is False
-
-
-def test_api_interaction_shadow_exposes_a_review_only_combination_proposal(tmp_path):
-    from apps.api.app import ApiState
-    state = ApiState(tmp_path / "platform.db", tmp_path / "uploads", tmp_path / "orfs",
-                     design_root=tmp_path / "designs", legacy_root=tmp_path / "legacy",
-                     yosys_bin=tmp_path / "missing-yosys", runtime_db_path=tmp_path / "runtime.db")
-    study = OptimizationStudy(
-        study_id="study-combination", design_id="gcd", context_fingerprint=_context().fingerprint,
-        parameter_space=(ParameterSpec("core_utilization_pct", 0, 1),
-                         ParameterSpec("place_density", 0, 1)),
-        objectives=(ObjectiveSpec("area_um2", "min"),), max_runs=16, seed=1,
-    )
-    state.optimization_store.create(study)
-    for index, (util, density, area) in enumerate(((0, 0, 100), (0, 1, 100), (1, 0, 100), (1, 1, 80), (1, 1, 80))):
-        state.optimization_store.add_observation(
-            study.study_id, _observation(index, util, density, area, 0.0),
-        )
-    result = state.interaction_shadow_proposal(study.study_id, {"candidate_actions": [
-        {"core_utilization_pct": 1, "place_density": 0},
-        {"core_utilization_pct": 1, "place_density": 1},
-    ]})
-    assert result["proposal"]["execution_allowed"] is False
-    assert result["promotion_gate"].startswith("repeated factorial")
-    assert ["core_utilization_pct", "place_density"] in result["interaction_terms"]

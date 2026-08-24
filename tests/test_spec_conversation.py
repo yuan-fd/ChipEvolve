@@ -79,14 +79,14 @@ def test_codex_provider_is_ephemeral_read_only_and_schema_validated(tmp_path, mo
         return type("Completed", (), {"returncode": 0, "stdout": "", "stderr": ""})()
 
     monkeypatch.setattr("openroad_platform_scheduler.spec_conversation.subprocess.run", fake_run)
-    provider = CodexCliSpecProvider(model="gpt-5.6-sol", executable="/usr/bin/codex")
+    provider = CodexCliSpecProvider(model="gpt-5.6-terra", executable="/usr/bin/codex")
     proposal = provider.propose([{"role": "user", "content": "and gate"}], {})
 
     assert proposal.ready_for_execution is True
     assert proposal.top == "and2"
     assert "--ephemeral" in captured["command"]
     assert captured["command"][captured["command"].index("--sandbox") + 1] == "read-only"
-    assert captured["command"][captured["command"].index("--model") + 1] == "gpt-5.6-sol"
+    assert captured["command"][captured["command"].index("--model") + 1] == "gpt-5.6-terra"
 
 
 def test_provider_rejects_legacy_generated_rtl():
@@ -102,10 +102,11 @@ def test_provider_rejects_legacy_generated_rtl():
         })
 
 
-def test_spec_provider_contract_never_requests_rtl_source():
-    """Spec parsing is not a second hidden RTL-generation entrance."""
-    from openroad_platform_scheduler.model_provider import OpenAICompatibleSpecProvider
-    import inspect
-    source = inspect.getsource(OpenAICompatibleSpecProvider.propose)
-    assert '"rtl_source (string' not in source
-    assert "Never generate RTL source" in source
+def test_product_has_no_byok_provider_module_or_export():
+    """Internal service auth is the only authority; BYOK code is absent."""
+    import openroad_platform_scheduler as scheduler
+
+    assert not hasattr(scheduler, "ProviderProfile")
+    assert not hasattr(scheduler, "ProviderProfileStore")
+    assert not hasattr(scheduler, "InMemorySecretBroker")
+    assert not hasattr(scheduler, "OpenAICompatibleSpecProvider")

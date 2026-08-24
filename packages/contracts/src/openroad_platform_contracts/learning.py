@@ -107,6 +107,7 @@ class LearningContext:
     toolchain_id: str
     flow_stage: str
     metric_parser_version: str
+    constraint_fingerprint: str = "0" * 64
     schema_version: int = SCHEMA_VERSION
 
     def validate(self) -> None:
@@ -117,6 +118,8 @@ class LearningContext:
             _identifier(name, value)
         if not SHA256.fullmatch(self.design_fingerprint):
             raise ValueError("design_fingerprint must be a lowercase SHA-256")
+        if not SHA256.fullmatch(self.constraint_fingerprint):
+            raise ValueError("constraint_fingerprint must be a lowercase SHA-256")
         if not isinstance(self.flow_stage, str) or not STAGE.fullmatch(self.flow_stage):
             raise ValueError("Invalid flow_stage")
 

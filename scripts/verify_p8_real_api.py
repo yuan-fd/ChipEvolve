@@ -53,7 +53,7 @@ def main() -> int:
         local / "platform.db", local / "uploads",
         ROOT / ".tools/taiwei-official-3d/orfs-research",
         design_root=local / "designs", legacy_root=local / "legacy",
-        runtime_db_path=runtime_db, campaign_db_path=campaign_db,
+        runtime_db_path=runtime_db,
     )
     run = state.runtime_store.get_run(args.run_id)
     campaign_id = state.campaign_store.create(

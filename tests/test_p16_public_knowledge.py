@@ -21,6 +21,17 @@ def test_public_manifest_is_replayable_traceable_and_not_observed(tmp_path):
     assert first["external_results_observed"] is False
     assert all(item["license_id"] and item["content_sha256"]
                for item in registry.list_sources())
+    sources = {item["source_id"]: item for item in registry.list_sources()}
+    assert sources["ptpt-paper"]["doi"] == "10.1109/TCAD.2022.3167858"
+    assert sources["ptpt-paper"]["title"].startswith("PTPT: Physical Design Tool")
+    assert sources["orfs-agent-2025"]["year"] == 2025
+    assert sources["agenticpd-2026"]["arxiv_id"] == "2607.04758v2"
+    assert sources["edatracer-2026"]["content_kind"] == "bibliographic_metadata"
+    bibliographic = [item for item in sources.values()
+                     if item["content_kind"] == "bibliographic_metadata"]
+    assert bibliographic
+    assert all(item["license_decision"] == "metadata_only"
+               and item["redistributable"] is False for item in bibliographic)
 
 
 def test_retrieval_hard_filters_50_context_and_injection_cases(tmp_path):

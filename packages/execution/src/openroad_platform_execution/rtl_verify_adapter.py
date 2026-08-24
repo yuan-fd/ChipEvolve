@@ -31,7 +31,7 @@ def main() -> int:
         inputs, outputs = root / "inputs", root / "outputs"; inputs.mkdir(exist_ok=True); outputs.mkdir(exist_ok=True)
         staged = inputs / "design.sv"; shutil.copy2(source, staged)
         commands = [
-            [str(Path(os.environ["VERILATOR_BIN"])), "--lint-only", "--sv", "--top-module", top, str(staged)],
+            [str(Path(os.environ["RTL_VERIFY_VERILATOR"])), "--lint-only", "--sv", "--top-module", top, str(staged)],
             [str(Path(os.environ["YOSYS_BIN"])), "-Q", "-p", f"read_verilog -sv {staged}; hierarchy -top {top}; proc; check"],
         ]
         log = outputs / "verification.log"; rows = []

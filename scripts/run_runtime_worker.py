@@ -69,9 +69,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--runtime-db", type=Path,
                         default=Path(os.environ.get(
                             "OPENROAD_PLATFORM_RUNTIME_DB", local_state / "runtime.db")))
-    parser.add_argument("--campaign-db", type=Path,
-                        default=Path(os.environ.get(
-                            "OPENROAD_PLATFORM_CAMPAIGN_DB", local_state / "campaign.db")))
     parser.add_argument("--optimization-db", type=Path,
                         default=Path(os.environ.get(
                             "OPENROAD_PLATFORM_OPTIMIZATION_DB", local_state / "optimization.db")))
@@ -102,8 +99,8 @@ def main(argv: list[str] | None = None) -> int:
     state = ApiState(
         args.db, args.upload_root, args.orfs_root,
         design_root=args.design_root, legacy_root=args.legacy_root,
-        runtime_db_path=args.runtime_db, campaign_db_path=args.campaign_db,
-        optimization_db_path=args.optimization_db, byok_transport_secure=False,
+        runtime_db_path=args.runtime_db,
+        optimization_db_path=args.optimization_db,
         load_taiwei_plugin=False,
     )
     worker_id = f"{socket.gethostname()}-{os.getpid()}"

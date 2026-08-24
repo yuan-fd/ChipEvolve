@@ -22,7 +22,6 @@ for source_root in (
     sys.path.insert(0, str(source_root))
 
 from openroad_platform_execution.rtlscout_plugin import (  # noqa: E402
-    RTLSCOUT_CREDENTIALS,
     RTLSCOUT_PROVIDERS,
     sha256,
 )
@@ -101,8 +100,15 @@ def _codex_cli_candidates(*, source: Path, python: Path, workspace: Path,
     environment, because the CLI uses its own local login.
     """
     codex = shutil.which("codex")
+    verilator = shutil.which("verilator")
+    yosys = shutil.which("yosys")
     if not codex:
         raise ValueError("codex CLI is unavailable")
+    if not verilator or not yosys:
+        raise ValueError(
+            "RTLScout preflight requires explicit Verilator and Yosys tools; "
+            f"verilator={verilator!r}, yosys={yosys!r}"
+        )
     top = str(spec["top"])
     agent_dir = workspace / "codex-agent"
     agent_dir.mkdir(parents=True, exist_ok=False)
@@ -130,6 +136,7 @@ def _codex_cli_candidates(*, source: Path, python: Path, workspace: Path,
                 stderr=subprocess.STDOUT, timeout=600, check=False,
             )
             log.write(f"\n===== CODEX STEP {step} =====\n{completed.stdout}\n")
+            log.flush()
             if sha256_text((agent_dir / "tb.sv").read_text(encoding="utf-8")) != before or before != testbench_sha256:
                 raise RuntimeError("Codex changed the frozen verification oracle; candidate rejected")
             design = agent_dir / "design.sv"
@@ -153,9 +160,15 @@ def _codex_cli_candidates(*, source: Path, python: Path, workspace: Path,
                 text=True, timeout=600, check=False,
             )
             log.write(f"\n===== RTLScout JUDGE STEP {step} =====\n{judge.stdout}\n")
+            log.flush()
             report_path = saved / "result.json"
             if not report_path.is_file():
-                feedback = f"RTLScout evaluator failed (exit {judge.returncode}); inspect evaluator output."
+                evaluator_tail = (judge.stdout or "")[-8000:]
+                feedback = (
+                    f"RTLScout evaluator failed (exit {judge.returncode}). "
+                    "Repair design.sv using this evaluator output:\n"
+                    f"{evaluator_tail}"
+                )
                 evaluations.append({"eval_index": step, "passed": False, "error": feedback})
                 continue
             report = json.loads(report_path.read_text(encoding="utf-8"))
@@ -192,7 +205,8 @@ def _codex_cli_candidates(*, source: Path, python: Path, workspace: Path,
                 "error": "No Codex candidate passed the frozen RTLScout evaluator"}
     return {"passed": True, "best_cost": best[0], "best_design": str(best[1]),
             "best_metrics": best[2].get("metrics") or {}, "evaluations": evaluations,
-            "num_steps": len(evaluations), "cost_metric": cost_metric}
+            "num_steps": len(evaluations), "cost_metric": cost_metric,
+            "tool_paths": {"codex": codex, "verilator": verilator, "yosys": yosys}}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -217,13 +231,6 @@ def main(argv: list[str] | None = None) -> int:
         max_steps = int(parameters["max_steps"])
         if not 1 <= max_steps <= 100:
             raise ValueError("max_steps must be between 1 and 100")
-        credential_name = RTLSCOUT_CREDENTIALS.get(provider)
-        if credential_name and not os.environ.get(credential_name):
-            return _failure(
-                args.result, started, "credential_unavailable",
-                f"{provider} execution requires {credential_name} in the adapter environment",
-            )
-
         source = Path(os.environ["RTLSCOUT_SOURCE"]).resolve()
         python = Path(os.environ["RTLSCOUT_PYTHON"]).absolute()
         expected_commit = os.environ["RTLSCOUT_EXPECTED_COMMIT"]
@@ -245,10 +252,15 @@ def main(argv: list[str] | None = None) -> int:
             verification = inputs.get("verification")
             testbench = inputs.get("testbench_source")
             expected_tb_hash = inputs.get("testbench_sha256")
+            testbench_top = str((inputs.get("oracle_provenance") or {}).get("testbench_top") or "")
             if not isinstance(spec, dict) or not isinstance(verification, dict) or not isinstance(testbench, str):
                 raise ValueError("SpecIR-v2 task requires spec, verification and frozen testbench")
             if sha256_text(testbench) != expected_tb_hash:
                 raise ValueError("Frozen testbench hash mismatch")
+            if testbench_top != "tb" or not re.search(r"\bmodule\s+tb\b", testbench):
+                raise ValueError("RTLScout preflight requires the frozen oracle top module to be exactly tb")
+            if not re.search(r"TB_SUMMARY\s+total=", testbench):
+                raise ValueError("RTLScout preflight requires TB_SUMMARY total=N errors=M output")
             top = spec.get("top")
             ports = spec.get("ports")
             if not isinstance(top, str) or not isinstance(ports, list) or not ports:
@@ -313,7 +325,8 @@ def main(argv: list[str] | None = None) -> int:
                                "provider": provider, "model": model_name, "fake_model": False,
                                "rtl_sha256": sha256(rtl), "input_mode": "specir-v2",
                                "spec_id": spec.get("spec_id"), "oracle_immutable": True,
-                               "candidate_evaluations": len(payload.get("evaluations") or [])},
+                               "candidate_evaluations": len(payload.get("evaluations") or []),
+                               "tool_paths": payload.get("tool_paths")},
             })
             return 0
         command = [

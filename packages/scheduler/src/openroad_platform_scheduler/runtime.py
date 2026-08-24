@@ -118,12 +118,20 @@ class WorkflowRuntime:
                 failure=execution.result.failure,
             )
         except Exception as exc:
-            self.store.finish_attempt(
-                attempt.attempt_id,
-                RuntimeStatus.FAILED,
-                exit_code=1,
-                failure={"category": "runtime_error", "message": f"{type(exc).__name__}: {exc}"},
-            )
+            try:
+                self.store.finish_attempt(
+                    attempt.attempt_id,
+                    RuntimeStatus.FAILED,
+                    exit_code=1,
+                    failure={"category": "runtime_error", "message": f"{type(exc).__name__}: {exc}"},
+                )
+            except ValueError as transition_error:
+                # A concurrent lease monitor may already have atomically
+                # changed RUNNING -> LOST.  LOST is authoritative evidence;
+                # the worker must neither overwrite it nor crash the campaign
+                # while attempting a second terminal transition.
+                if "Invalid attempt transition lost ->" not in str(transition_error):
+                    raise
         return self.store.get_run(run_id)
 
     def describe(self, run_id: str) -> dict:

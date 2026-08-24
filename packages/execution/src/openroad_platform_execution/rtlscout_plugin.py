@@ -16,12 +16,10 @@ from openroad_platform_contracts import PluginManifest, SpecIR, TaskSpec, Verifi
 RTLSCOUT_PLUGIN_ID = "rtlscout"
 RTLSCOUT_PLUGIN_VERSION = "1.0.0"
 RTLSCOUT_UPSTREAM_COMMIT = "87a00edf6b9208f657dd9ffdda170004024c08ae"
-RTLSCOUT_PROVIDERS = frozenset({"fake", "anthropic", "deepinfra", "openrouter", "codex-cli"})
-RTLSCOUT_CREDENTIALS = {
-    "anthropic": "ANTHROPIC_API_KEY",
-    "deepinfra": "DEEPINFRA_API_KEY",
-    "openrouter": "OPENROUTER_API_KEY",
-}
+# v2 has one deployed model authority: the platform-managed Codex login.
+# ``fake`` is an isolated adapter-test fixture and is rejected by the product
+# HTTP boundary; it is not a user-selectable Provider.
+RTLSCOUT_PROVIDERS = frozenset({"fake", "codex-cli"})
 
 
 def build_rtlscout_task(
@@ -36,7 +34,7 @@ def build_rtlscout_task(
     task_id: str | None = None,
     labels: dict[str, str] | None = None,
 ) -> TaskSpec:
-    """Build a durable request without ever persisting an API credential."""
+    """Build a legacy benchmark fixture task (not exposed by the product API)."""
 
     if not benchmark or any(part in benchmark for part in ("..", "\\", "\x00")):
         raise ValueError("benchmark must be a repository-local benchmark name")
@@ -61,7 +59,7 @@ def build_rtlscout_task(
             "max_steps": max_steps,
             "cost_metric": cost_metric,
         },
-        resources={"credential_env": RTLSCOUT_CREDENTIALS.get(provider)},
+        resources={"credential_env": None},
         timeout_seconds=timeout_seconds,
         max_attempts=1,
         expected_artifacts=("rtl", "rtlscout_result", "report"),
@@ -77,7 +75,6 @@ def build_rtlscout_spec_task(
     cost_metric: str = "transistors", timeout_seconds: int = 1800,
     task_id: str | None = None, labels: dict[str, str] | None = None,
     oracle_provenance: dict[str, str] | None = None,
-    credential_handle: str | None = None,
 ) -> TaskSpec:
     """Submit a SpecIR-backed temporary benchmark to pinned RTLScout.
 
@@ -106,11 +103,13 @@ def build_rtlscout_spec_task(
                 "verification": verification.to_dict(),
                 "testbench_source": testbench_source,
                 "testbench_sha256": hashlib.sha256(testbench_source.encode("utf-8")).hexdigest(),
-                "oracle_provenance": dict(oracle_provenance or {"origin":"test_fixture","reviewed_by":"test"})},
+                "oracle_provenance": dict(oracle_provenance or {
+                    "origin": "test_fixture", "reviewed_by": "test",
+                    "testbench_top": "tb",
+                })},
         parameters={"model": model, "provider": provider, "max_steps": max_steps,
                     "cost_metric": cost_metric},
-        resources={"credential_env": RTLSCOUT_CREDENTIALS.get(provider),
-                   **({"credential_handle": credential_handle} if credential_handle else {})},
+        resources={"credential_env": None},
         timeout_seconds=timeout_seconds, max_attempts=1,
         expected_artifacts=("rtl", "rtlscout_result", "report"),
         labels={"rtl_entry": "rtlscout-v2", "spec_id": spec.spec_id,
@@ -128,7 +127,6 @@ def rtlscout_plugin_manifest(
     yosys_bin: str | Path,
     expected_commit: str = RTLSCOUT_UPSTREAM_COMMIT,
     default_timeout_seconds: int = 3600,
-    credential_environment: dict[str, str] | None = None,
 ) -> PluginManifest:
     """Bind one clean upstream commit and explicit EDA/Python executables."""
 
@@ -169,11 +167,6 @@ def rtlscout_plugin_manifest(
         "RTLSCOUT_EXPECTED_COMMIT": expected_commit,
         "PATH": os.pathsep.join(path_parts),
     }
-    for key, value in (credential_environment or {}).items():
-        if key not in set(RTLSCOUT_CREDENTIALS.values()):
-            raise ValueError(f"Credential environment variable is not allowlisted: {key}")
-        if value:
-            environment[key] = value
     manifest = PluginManifest(
         plugin_id=RTLSCOUT_PLUGIN_ID,
         plugin_version=RTLSCOUT_PLUGIN_VERSION,

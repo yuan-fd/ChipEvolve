@@ -41,7 +41,6 @@ def test_public_overview_login_and_two_user_design_run_isolation(tmp_path: Path)
         design_root=tmp_path / "designs", legacy_root=tmp_path / "legacy",
         yosys_bin=ROOT.parent / "bin/yosys",
         runtime_db_path=tmp_path / "runtime.db",
-        campaign_db_path=tmp_path / "campaign.db",
         optimization_db_path=tmp_path / "optimization.db",
         load_taiwei_plugin=False,
     )
@@ -75,22 +74,62 @@ def test_public_overview_login_and_two_user_design_run_isolation(tmp_path: Path)
         assert request(bob, base, "/api/designs")[1]["designs"] == []
         assert request(bob, base, f"/api/designs/{design['id']}")[0] == 404
 
+        status, rejected = request(
+            alice, base, "/api/v2/closed-loops", method="POST",
+            body={"design_id": design["id"], "repetitions": 3, "max_rounds": 3},
+        )
+        assert status == 400
+        assert "does not accept manual search controls" in rejected["error"]
+
         status, submitted = request(
-            alice, base, "/api/runtime/runs/from-design", method="POST",
-            body={"design_id": design["id"], "flow_mode": "baseline"},
+            alice, base, "/api/v2/closed-loops", method="POST",
+            body={"design_id": design["id"], "objective_profile": "balanced"},
         )
         assert status == 201
-        run_id = submitted["run"]["run_id"]
+        pipeline_id = submitted["pipeline_id"]
+        run_ids = submitted["state"]["active_run_ids"]
+        assert len(run_ids) == 3
         alice_runs = request(alice, base, "/api/runtime/runs")[1]["runs"]
-        assert [item["run_id"] for item in alice_runs] == [run_id]
+        assert {item["run_id"] for item in alice_runs} == set(run_ids)
         assert request(bob, base, "/api/runtime/runs")[1]["runs"] == []
-        assert request(bob, base, f"/api/runtime/runs/{run_id}")[0] == 404
-        assert request(alice, base, f"/api/runtime/runs/{run_id}")[1]["wait"]["people_ahead"] == 0
+        assert request(bob, base, f"/api/runtime/runs/{run_ids[0]}")[0] == 404
+        assert request(bob, base, f"/api/v2/closed-loops/{pipeline_id}")[0] == 404
+        assert request(alice, base, f"/api/runtime/runs/{run_ids[0]}")[1]["wait"]["people_ahead"] == 0
+        status, rejected_resume = request(
+            alice, base,
+            f"/api/v2/closed-loops/{pipeline_id}/run-to-boundary",
+            method="POST", body={"max_transitions": 1, "seed": 7},
+        )
+        assert status == 400
+        assert "accepts no transition" in rejected_resume["error"]
+        assert request(alice, base, "/api/runtime/runs/from-design", method="POST",
+                       body={"design_id": design["id"]})[0] == 404
+        for removed in (
+            "/api/tasks/compile",
+            "/api/extensions/rtlscout/runs",
+            "/api/optimization/studies/legacy/recommend",
+            "/api/optimization/studies/legacy/interaction-shadow",
+            "/api/optimization/studies/legacy/calibrate",
+            "/api/runtime/runs/legacy/collect-learning",
+            "/api/evolution/auto-reflect",
+            "/api/evolution/hypotheses",
+            "/api/four-gate/baseline",
+            "/api/four-gate/legacy/propose",
+            "/api/spec/sessions/legacy/execute",
+            "/api/spec/sessions/legacy/register-rtl",
+        ):
+            assert request(alice, base, removed, method="POST", body={})[0] == 404
+        status, rejected_rtl_policy = request(
+            alice, base, "/api/rtl/specs/not-needed/run-to-baseline", method="POST",
+            body={"max_steps": 99, "api_key": "forbidden"},
+        )
+        assert status == 400
+        assert "accepts no model" in rejected_rtl_policy["error"]
 
         alice_results = request(alice, base, "/api/platform/results")[1]
         bob_results = request(bob, base, "/api/platform/results")[1]
         assert alice_results["counts"]["designs"] == 1
-        assert alice_results["counts"]["runtime_runs"] == 1
+        assert alice_results["counts"]["runtime_runs"] == 3
         assert bob_results["counts"]["designs"] == 0
         assert bob_results["counts"]["runtime_runs"] == 0
 
@@ -128,23 +167,12 @@ def test_public_overview_login_and_two_user_design_run_isolation(tmp_path: Path)
         assert status == 201 and registered["spec"]["top"] == "generated_top"
         assert request(bob, base, f"/api/rtl/specs/{registered['spec']['spec_id']}/lineage")[0] == 404
 
-        status, campaign = request(
-            alice, base, "/api/campaigns/stage-aware", method="POST", body={
-                "design_id": design["id"], "flow_mode": "campaign",
-                "target_stage": "synth",
-                "parameter_grid": {"core_utilization_pct": [20, 30]},
-            },
-        )
-        assert status == 201 and len(campaign["members"]) == 2
-        assert campaign["members"][0]["parameters"]["target_stage"] == "synth"
-        campaign_id = campaign["campaign_id"]
-        assert request(bob, base, f"/api/campaigns/{campaign_id}")[0] == 404
-        status, started = request(
-            alice, base, f"/api/campaigns/{campaign_id}/submit",
-            method="POST", body={},
-        )
-        assert status == 201 and len(started["run_ids"]) == 2
-        assert started["execution_started"] is True
+        assert request(
+            alice, base, "/api/campaigns/stage-aware", method="POST",
+            body={"design_id": design["id"]},
+        )[0] == 404
+        assert request(alice, base, "/api/optimization/auto",
+                       method="POST", body={})[0] == 404
         assert request(bob, base, "/api/runtime/runs")[1]["runs"] == []
 
         status, bob_design = request(bob, base, "/api/designs/import", method="POST", body={
@@ -192,7 +220,7 @@ def test_auth_store_rejects_duplicate_and_wrong_password(tmp_path: Path) -> None
         tmp_path / "platform.db", tmp_path / "uploads", tmp_path / "orfs",
         design_root=tmp_path / "designs", legacy_root=tmp_path / "legacy",
         yosys_bin=tmp_path / "missing-yosys", runtime_db_path=tmp_path / "runtime.db",
-        campaign_db_path=tmp_path / "campaign.db", load_taiwei_plugin=False,
+ load_taiwei_plugin=False,
     )
     session, token = state.auth.register("researcher", "strong-pass-123")
     assert session.legacy_access is True and state.auth.resolve(token) is not None

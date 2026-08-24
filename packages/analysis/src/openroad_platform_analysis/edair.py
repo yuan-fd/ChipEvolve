@@ -51,18 +51,21 @@ def physical_ir(*, instances: Iterable[Mapping[str, Any]], nets: Iterable[Mappin
                 grid: Mapping[str, Any] | None = None, truncated: bool = False) -> dict[str, Any]:
     """Represent PnR facts as attributed objects, retaining unknown values."""
     ref = _ref(source)
+    def evidence(item: Mapping[str, Any]) -> dict[str, Any]:
+        supplied = item.get("evidence")
+        return _ref(supplied) if isinstance(supplied, Mapping) else ref
     def instance(item: Mapping[str, Any]) -> dict[str, Any]:
         return {"name": _required_text(item, "name"), "cell_type": _optional_text(item.get("cell_type")),
                 "x": _number_or_none(item.get("x")), "y": _number_or_none(item.get("y")),
                 "width": _number_or_none(item.get("width")), "height": _number_or_none(item.get("height")),
-                "orientation": _optional_text(item.get("orientation")), "evidence": ref}
+                "orientation": _optional_text(item.get("orientation")), "evidence": evidence(item)}
     def net(item: Mapping[str, Any]) -> dict[str, Any]:
         return {"name": _required_text(item, "name"), "wirelength_um": _number_or_none(item.get("wirelength_um")),
-                "fanout": _integer_or_none(item.get("fanout")), "evidence": ref}
+                "fanout": _integer_or_none(item.get("fanout")), "evidence": evidence(item)}
     def violation(item: Mapping[str, Any]) -> dict[str, Any]:
         return {"rule": _required_text(item, "rule"), "severity": _optional_text(item.get("severity")),
                 "x": _number_or_none(item.get("x")), "y": _number_or_none(item.get("y")),
-                "layer": _optional_text(item.get("layer")), "evidence": ref}
+                "layer": _optional_text(item.get("layer")), "evidence": evidence(item)}
     return {"kind": "physical_ir", "schema_version": 1, "source": ref,
             "instances": [instance(x) for x in instances], "nets": [net(x) for x in nets],
             "violations": [violation(x) for x in violations], "grid": dict(grid or {}),
@@ -81,9 +84,39 @@ def build_edair(*, design: Mapping[str, Any] | None, run: Mapping[str, Any],
         if value is not None and value.get("kind") != kind:
             raise ValueError(f"expected {kind}")
     artifacts = [_ref(item) for item in raw_artifacts]
+    fidelity = {
+        "raw_artifact_count": len(artifacts),
+        "design": {
+            "available": design is not None,
+            "instances": len((design or {}).get("instances", [])),
+            "truncated": bool((design or {}).get("truncation", {}).get("instances", False)),
+        },
+        "timing": {
+            "available": timing is not None,
+            "paths": len((timing or {}).get("paths", [])),
+            "truncated": bool((timing or {}).get("truncated", False)),
+        },
+        "physical": {
+            "available": physical is not None,
+            "instances": len((physical or {}).get("instances", [])),
+            "nets": len((physical or {}).get("nets", [])),
+            "violations": len((physical or {}).get("violations", [])),
+            "truncated": bool((physical or {}).get("truncated", False)),
+        },
+        "unparsed_raw_artifacts": [
+            item["artifact_id"] for item in artifacts
+            if item["artifact_id"] not in {
+                str(((design or {}).get("source") or {}).get("artifact_id") or ""),
+                str(((timing or {}).get("source") or {}).get("artifact_id") or ""),
+                str(((physical or {}).get("source") or {}).get("artifact_id") or ""),
+            }
+        ],
+        "detail_recovery": "hash_checked_bounded_excerpt",
+    }
     payload = {"schema_version": 1, "kind": "edair", "design": dict(design) if design else None,
                "run": dict(run), "timing": dict(timing) if timing else None,
                "physical": dict(physical) if physical else None, "raw_artifacts": artifacts,
+               "fidelity_manifest": fidelity,
                "loss_policy": "raw artifacts remain authoritative; normalized views may be truncated explicitly"}
     payload["fingerprint"] = _fingerprint(payload)
     return payload
@@ -96,6 +129,16 @@ def agent_evidence_view(edair: Mapping[str, Any], *, max_items: int = 32) -> dic
     if not 1 <= max_items <= 256:
         raise ValueError("max_items outside policy")
     facts = []
+    report = (edair.get("run") or {}).get("physical_report") or {}
+    report_source = _report_ref(report)
+    if report_source:
+        for name, value in sorted((report.get("kpi") or {}).items()):
+            if len(facts) >= max_items:
+                break
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                facts.append({"kind": "qor_metric", "claim": f"{name}={value}",
+                              "metric": name, "value": value,
+                              "evidence": report_source})
     for path in (edair.get("timing") or {}).get("paths", []):
         if len(facts) >= max_items: break
         facts.append({"kind": "timing_path", "claim": f"{path['path_type']} {path['path_id']} slack={path['slack_ns']}ns",
@@ -128,6 +171,43 @@ def evidence_packet(edair: Mapping[str, Any], *, focus: str = "diagnosis",
     if not 1 <= max_items <= 256:
         raise ValueError("max_items outside policy")
     facts: list[dict[str, Any]] = []
+    run = edair.get("run") or {}
+    report = run.get("physical_report") or {}
+    report_source = _report_ref(report)
+    all_qor = [
+        (name, value) for name, value in sorted((report.get("kpi") or {}).items())
+        if isinstance(value, (int, float)) and not isinstance(value, bool)
+    ]
+    all_stage = [
+        (str(stage.get("stage") or "unknown"), name, value)
+        for stage in report.get("stages", []) if isinstance(stage, Mapping)
+        for name, value in sorted((stage.get("metrics") or {}).items())
+        if isinstance(value, (int, float)) and not isinstance(value, bool)
+    ]
+    diagnosis = report.get("diagnosis") or {}
+    all_observations = [item for item in diagnosis.get("observations", [])
+                        if isinstance(item, Mapping)]
+    if focus in {"diagnosis", "qor"} and report_source:
+        for name, value in all_qor:
+            if len(facts) >= max_items:
+                break
+            facts.append({"kind": "qor_metric", "metric": name, "value": value,
+                          "evidence": report_source})
+        for stage, name, value in all_stage:
+            if len(facts) >= max_items:
+                break
+            facts.append({"kind": "stage_metric", "stage": stage,
+                          "metric": name, "value": value,
+                          "evidence": report_source})
+        for row in all_observations:
+            if len(facts) >= max_items:
+                break
+            facts.append({"kind": "diagnosis_observation",
+                          "type": str(row.get("type") or "observation"),
+                          "stage": row.get("stage"),
+                          "severity": row.get("severity"),
+                          "message": str(row.get("message") or ""),
+                          "evidence": report_source})
     timing = (edair.get("timing") or {}).get("paths", [])
     physical = edair.get("physical") or {}
     if focus in {"diagnosis", "timing", "qor"}:
@@ -154,6 +234,10 @@ def evidence_packet(edair: Mapping[str, Any], *, focus: str = "diagnosis",
         "physical_violations": max(0, len(physical.get("violations", [])) - sum(x["kind"] == "physical_violation" for x in facts)),
         "physical_nets": max(0, len(physical.get("nets", [])) - sum(x["kind"] == "net" for x in facts)),
         "raw_artifacts_not_inlined": len(raw),
+        "qor_metrics": max(0, len(all_qor) - sum(x["kind"] == "qor_metric" for x in facts)),
+        "stage_metrics": max(0, len(all_stage) - sum(x["kind"] == "stage_metric" for x in facts)),
+        "diagnosis_observations": max(0, len(all_observations) - sum(
+            x["kind"] == "diagnosis_observation" for x in facts)),
     }
     return {"kind": "edair_evidence_packet", "schema_version": 1, "edair_fingerprint": edair["fingerprint"],
             "focus": focus, "facts": facts, "loss_manifest": omitted,
@@ -168,6 +252,17 @@ def _ref(value: Mapping[str, Any]) -> dict[str, Any]:
                         kind=str(value.get("kind") or "report"), parser=str(value.get("parser") or "unknown-parser"),
                         parser_version=str(value.get("parser_version") or "unknown"),
                         source_size_bytes=value.get("source_size_bytes"))
+
+def _report_ref(report: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Build a provenance ref only when the RunEvidenceIR report is attributable."""
+    digest = str(report.get("source_sha256") or "")
+    artifact_id = str(report.get("source_artifact_id") or "")
+    if not artifact_id or len(digest) != 64:
+        return None
+    return artifact_ref(
+        artifact_id=artifact_id, sha256=digest, kind="report",
+        parser=str(report.get("parser") or "run-evidence-report"),
+        parser_version="v1", source_size_bytes=report.get("source_size_bytes"))
 
 def _timing_point(value: Mapping[str, Any]) -> dict[str, Any]:
     return {"instance": _optional_text(value.get("instance")), "pin": _optional_text(value.get("pin")),

@@ -83,8 +83,7 @@
             <button data-route="backend" data-backend-target="3d"><span class="f-icon">⬢</span>3D IC</button>
           </div>
           <div class="feature-group"><p data-i18n="overview.group.optimize">优化</p>
-            <button data-route="backend" data-backend-target="2d" data-flow-focus="campaign"><span class="f-icon">▥</span>批量并行</button>
-            <button data-route="evolution" data-focus="agent"><span class="f-icon">◎</span>Agent 智能调参</button>
+            <button data-route="backend" data-backend-target="2d"><span class="f-icon">◎</span>Agent 自主 BO/GP 优化</button>
           </div>
           <div class="feature-group"><p data-i18n="overview.group.results">查看与学习</p>
             <button data-route="projects"><span class="f-icon">▦</span>项目与结果</button>
@@ -112,7 +111,7 @@
             </article>
             <article class="tutorial-card">
               <span class="tutorial-num">3</span>
-              <div><b>优化与批量实验</b><p>批量并行自动搜索参数组合；Agent 智能调参结合历史经验给出下一轮建议，人工确认后执行。</p></div>
+              <div><b>自主优化闭环</b><p>Agent 自动重复 baseline、用 BO/GP 搜索参数组合、验证每轮结果；连续三轮停滞后自动诊断并沉淀证据。</p></div>
               <button class="text-link" data-route="evolution" data-focus="agent">打开优化功能 →</button>
             </article>
             <article class="tutorial-card">
@@ -173,28 +172,14 @@
             <div class="feedback-loop"><span>Evaluation evidence returns to the agent</span><i>↺</i><span>Repeat until done or the step budget is reached</span></div>
           </section>
 
-          <div class="rtlscout-setup">
-            <section class="panel experiment-panel">
-              <div class="module-head"><div title="The default path automatically makes a separately attributed testbench. Existing project testbenches may still be imported below."><b>1. Configure the automatic experiment</b><span>Choose the objective and work budget; the platform creates verification.</span></div></div>
-              <div class="experiment-fields">
-                <label>Entry mode<select id="rtlscoutMode"><option value="specir">Frozen SpecIR only</option></select></label>
-                <label>Optional imported testbench<textarea id="rtlscoutTestbench" rows="4" placeholder="Optional: existing project testbench or reference model"></textarea><button class="button outline-blue" type="button" id="draftTestbench">Preview verification-agent draft</button><small>Leave empty for the default automatic dual-agent flow. Use this field only to import an existing oracle.</small></label>
-                <label>Imported-oracle source<select id="rtlscoutOracleOrigin"><option value="user_authored">User authored</option><option value="project_existing">Existing project testbench</option><option value="reference_model">Reference model</option><option value="approved_generated">Previously reviewed AI draft</option></select></label><label>Imported-oracle owner<input id="rtlscoutOracleReviewer" placeholder="Optional unless importing testbench"></label>
-                <label>Cost objective<select id="rtlscoutCost"><option value="transistors">Transistor count · Yosys + ABC</option><option value="yosys_cells">Cell count · Yosys</option><option value="yosys_wires">Wire count · Yosys</option></select></label>
-                <label>Maximum agent steps<input id="rtlscoutSteps" type="number" min="1" max="8" value="3"></label>
-              </div>
-              <p class="inline-note" id="rtlscoutModeNote">Submit only after SpecIR and its independent testbench oracle are frozen.</p>
-            </section>
-
-            <section class="panel provider-panel" id="providerConfiguration">
-              <div class="module-head"><div title="The internal evaluation service uses the platform-managed Codex model. Users do not supply credentials during the v2.0 internal-test phase."><b>2. Platform model</b><span>Codex is managed by this platform; no user API key is accepted.</span></div><small id="providerState">Checking service…</small></div>
-              <div class="provider-action"><p id="providerHint">The model identity and credentials are held by the server. The browser submits only the reviewed SpecIR and frozen oracle.</p></div>
-            </section>
-          </div>
+          <section class="panel experiment-panel">
+            <div class="module-head"><div title="The Verification Agent and RTLScout have separate roles and server-owned policies."><b>Automatic policy</b><span>The platform owns the model, candidate budget, cost gate, revision budget, and verification threshold.</span></div><small id="modelServiceState">Checking service…</small></div>
+            <div class="field-note" id="rtlscoutModeNote"><b>Independent verification is automatic.</b> The Verification Agent derives and freezes a self-checking testbench from SpecIR. RTLScout can read the frozen test but cannot edit it or mark itself correct. Weak tests are revised from mutation evidence within a bounded loop. No API key or expert knob is requested from the user.</div>
+          </section>
 
           <section class="panel rtlscout-launch">
-            <div title="RTLScout-v2 is submitted from a frozen SpecIR lineage."><small>3. Submit from SpecIR</small><b id="rtlscoutLaunchSummary">Freeze specification, then run the automatic dual-agent flow</b><span>No benchmark-only submission exists in v2.</span></div>
-            <button class="button primary" id="runRtlscout">Run automatic RTLScout-v2 <span>→</span></button>
+            <div title="RTLScout-v2 is submitted from a frozen SpecIR lineage."><small>Submit from SpecIR</small><b id="rtlscoutLaunchSummary">Freeze specification, then run the automatic dual-agent flow</b><span>No benchmark-only or direct-LLM submission exists in v2.</span></div>
+            <button class="button primary" id="runRtlscout">Run verified RTLScout-to-baseline flow <span>→</span></button>
           </section>
           <p class="message rtlscout-message" id="rtlscoutMessage" aria-live="polite"></p>
 
@@ -215,7 +200,7 @@
       <div class="workspace-head workspace-wrap"><p class="workspace-kicker" data-i18n="backend.kicker">Interactive implementation workspace</p><h1 data-i18n="backend.title">Backend Implementation</h1><p data-i18n="backend.subtitle">Configure RTL-to-GDS, follow each physical-design stage, and inspect layout and QoR evidence.</p><label class="global-design global-design-inline" title="选择设计后，各功能直接对它生效"><span>当前设计</span><select id="globalDesign"><option value="">未选择</option></select></label></div>
       <nav class="workspace-switcher workspace-wrap" aria-label="Design workspace"><button data-route="frontend"><b data-i18n="switch.frontend">Frontend Design</b></button><button class="active" data-route="backend"><b data-i18n="switch.backend">Backend Implementation</b></button><button data-route="projects"><b data-i18n="switch.results">Run Results</b></button></nav>
       <div class="backend-mode-switch workspace-wrap" role="tablist" aria-label="Implementation mode">
-        <button class="active" role="tab" data-backend-mode="2d"><b>2D Design</b><small>RTL → GDS · baseline flow</small></button>
+        <button class="active" role="tab" data-backend-mode="2d"><b>2D Design</b><small>RTL → GDS · autonomous BO/GP loop</small></button>
         <button role="tab" data-backend-mode="3d"><b>3D IC</b><small>TaiWei Pin-3D · two-tier</small></button>
       </div>
       <div class="workspace-stack workspace-wrap" id="backend-pane-2d">
@@ -225,13 +210,13 @@
         </section>
 
         <section class="task-panel">
-          <header class="task-panel-head"><span>②</span><div><b data-i18n="backend.config.title">Configure implementation</b><small data-i18n="backend.config.subtitle">Clock, floorplan, target stage, and optimization policy.</small></div></header>
-          <div class="task-panel-body"><div class="backend-config-grid"><label><span data-i18n="backend.clock">Clock port</span><input id="flowClock" value="clk"></label><label><span data-i18n="backend.period">Clock period · ns</span><input id="flowPeriod" type="number" value="10" min="0.01" step="0.1"></label><label><span data-i18n="backend.platform">PDK / platform</span><select id="flowPdk"><option value="nangate45">Nangate45 · OpenROAD</option><option value="sky130hd">Sky130HD · OpenROAD</option><option value="sky130hs">Sky130HS · OpenROAD</option><option value="asap7">ASAP7 · OpenROAD</option><option value="gf180">GF180 · OpenROAD</option></select></label><label><span data-i18n="backend.util">Core utilization · %</span><input id="flowUtil" type="number" value="30" min="1" max="99"></label><label><span data-i18n="backend.density">Placement density</span><input id="flowDensity" type="number" value="0.55" min="0.01" max="1" step="0.01"></label><label><span data-i18n="backend.target">Target stage</span><select id="flowTarget"><option value="finish">Finish · GDS</option><option value="route">Routing</option><option value="cts">Clock tree</option><option value="place">Placement</option><option value="floorplan">Floorplan</option><option value="synth">Synthesis</option></select></label></div><fieldset class="objective-options"><legend data-i18n="backend.objective">Optimization objective</legend><label><input type="radio" name="flowObjective" value="balanced" checked><span data-i18n="backend.objective.balanced">Balanced</span></label><label><input type="radio" name="flowObjective" value="timing"><span data-i18n="backend.objective.timing">Timing first</span></label><label><input type="radio" name="flowObjective" value="area"><span data-i18n="backend.objective.area">Area first</span></label><label><input type="radio" name="flowObjective" value="power"><span data-i18n="backend.objective.power">Power first</span></label></fieldset><div class="flow-mode"><span class="flow-mode-label" data-i18n="backend.mode">Flow mode</span><div class="flow-mode-buttons"><button type="button" class="flow-mode-btn active" data-flow-mode="baseline" title="单任务：默认参数一键跑"><b>Baseline</b><small>单任务 · 一键跑</small></button><button type="button" class="flow-mode-btn" data-flow-mode="campaign" title="批量并行：相邻参数网格，并行执行后对比"><b>Batch 批量</b><small>相邻参数并行</small></button><button type="button" class="flow-mode-btn" data-flow-mode="agent" title="Agent 智能：读经验库，贝叶斯优化给建议，人审核后执行"><b>Agent 智能</b><small>优化建议 + 审核</small></button></div><small id="flowModeNote" class="flow-mode-note"></small></div><p class="field-note" id="flowModeNote">Baseline starts one design task. Batch modes create a bounded experiment plan for review and do not execute it automatically.</p></div>
+          <header class="task-panel-head"><span>②</span><div><b data-i18n="backend.config.title">Choose constraints and optimization goal</b><small data-i18n="backend.config.subtitle">The Agent owns baseline settings, coupled-parameter search, repetition count, and stopping policy.</small></div></header>
+          <div class="task-panel-body"><div class="backend-config-grid"><label><span data-i18n="backend.clock">Clock port</span><input id="flowClock" value="clk"></label><label><span data-i18n="backend.platform">PDK / platform</span><select id="flowPdk"><option value="nangate45">Nangate45 · OpenROAD</option><option value="sky130hd">Sky130HD · OpenROAD</option><option value="sky130hs">Sky130HS · OpenROAD</option><option value="asap7">ASAP7 · OpenROAD</option><option value="gf180">GF180 · OpenROAD</option></select></label></div><fieldset class="objective-options"><legend data-i18n="backend.objective">Optimization objective</legend><label><input type="radio" name="flowObjective" value="balanced" checked><span data-i18n="backend.objective.balanced">Balanced</span></label><label><input type="radio" name="flowObjective" value="timing"><span data-i18n="backend.objective.timing">Timing first</span></label><label><input type="radio" name="flowObjective" value="area"><span data-i18n="backend.objective.area">Area first</span></label><label><input type="radio" name="flowObjective" value="power"><span data-i18n="backend.objective.power">Power first</span></label></fieldset><p class="field-note"><b>This is not a manual parameter panel.</b> The server runs the default configuration three times as round 0, then BO/GP chooses coupled utilization and placement-density combinations. The specification clock is frozen for every arm so timing cannot be “improved” by relaxing the requirement. Every candidate is measured three times. Three consecutive rounds below the registered improvement threshold trigger stage diagnosis.</p></div>
         </section>
 
         <section class="task-panel">
           <header class="task-panel-head result-panel-head"><span>③</span><div><b data-i18n="backend.run.title">Run RTL-to-GDS and monitor stages</b><small data-i18n="backend.run.subtitle">Follow progress, recovery, metrics, and generated files for the selected design.</small></div><div class="worker-indicator" id="workerIndicator"><i></i><span id="workerState">Checking service…</span></div><label><span data-i18n="backend.run.select">Design task</span><select id="runSelect"><option value="">Choose a design task</option></select></label></header>
-          <div class="run-controls"><button class="button primary" id="submitFlow" data-i18n="backend.run.action">Start RTL-to-GDS</button><button class="button" type="button" data-route="projects" data-i18n="backend.run.compare">Compare recorded runs</button></div><p class="message" id="flowMessage" aria-live="polite"></p><div class="batch-plan-review" id="batchPlanReview" hidden><div id="batchPlanCandidates"></div><button class="button primary" id="approveBatchPlan">Approve and start selected plan</button></div>
+          <div class="run-controls"><button class="button primary" id="submitFlow" data-i18n="backend.run.action">Start autonomous BO/GP optimization</button><button class="button" type="button" data-route="projects" data-i18n="backend.run.compare">Compare recorded runs</button></div><p class="message" id="flowMessage" aria-live="polite"></p>
           <div class="run-heading" id="runHeading"><div><b data-i18n="backend.run.empty">No run selected</b><span data-i18n="backend.run.empty.help">Queued, active, and completed records appear here.</span></div></div>
           <div class="flow-progress"><div><span id="flowProgressBar"></span></div><b id="flowProgressText">0 / 6</b></div>
           <div class="stage-rail" id="stageRail"></div>
@@ -261,22 +246,22 @@
     </section>
 
     <section class="page" id="page-evolution">
-      <div class="page-head wrap"><div><p class="eyebrow">Self-evolution</p><h1>Learning from<br>verified design experience.</h1></div><p>The platform combines traceable knowledge with observed design results, proposes better decisions, keeps people in control, and measures the outcome of every accepted action.</p></div>
+      <div class="page-head wrap"><div><p class="eyebrow">Self-evolution</p><h1>Learning from<br>verified design experience.</h1></div><p>The autonomous BO/GP loop measures repeated OpenROAD runs, diagnoses three-round stalls, and stores both improvements and failures as traceable evidence for later runs.</p></div>
       <section class="evolution-hero wrap">
         <div class="section-heading"><p class="eyebrow">Learning workflow</p><h2>How experience becomes a better next run.</h2></div>
         <div class="evolution-flow" id="learningLoop">
           <div class="flow-source"><article><small>Knowledge</small><b>Research &amp; RAG</b><p>Audited papers, methods, and benchmarks</p></article><article><small>Experience</small><b>Verified observations</b><p>Metrics, artifacts, and failure evidence from completed design work</p></article></div>
           <div class="flow-merge">→</div>
-          <article class="flow-model"><small>Models</small><b>GP · BO · RL shadow policy</b><p>Prediction, acquisition, and policy advice with confidence</p></article><div class="flow-merge">→</div>
-          <article class="flow-human"><small>Decision</small><b>Human review</b><p>Approve, reject, or refine a recommendation</p></article><div class="flow-merge">→</div>
-          <article class="flow-runtime"><small>Action</small><b>Reviewed experiment</b><p>Execute, observe, verify, and return evidence</p></article>
+          <article class="flow-model"><small>Search</small><b>GP surrogate · BO acquisition</b><p>Propose a coupled parameter vector from measured evidence and uncertainty</p></article><div class="flow-merge">→</div>
+          <article class="flow-human"><small>Policy</small><b>Hard safety gate</b><p>Enforce server-owned parameter allowlists, run budgets, PPA constraints, and stopping rules</p></article><div class="flow-merge">→</div>
+          <article class="flow-runtime"><small>Action</small><b>Autonomous experiment</b><p>Execute repeated measurements, verify, and return evidence</p></article>
         </div>
-        <div class="evolution-metrics"><div><b id="evoSources">—</b><span>Knowledge sources</span></div><div><b id="evoBenchmarks">—</b><span>Benchmarks</span></div><div><b id="evoObservations">—</b><span>Observed samples</span></div><div><b id="evoStudies">—</b><span>BO / GP studies</span></div><div><b id="evoRecommendations">—</b><span>Recommendations</span></div></div>
+        <div class="evolution-metrics"><div><b id="evoSources">—</b><span>Knowledge sources</span></div><div><b id="evoBenchmarks">—</b><span>Benchmarks</span></div><div><b id="evoObservations">—</b><span>Observed samples</span></div><div><b id="evoStudies">—</b><span>BO / GP studies</span></div><div><b id="evoDecisions">—</b><span>Closed-loop records</span></div></div>
       </section>
       <section class="evolution-content">
         <div class="wrap">
-          <div class="section-heading"><p class="eyebrow">Current learning record</p><h2>Recommendations remain inspectable and controllable.</h2><div class="evolution-toolbar"><button class="button primary" id="runAutoOptimize">⚙ 一键运行优化研究（自动生成建议）</button></div></div>
-          <div id="recommendationList" class="recommendation-list"></div><div id="agentTraceRec" class="agent-trace-container"></div><p id="evolutionActionMessage" class="message"></p>
+          <div class="section-heading"><p class="eyebrow">Current learning record</p><h2>Closed-loop decisions remain inspectable and traceable.</h2><div class="evolution-toolbar"><button class="button primary" data-route="backend" data-backend-target="2d">打开唯一 BO/GP 优化入口 →</button></div></div>
+          <div id="closedLoopDecisionList" class="data-list"></div>
           <div class="supporting-records">
             <details><summary><span>Knowledge &amp; benchmarks</span><small>Public provenance</small></summary><div id="knowledgeList" class="data-list"></div></details>
             <details><summary><span>BO / Gaussian Process studies</span><small>Measured and predicted values</small></summary><div id="studyList" class="data-list"></div></details>

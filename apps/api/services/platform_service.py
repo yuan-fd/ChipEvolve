@@ -21,16 +21,16 @@ NAVIGATION = (
 
 
 class PlatformReadModel:
-    def __init__(self, *, designs, runtime_store, campaign_store,
-                 optimization_store, knowledge_registry, recommendation_store,
-                 tenant_learning_store, extension_catalog: dict[str, Any]):
+    def __init__(self, *, designs, runtime_store,
+                 optimization_store, knowledge_registry,
+                 tenant_learning_store, pipeline_checkpoints,
+                 extension_catalog: dict[str, Any]):
         self.designs = designs
         self.runtime_store = runtime_store
-        self.campaign_store = campaign_store
         self.optimization_store = optimization_store
         self.knowledge_registry = knowledge_registry
-        self.recommendation_store = recommendation_store
         self.tenant_learning_store = tenant_learning_store
+        self.pipeline_checkpoints = pipeline_checkpoints
         self.extension_catalog = extension_catalog
 
     def snapshot(self, *, owner_id: str | None = None, include_legacy: bool = False,
@@ -46,8 +46,8 @@ class PlatformReadModel:
                     "Natural-language Spec-to-RTL-to-GDS design",
                     "Natural-language interaction with EDA workflows",
                     "Runtime-governed RTL-to-GDS implementation",
-                    "Stage-aware Flow-Agent campaigns, diagnosis, and repair",
-                    "Evidence-backed learning with human-controlled recommendations",
+                    "Repeated-baseline and coupled-parameter BO/GP optimization",
+                    "Three-stall diagnosis and automatic evidence-backed learning",
                     "Optional 3D IC, device/EM/SPICE, and source-code evolution",
                 ],
             },
@@ -74,7 +74,6 @@ class PlatformReadModel:
             "counts": {
                 "designs": 0 if public else results["counts"]["designs"],
                 "runtime_runs": 0 if public else results["counts"]["runtime_runs"],
-                "campaigns": 0 if public else results["counts"]["campaigns"],
                 "knowledge_sources": evolution["counts"]["knowledge_sources"],
                 "optimization_studies": 0 if public else evolution["counts"]["optimization_studies"],
             },
@@ -89,9 +88,6 @@ class PlatformReadModel:
         runtime_runs = [run for run in all_runs if _owned_task(
             run.task_spec, owner_id, include_legacy=include_legacy
         )][:limit]
-        campaigns = [item for item in self.campaign_store.list()
-                     if _owned_campaign(self.campaign_store, item["campaign_id"],
-                                        owner_id, include_legacy=include_legacy)]
         records = []
         design_names = {item["id"]: item.get("module") or item["id"] for item in designs}
         for design in designs:
@@ -132,7 +128,6 @@ class PlatformReadModel:
             "counts": {
                 "designs": len(designs),
                 "runtime_runs": len(runtime_runs),
-                "campaigns": len(campaigns),
             },
             "authority": "Runtime/database projection; no browser-owned process state",
         }
@@ -145,11 +140,11 @@ class PlatformReadModel:
         if owner_id and owner_id != "local-user":
             studies = [item for item in self.optimization_store.list()
                        if item.get("design_id") in design_ids]
-            recommendations = self.recommendation_store.list(owner_id)
         else:
             # internal no-auth mode: shared corpus across users
             studies = self.optimization_store.list()
-            recommendations = self.recommendation_store.list_all()
+        checkpoints = self.pipeline_checkpoints.list(
+            pipeline_kind="bo-gp-closed-loop-v2", owner_id=owner_id)
         sources = self.knowledge_registry.list_sources()
         benchmarks = self.knowledge_registry.list_benchmarks()
         # Internal no-auth mode uses a fixed "local-user" session; show the
@@ -164,25 +159,25 @@ class PlatformReadModel:
                 "benchmarks": len(benchmarks),
                 "optimization_studies": len(studies),
                 "observed_samples": len(observations),
-                "recommendations": len(recommendations),
+                "closed_loop_decisions": len(checkpoints),
             },
             "knowledge_sources": sources,
             "benchmarks": benchmarks,
             "studies": studies,
-            "recommendations": recommendations,
+            "closed_loop_decisions": checkpoints,
             "research_methods": research_method_catalog()["methods"],
             "learning_loop": [
                 "Retrieve traceable evidence",
-                "Propose with BO / GP or RL shadow policy",
-                "Ask for human decision when required",
+                "Fit a GP surrogate to measured repeated runs",
+                "Use BO to propose one coupled allowlisted parameter vector",
                 "Execute only through Workflow Runtime",
                 "Verify artifacts and collect observed metrics",
                 "Update the evidence store without rewriting history",
             ],
             "policy": {
                 "predictions_are_observations": False,
-                "rl_default": "shadow advice",
-                "automatic_execution": "bounded by confidence, context, budget, and opt-in",
+                "product_entry": "autonomous BO/GP only",
+                "automatic_execution": "bounded by server-owned context, parameter, and run budgets",
             },
         }
 
@@ -214,14 +209,3 @@ def _owned_task(task: Any, owner_id: str | None, *, include_legacy: bool) -> boo
         return True
     recorded = str((task.labels or {}).get("owner_id") or "")
     return recorded == owner_id or (include_legacy and not recorded)
-
-
-def _owned_campaign(store: Any, campaign_id: str, owner_id: str | None,
-                    *, include_legacy: bool) -> bool:
-    if owner_id is None:
-        return True
-    members = store.members(campaign_id)
-    if not members:
-        return include_legacy
-    return any(_owned_task(item.task_spec, owner_id, include_legacy=include_legacy)
-               for item in members)

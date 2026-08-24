@@ -109,6 +109,34 @@ def test_compile_only_rtl_can_never_be_promoted_to_orfs(tmp_path, monkeypatch):
         state.promote_verified_rtl_to_orfs(spec.spec_id)
 
 
+def test_automatic_verifier_oracle_cannot_bypass_mutation_gate(tmp_path, monkeypatch):
+    state = ApiState(tmp_path / "platform.db", tmp_path / "uploads", tmp_path / "orfs",
+                     design_root=tmp_path / "designs", legacy_root=tmp_path / "legacy",
+                     yosys_bin=tmp_path / "missing-yosys", runtime_db_path=tmp_path / "runtime.db")
+    spec = _spec(); package = VerificationPackage("verify-auto-v1", spec.spec_id, ("lint",))
+    candidate = RTLCandidate(
+        "candidate-auto-1", spec.spec_id, package.verification_id,
+        "artifact:rtl-auto-1", "rtlscout-v2",
+        provenance={"oracle_provenance": {
+            "origin": "independent_verifier_agent",
+            "reviewed_by": "verification-agent-v2/codex-cli",
+        }},
+    )
+    state.rtl_frontend.add_spec(spec); state.rtl_frontend.add_verification_package(package)
+    state.rtl_frontend.add_candidate(candidate)
+    monkeypatch.setattr(state, "get_rtl_lineage",
+                        lambda *args, **kwargs: state.rtl_frontend.lineage(spec.spec_id))
+    for check_id, kind in (("compile-auto", "compile_lint"), ("sim-auto", "simulation")):
+        state.rtl_frontend.add_check(
+            check_id=check_id, candidate_id=candidate.candidate_id, check_kind=kind,
+            status="passed", evidence_ref=f"artifact:{check_id}",
+            evidence_sha256=hashlib.sha256(check_id.encode()).hexdigest(),
+            detail={"run_id": f"run-{check_id}"},
+        )
+    with pytest.raises(ValueError, match="generated verification oracle.*mutation-quality"):
+        state.promote_verified_rtl_to_orfs(spec.spec_id)
+
+
 def test_terminal_rtl_sim_run_is_written_back_as_functional_gate(tmp_path):
     state = ApiState(tmp_path / "platform.db", tmp_path / "uploads", tmp_path / "orfs",
                      design_root=tmp_path / "designs", legacy_root=tmp_path / "legacy",

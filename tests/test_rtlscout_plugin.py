@@ -113,21 +113,15 @@ def test_rtlscout_adapter_registers_validated_rtl_and_metrics(tmp_path):
     }
 
 
-def test_rtlscout_real_provider_without_injected_credential_fails_closed(tmp_path):
-    plugin = manifest(tmp_path)
-    task = build_rtlscout_task(
-        project_id="p4", design_id="adder", benchmark="simple_adder",
-        model="anthropic:example", max_steps=3, timeout_seconds=30,
-    )
-    store = RuntimeStore(tmp_path / "runtime.db")
-    runtime = WorkflowRuntime(
-        store, PluginRegistry([plugin]), workspace_root=tmp_path / "attempts",
-    )
-    run = runtime.submit(task)
-    completed = runtime.execute_once(run.run_id)
-    attempt = runtime.describe(run.run_id)["stages"][0]["attempts"][0]
-    assert completed.status is RuntimeStatus.FAILED
-    assert attempt["failure"]["category"] == "credential_unavailable"
+@pytest.mark.parametrize("model", [
+    "anthropic:example", "deepinfra:example", "openrouter:example",
+])
+def test_rtlscout_deletes_external_api_key_providers(model):
+    with pytest.raises(ValueError, match="Unsupported"):
+        build_rtlscout_task(
+            project_id="p4", design_id="adder", benchmark="simple_adder",
+            model=model, max_steps=3, timeout_seconds=30,
+        )
 
 
 def fake_orfs_toolchain(tmp_path: Path) -> ToolchainConfig:

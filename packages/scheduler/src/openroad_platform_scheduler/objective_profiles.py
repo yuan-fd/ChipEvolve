@@ -29,9 +29,13 @@ def profile_hard_constraints(name: str) -> tuple[dict[str, Any], ...]:
     )
 
 def profile_grid(parameters: dict[str, Any]) -> dict[str, list[float]]:
-    """Bounded 2^3 factorial seed so interaction evidence can be collected."""
-    util=float(parameters.get("core_utilization_pct",30)); density=float(parameters.get("place_density",.55)); period=float(parameters.get("clock_period_ns",10))
-    return {"core_utilization_pct":[max(1.,util-5),min(99.,util+5)],"place_density":[max(.01,density-.05),min(1.,density+.05)],"clock_period_ns":[max(.01,period*.9),period*1.1]}
+    """Research-only 2x2 physical-knob grid with the design clock frozen."""
+    util = float(parameters.get("core_utilization_pct", 30))
+    density = float(parameters.get("place_density", .55))
+    return {
+        "core_utilization_pct": [max(1., util - 5), min(99., util + 5)],
+        "place_density": [max(.01, density - .05), min(1., density + .05)],
+    }
 
 def _item(key: str, weight: float) -> dict[str, Any]:
     metric,direction=METRICS[key]; return {"metric":metric,"direction":direction,"weight":weight}

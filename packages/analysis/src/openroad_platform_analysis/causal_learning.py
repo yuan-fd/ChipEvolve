@@ -104,6 +104,6 @@ def teacher_context_from_holdout(source: Mapping[str, Any], holdout: Mapping[str
                                "metric": metric, "source_interaction": float(source_effect),
                                "holdout_interaction": float(holdout_effect)},
         "planning_guidance": planning_guidance,
-        "required_next_gate": "human-reviewed third-design confirmation",
+        "required_next_gate": "pre-registered third-design confirmation",
         "execution_allowed": False,
     }

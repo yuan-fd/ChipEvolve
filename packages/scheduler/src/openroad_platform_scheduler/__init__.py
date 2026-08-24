@@ -26,10 +26,7 @@ from .evolution_campaign import EvolutionCampaign, EvolutionCampaignController, 
 from .objective_profiles import objective_profile, profile_grid, profile_hard_constraints
 from .patch_registry import PatchRegistry
 from .four_gate import FourGateController
-from .model_provider import (
-    InMemorySecretBroker, OpenAICompatibleSpecProvider, ProviderProfile,
-    ProviderProfileStore,
-)
+from .pipeline_checkpoint import PipelineCheckpointStore
 
 __all__ = [
     "Job", "JobStore", "Worker", "RuntimeAttempt", "RuntimeRun",
@@ -48,6 +45,5 @@ __all__ = [
     "objective_profile", "profile_grid",
     "PatchRegistry",
     "FourGateController",
-    "InMemorySecretBroker", "OpenAICompatibleSpecProvider", "ProviderProfile",
-    "ProviderProfileStore",
+    "PipelineCheckpointStore",
 ]

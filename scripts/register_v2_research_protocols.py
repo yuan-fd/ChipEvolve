@@ -3,6 +3,13 @@
 from __future__ import annotations
 import argparse
 from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+for source in (ROOT, *sorted((ROOT / "packages").glob("*/src"))):
+    if str(source) not in sys.path:
+        sys.path.insert(0, str(source))
+
 from openroad_platform_analysis import PaperProtocolStore
 from openroad_platform_analysis.v2_research import v2_research_protocols
 

@@ -26,33 +26,7 @@ def make_state(tmp_path: Path) -> ApiState:
         legacy_root=tmp_path / "legacy",
         yosys_bin=Path("/missing/yosys"),
         runtime_db_path=tmp_path / "runtime.db",
-        campaign_db_path=tmp_path / "campaign.db",
     )
-
-
-def test_web_submission_is_persisted_and_can_be_cancelled(tmp_path):
-    state = make_state(tmp_path)
-
-    job = state.submit_run({
-        "filename": "counter.v",
-        "rtl_source": "module counter(input clk, output reg q); always @(posedge clk) q <= ~q; endmodule\n",
-        "top": "counter",
-        "clock": "clk",
-        "target_stage": "route",
-    })
-
-    assert job["status"] == "queued"
-    assert Path(job["request"]["rtl_path"]).read_text().startswith("module counter")
-    assert state.get_run(job["id"])["events"][0]["kind"] == "submitted"
-    assert state.cancel_run(job["id"])["status"] == "cancelled"
-
-
-@pytest.mark.parametrize("filename", ["../escape.v", "design.txt", "bad name.v"])
-def test_web_submission_rejects_unsafe_filename(tmp_path, filename):
-    state = make_state(tmp_path)
-
-    with pytest.raises(ValueError, match="filename"):
-        state.submit_run({"filename": filename, "rtl_source": "module top; endmodule"})
 
 
 def test_health_distinguishes_web_and_execution_readiness(tmp_path):
@@ -65,7 +39,9 @@ def test_health_distinguishes_web_and_execution_readiness(tmp_path):
     assert health["orfs_ready"] is False
     assert health["execution_ready"] is False
     assert health["runtime_worker_ready"] is False
-    assert health["byok_input_enabled"] is False
+    # BYOK is not a product capability in the internal managed-model service;
+    # absence is stronger than a permanently-false compatibility flag.
+    assert "byok_input_enabled" not in health
     assert state.patch_registry.path.is_file()
 
 
@@ -82,72 +58,8 @@ def test_health_reports_only_a_fresh_live_runtime_worker(tmp_path):
     assert health["runtime_worker_status"] == "idle"
 
 
-def test_four_gate_writes_are_scoped_to_the_baseline_owner(tmp_path):
-    """An experiment identifier must not become a cross-tenant write capability."""
-    state = make_state(tmp_path)
-    baseline = TaskSpec(
-        "owned-baseline", "project", "design", plugin_id="orfs",
-        parameters={"core_utilization_pct": 10.0}, labels={"owner_id": "alice"},
-    )
-    experiment_id, run_id = state.four_gate.begin_baseline(baseline, producer="alice")
-    with pytest.raises(KeyError):
-        state.observe_four_gate_run(experiment_id, run_id, owner_id="bob")
-    with pytest.raises(KeyError):
-        state.propose_four_gate_action(
-            experiment_id, {"observation_node_id": "missing", "proposal": {}}, owner_id="bob"
-        )
 
 
-def test_four_gate_decision_indexes_runtime_facts_but_not_reviewer_claims(tmp_path):
-    state = make_state(tmp_path)
-    task = TaskSpec(
-        "learning-baseline", "project", "gcd", plugin_id="orfs",
-        inputs={"rtl": {"sha256": "a" * 64}},
-        parameters={"platform": "nangate45", "target_stage": "finish",
-                    "core_utilization_pct": 10.0},
-        labels={"owner_id": "alice"},
-    )
-    experiment_id, baseline_run = state.four_gate.begin_baseline(task, producer="alice")
-
-    def finish(run_id: str) -> None:
-        stage = state.runtime_store.list_stages(run_id)[0]
-        attempt = state.runtime_store.start_attempt(
-            stage.stage_run_id, worker_id="test", workspace=str(tmp_path / run_id), lease_seconds=30,
-        )
-        state.runtime_store.finish_attempt(attempt.attempt_id, RuntimeStatus.SUCCEEDED, exit_code=0)
-
-    finish(baseline_run)
-    observed = state.observe_four_gate_run(experiment_id, baseline_run, owner_id="alice")["observation_node_id"]
-    proposal = state.propose_four_gate_action(experiment_id, {
-        "observation_node_id": observed, "proposal": {"source": "test"},
-        "evidence_refs": [f"run:{baseline_run}"],
-    }, owner_id="alice")["proposal_node_id"]
-    action = ActionSpec(
-        "learning-action", experiment_id, proposal, ActionKind.PARAMETER,
-        "test the declared parameter", "collect a measured result", "one run", "revert parameter",
-        {"values": {"core_utilization_pct": 12.0}}, (f"run:{baseline_run}",), "alice",
-    )
-    submitted = state.review_four_gate_action({"action": action.to_dict()}, owner_id="alice")
-    candidate_run = submitted["run"]["run"]["run_id"]
-    finish(candidate_run)
-    measurement = state.measure_four_gate_attempt(
-        experiment_id, submitted["attempt_node_id"], owner_id="alice",
-    )["measurement_node_id"]
-    decided = state.decide_four_gate_measurement(experiment_id, measurement, {
-        "outcome": "no_improvement", "rationale": "The measured run did not improve the objective.",
-        "memory_kind": "episodic", "evidence_refs": [f"run:{candidate_run}"],
-    }, owner_id="alice")
-
-    assert decided["learning"]["indexed"] is True
-    fact_result = state.retrieve_runtime_learning(candidate_run, "Runtime terminal", owner_id="alice")
-    decision_result = state.retrieve_runtime_learning(candidate_run, "measured objective", owner_id="alice")
-    assert fact_result["bundle"]["records"][0]["knowledge_type"] == "observed_fact"
-    assert fact_result["bundle"]["records"][0]["eligible_for_proposal"] is True
-    assert decision_result["bundle"]["records"][0]["knowledge_type"] == "failed_attempt"
-    assert decision_result["bundle"]["records"][0]["eligible_for_proposal"] is False
-    assert fact_result["execution_allowed"] is False
-    with pytest.raises(KeyError):
-        state.retrieve_runtime_learning(candidate_run, "measured objective", owner_id="bob")
 
 
 def test_api_disables_browser_supplied_provider_credentials_in_internal_mode(tmp_path):
@@ -160,23 +72,9 @@ def test_api_disables_browser_supplied_provider_credentials_in_internal_mode(tmp
     assert not hasattr(state, "revoke_provider_secret")
 
 
-def test_runtime_and_campaign_queries_use_authoritative_store(tmp_path):
-    state = make_state(tmp_path)
-    task = TaskSpec(task_id="p6-api-task", project_id="p6", design_id="api",
-                    plugin_id="echo")
-    run, _ = state.runtime_store.submit_plugin_run(task, plugin_version="1.0.0")
-    campaign_id = state.campaign_store.create("api-campaign", [task])
-    member = state.campaign_store.members(campaign_id)[0]
-    state.campaign_store.bind(member.member_id, run.run_id)
-
-    assert state.list_runtime_runs()["runs"][0]["run_id"] == run.run_id
-    campaign = state.get_campaign(campaign_id)
-    assert campaign["members"][0]["status"] == "queued"
-    cancelled = state.cancel_campaign(campaign_id)
-    assert cancelled["members"][0]["status"] == "cancelled"
 
 
-def test_optimization_api_keeps_prediction_and_observation_sources_explicit(tmp_path):
+def test_optimization_store_is_research_only_not_a_second_product_api(tmp_path):
     state = make_state(tmp_path)
     study = OptimizationStudy(
         study_id="web-study", design_id="gcd", context_fingerprint="a" * 64,
@@ -184,12 +82,14 @@ def test_optimization_api_keeps_prediction_and_observation_sources_explicit(tmp_
         objectives=(ObjectiveSpec("area_um2", "min"),), max_runs=8, seed=5,
     )
     state.optimization_store.create(study)
-    listed = state.list_optimization_studies()
-    assert listed["studies"][0]["study_id"] == "web-study"
-    detail = state.get_optimization_study("web-study")
+    listed = state.optimization_store.list()
+    assert listed[0]["study_id"] == "web-study"
+    detail = state.optimization_store.describe("web-study")
     assert detail["prediction_source"] == "predicted"
     assert detail["observation_source"] == "observed"
     assert detail["study"]["max_runs"] == 8
+    assert not hasattr(state, "list_optimization_studies")
+    assert not hasattr(state, "get_optimization_study")
 
 
 def test_taiwei_runtime_view_exposes_hashed_3d_evidence(tmp_path):
@@ -288,53 +188,6 @@ def test_runtime_view_exposes_verified_qor_report_and_readable_artifact_titles(t
     assert "analysis_report" not in state.get_runtime_run(run.run_id)
 
 
-def test_natural_language_api_returns_preview_without_submitting(tmp_path):
-    yosys = which("yosys")
-    if yosys is None:
-        pytest.skip("Yosys is not installed")
-    state = ApiState(
-        tmp_path / "platform.db", tmp_path / "uploads", tmp_path / "orfs",
-        design_root=tmp_path / "designs", legacy_root=tmp_path / "legacy",
-        yosys_bin=Path(yosys), runtime_db_path=tmp_path / "runtime.db",
-        campaign_db_path=tmp_path / "campaign.db",
-    )
-    design = state.designs.import_rtl(
-        filename="nl_top.v",
-        source="module nl_top(input a, output y); assign y = ~a; endmodule\n",
-    )
-    preview = state.compile_task_intent({
-        "design_id": design["id"],
-        "intent": "用 OpenROAD Nangate45 跑到 GDS，利用率 30%",
-    })
-    assert preview["execution_started"] is False
-    assert preview["task_spec"]["plugin_id"] == "orfs"
-    assert preview["task_spec"]["parameters"]["core_utilization_pct"] == 30.0
-    assert state.runtime_store.list_runs() == []
-
-    # v2 internal testing has one server-managed model authority.  The old
-    # browser-selectable deterministic provider must not silently survive as a
-    # second public RTL/spec path merely to support an offline test.
-    with pytest.raises(ValueError, match="platform-managed codex-cli"):
-        state.create_spec_session({
-            "design_id": design["id"], "provider": "deterministic",
-            "message": "用 OpenROAD 跑到 GDS，顶层 nl_top，利用率 25%",
-        })
-    assert state.runtime_store.list_runs() == []
-
-    campaign = state.create_stage_campaign({
-        "design_id": design["id"], "name": "api-grid",
-        "platform": "sky130hd",
-        "parameter_grid": {"core_utilization_pct": [20, 30]},
-        "max_parallel": 2, "stage_budgets": {"place": 120},
-        "objective_metric": "finish__timing__setup__ws",
-    })
-    assert len(campaign["members"]) == 2
-    assert campaign["stage_policy"]["stage_budgets"] == {"place": 120.0}
-    assert campaign["members"][0]["parameters"]["core_utilization_pct"] == 20
-    assert campaign["members"][0]["parameters"]["platform"] == "sky130hd"
-    started = state.submit_campaign(campaign["campaign_id"])
-    assert started["execution_started"] is True
-    assert len(started["run_ids"]) == 2
 
 
 def test_design_import_creates_netlist_schematic_and_analysis(tmp_path):
@@ -349,7 +202,6 @@ def test_design_import_creates_netlist_schematic_and_analysis(tmp_path):
         legacy_root=tmp_path / "legacy",
         yosys_bin=Path(yosys),
         runtime_db_path=tmp_path / "runtime.db",
-        campaign_db_path=tmp_path / "campaign.db",
     )
 
     design = state.designs.import_rtl(
@@ -372,7 +224,6 @@ def test_design_circuitops_export_is_rebuildable_and_read_only(tmp_path):
         tmp_path / "platform.db", tmp_path / "uploads", tmp_path / "orfs",
         design_root=tmp_path / "designs", legacy_root=tmp_path / "legacy",
         yosys_bin=Path(yosys), runtime_db_path=tmp_path / "runtime.db",
-        campaign_db_path=tmp_path / "campaign.db",
     )
     design = state.designs.import_rtl(
         filename="circuitops_top.v",
@@ -391,7 +242,6 @@ def test_design_example_catalog_spans_starter_and_advanced_designs(tmp_path):
         design_root=tmp_path / "designs", legacy_root=tmp_path / "legacy",
         yosys_bin=Path(yosys) if yosys else tmp_path / "missing-yosys",
         runtime_db_path=tmp_path / "runtime.db",
-        campaign_db_path=tmp_path / "campaign.db",
     )
     examples = state.designs.examples()
     assert {item["id"] for item in examples} >= {

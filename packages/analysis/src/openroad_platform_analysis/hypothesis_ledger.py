@@ -44,15 +44,18 @@ def reflection_hypothesis(*, claim: str, mechanism: str, context: Mapping[str, A
 def assess_hypothesis(hypothesis: Mapping[str, Any], *, intervention_report: Mapping[str, Any],
                       expected_direction: str) -> dict[str, Any]:
     """Assess one local experiment; it cannot promote a reusable rule."""
-    if expected_direction not in {"min", "max"}:
-        raise ValueError("direction must be min or max")
+    if expected_direction not in {"min", "max", "nonzero", "zero"}:
+        raise ValueError("direction must be min, max, nonzero, or zero")
     if hypothesis.get("status") not in {"draft", "tested", "supported"}:
         raise ValueError("hypothesis is not assessable")
     eligible = intervention_report.get("causal_eligible") is True
     effect = intervention_report.get("interaction_effect", intervention_report.get("effect"))
     if not eligible or isinstance(effect, bool) or not isinstance(effect, (int, float)):
         outcome, reason = "tested", "insufficient controlled intervention evidence"
-    elif (expected_direction == "min" and effect < 0) or (expected_direction == "max" and effect > 0):
+    elif ((expected_direction == "min" and effect < 0)
+          or (expected_direction == "max" and effect > 0)
+          or (expected_direction == "nonzero" and abs(float(effect)) > 1e-12)
+          or (expected_direction == "zero" and abs(float(effect)) <= 1e-12)):
         outcome, reason = "supported", "controlled local result matches predicted direction"
     else:
         outcome, reason = "refuted", "controlled local result contradicts predicted direction"
@@ -68,7 +71,7 @@ def promote_after_holdout(assessment: Mapping[str, Any], holdout: Mapping[str, A
     if holdout.get("eligible") is not True or holdout.get("outcome") != "validated":
         return {"promoted": False, "reason": "held-out design did not validate the effect", "execution_allowed": False}
     return {"promoted": True, "status": "validated", "scope": "two named designs under pinned context",
-            "required_next_gate": "third-design human-reviewed confirmation",
+            "required_next_gate": "pre-registered third-design confirmation",
             "execution_allowed": False}
 
 

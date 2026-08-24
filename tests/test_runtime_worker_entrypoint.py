@@ -16,7 +16,6 @@ def test_runtime_worker_once_advances_the_workflow_runtime_queue(tmp_path: Path)
         design_root=tmp_path / "designs", legacy_root=tmp_path / "legacy",
         yosys_bin=ROOT.parent / "bin" / "yosys",
         runtime_db_path=tmp_path / "runtime.db",
-        campaign_db_path=tmp_path / "campaign.db",
         optimization_db_path=tmp_path / "optimization.db",
     )
     submitted = state.submit_edacraft_smoke("edacode")
@@ -29,7 +28,6 @@ def test_runtime_worker_once_advances_the_workflow_runtime_queue(tmp_path: Path)
         "--design-root", str(tmp_path / "designs"),
         "--legacy-root", str(tmp_path / "legacy"),
         "--runtime-db", str(tmp_path / "runtime.db"),
-        "--campaign-db", str(tmp_path / "campaign.db"),
         "--optimization-db", str(tmp_path / "optimization.db"),
         "--orfs-root", str(tmp_path / "orfs"),
         "--heartbeat", str(tmp_path / "runtime-worker.heartbeat.json"),

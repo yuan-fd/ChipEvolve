@@ -274,6 +274,13 @@ class ORFSRunner:
 
     def _make_command(self, plan: ExecutionPlan, target: str) -> list[str]:
         workdir = Path(plan.workdir)
+        raw_cores = os.environ.get("OPENROAD_PLATFORM_ORFS_CORES", "16")
+        try:
+            cores = int(raw_cores)
+        except ValueError as exc:
+            raise ValueError("OPENROAD_PLATFORM_ORFS_CORES must be an integer") from exc
+        if not 1 <= cores <= 64:
+            raise ValueError("OPENROAD_PLATFORM_ORFS_CORES must be between 1 and 64")
         return [
             "make",
             f"DESIGN_CONFIG={plan.config_path}",
@@ -281,6 +288,7 @@ class ORFSRunner:
             f"WORK_HOME={workdir}",
             f"OPENROAD_EXE={self.openroad_bin}",
             f"YOSYS_EXE={self.yosys_bin}",
+            f"NUM_CORES={cores}",
             "EQUIVALENCE_CHECK=0",
             "LEC_CHECK=0",
             target,
@@ -369,6 +377,11 @@ class ORFSRunner:
             "1_synth.odb", "2_floorplan.odb", "3_place.odb", "4_cts.odb",
             "5_route.odb", "6_final.odb", "6_final.def", "6_final.v", "6_final.gds",
         ))
+        reports = (workdir / "reports" / plan.request.platform /
+                   plan.design / "base")
+        candidates.extend(reports / name for name in (
+            "6_finish.rpt", "5_route_drc.rpt", "synth_check.txt", "synth_stat.txt",
+        ))
         suffix_kinds = {
             ".v": ArtifactKind.NETLIST,
             ".odb": ArtifactKind.ODB,
@@ -376,10 +389,15 @@ class ORFSRunner:
             ".gds": ArtifactKind.GDS,
             ".log": ArtifactKind.LOG,
             ".json": ArtifactKind.REPORT,
+            ".rpt": ArtifactKind.REPORT,
+            ".txt": ArtifactKind.REPORT,
         }
         artifacts = []
         for path in candidates:
-            if not path.is_file():
+            # A clean ORFS run may create an empty DRC/antenna report.  Empty
+            # files are absence markers, not evidence artifacts; Runtime
+            # correctly rejects them as an artifact protocol violation.
+            if not path.is_file() or path.stat().st_size == 0:
                 continue
             artifacts.append(Artifact(
                 kind=suffix_kinds.get(path.suffix.lower(), ArtifactKind.OTHER),

@@ -44,7 +44,6 @@ def make_state(tmp_path: Path) -> ApiState:
         legacy_root=tmp_path / "legacy",
         yosys_bin=ROOT.parent / "bin" / "yosys",
         runtime_db_path=tmp_path / "runtime.db",
-        campaign_db_path=tmp_path / "campaign.db",
         load_taiwei_plugin=True,
     )
 

@@ -50,7 +50,7 @@ def _normal_cdf(value: np.ndarray) -> np.ndarray:
 class GaussianProcessRegressorLite:
     """Small exact RBF GP suitable for bounded platform experiments."""
 
-    model_id = "gp-rbf-numpy-v1"
+    model_id = "gp-rbf-replicate-noise-numpy-v2"
 
     def __init__(self, *, length_scale: float = 0.35, noise: float = 1e-6):
         if length_scale <= 0 or noise <= 0:
@@ -63,7 +63,8 @@ class GaussianProcessRegressorLite:
         self._cholesky: np.ndarray | None = None
         self._alpha: np.ndarray | None = None
 
-    def fit(self, x: np.ndarray, y: np.ndarray) -> "GaussianProcessRegressorLite":
+    def fit(self, x: np.ndarray, y: np.ndarray, *,
+            observation_noise: np.ndarray | None = None) -> "GaussianProcessRegressorLite":
         x = np.asarray(x, dtype=float)
         y = np.asarray(y, dtype=float).reshape(-1)
         if x.ndim != 2 or len(x) != len(y) or len(x) < 1:
@@ -76,10 +77,18 @@ class GaussianProcessRegressorLite:
         self._scale = standard if standard > 1e-12 else 1.0
         normalized = (y - self._mean) / self._scale
         kernel = self._kernel(x, x)
+        if observation_noise is None:
+            noise_diagonal = np.zeros(len(x), dtype=float)
+        else:
+            raw_noise = np.asarray(observation_noise, dtype=float).reshape(-1)
+            if len(raw_noise) != len(x) or not np.isfinite(raw_noise).all() or (raw_noise < 0).any():
+                raise ValueError("observation_noise must be finite, nonnegative, and aligned")
+            noise_diagonal = raw_noise / (self._scale ** 2)
         jitter = self.noise
         for _ in range(8):
             try:
-                self._cholesky = np.linalg.cholesky(kernel + jitter * np.eye(len(x)))
+                self._cholesky = np.linalg.cholesky(
+                    kernel + np.diag(noise_diagonal + jitter))
                 break
             except np.linalg.LinAlgError:
                 jitter *= 10
@@ -118,11 +127,19 @@ class MultiObjectiveBayesianOptimizer:
         self.exploration = float(exploration)
 
     def propose(self, study: OptimizationStudy,
-                observations: Iterable[LearningObservation]) -> OptimizerProposal:
+                observations: Iterable[LearningObservation], *,
+                historical_observations: Iterable[LearningObservation] = ()) -> OptimizerProposal:
         study.validate()
-        items = tuple(observations)
-        if len(items) >= study.max_runs:
+        current = tuple(observations)
+        if len(current) >= study.max_runs:
             raise ValueError("Optimization study run budget is exhausted")
+        historical = tuple(historical_observations)
+        # Current-study evidence wins when a prior store contains the same
+        # immutable observation. Historical evidence informs the GP but never
+        # consumes this study's experimental budget or proposal iteration.
+        seen = {item.observation_id for item in current}
+        items = current + tuple(item for item in historical
+                                if item.observation_id not in seen)
         for item in items:
             item.validate()
             if item.context.fingerprint != study.context_fingerprint:
@@ -132,9 +149,14 @@ class MultiObjectiveBayesianOptimizer:
         parameter_names = [item.name for item in study.parameter_space]
         lows = np.array([item.lower for item in study.parameter_space], dtype=float)
         highs = np.array([item.upper for item in study.parameter_space], dtype=float)
-        iteration = len(items)
+        iteration = len(current)
         rng = np.random.default_rng(study.seed + iteration * 1009)
-        pool = rng.random((self.pool_size, len(parameter_names)))
+        # Deterministic Latin-hypercube pool covers every marginal interval
+        # better than an equally sized unstructured random cloud.
+        pool = np.empty((self.pool_size, len(parameter_names)), dtype=float)
+        for dimension in range(len(parameter_names)):
+            strata = (np.arange(self.pool_size) + rng.random(self.pool_size)) / self.pool_size
+            pool[:, dimension] = strata[rng.permutation(self.pool_size)]
         existing = np.array([
             [(item.parameters[name] - low) / (high - low)
              for name, low, high in zip(parameter_names, lows, highs)]
@@ -153,19 +175,30 @@ class MultiObjectiveBayesianOptimizer:
         ) and all(name in item.parameters for name in parameter_names)]
         predictions_by_metric: dict[str, tuple[np.ndarray, np.ndarray, str]] = {}
         if len(complete) >= 2:
-            train_x = np.array([
+            raw_x = np.array([
                 [(item.parameters[name] - low) / (high - low)
                  for name, low, high in zip(parameter_names, lows, highs)]
                 for item in complete
             ], dtype=float)
+            groups: dict[tuple[float, ...], list[int]] = {}
+            for index, row in enumerate(raw_x):
+                groups.setdefault(tuple(float(value) for value in row), []).append(index)
+            train_x = np.array(list(groups), dtype=float)
             utility_mean = np.zeros(len(pool), dtype=float)
             utility_variance = np.zeros(len(pool), dtype=float)
-            observed_utility = np.zeros(len(complete), dtype=float)
+            observed_utility = np.zeros(len(groups), dtype=float)
             total_weight = sum(objective.weight for objective in study.objectives)
             for objective in study.objectives:
-                values = np.array([item.metrics[objective.metric_name]
-                                   for item in complete], dtype=float)
-                gp = GaussianProcessRegressorLite().fit(train_x, values)
+                raw_values = np.array([item.metrics[objective.metric_name]
+                                       for item in complete], dtype=float)
+                grouped_values = [raw_values[indexes] for indexes in groups.values()]
+                values = np.array([float(group.mean()) for group in grouped_values])
+                mean_noise = np.array([
+                    (float(group.var(ddof=1)) / len(group) if len(group) > 1 else 0.0)
+                    for group in grouped_values
+                ])
+                gp = GaussianProcessRegressorLite().fit(
+                    train_x, values, observation_noise=mean_noise)
                 means, stddevs = gp.predict(pool)
                 predictions_by_metric[objective.metric_name] = (means, stddevs, gp.model_id)
                 minimum, maximum = float(values.min()), float(values.max())
@@ -185,6 +218,23 @@ class MultiObjectiveBayesianOptimizer:
             z_value = improvement / utility_stddev
             acquisition = improvement * _normal_cdf(z_value) \
                 + utility_stddev * _normal_pdf(z_value)
+            # Empirical feasibility model: failed/incomplete observations do
+            # not train QoR GPs, but they lower acquisition near known failure
+            # regions.  Beta(1,1) smoothing avoids unjustified zero certainty.
+            all_rows, feasibility = [], []
+            for item in items:
+                if all(name in item.parameters for name in parameter_names):
+                    all_rows.append([(item.parameters[name] - low) / (high - low)
+                                     for name, low, high in zip(parameter_names, lows, highs)])
+                    feasibility.append(float(item.status == "succeeded" and all(
+                        objective.metric_name in item.metrics for objective in study.objectives)))
+            if all_rows:
+                known = np.asarray(all_rows, dtype=float)
+                labels = np.asarray(feasibility, dtype=float)
+                distance = np.sum((pool[:, None, :] - known[None, :, :]) ** 2, axis=2)
+                weights = np.exp(-.5 * distance / (.20 ** 2))
+                probability = (1.0 + weights @ labels) / (2.0 + weights.sum(axis=1))
+                acquisition *= probability
             chosen_index = int(np.argmax(acquisition))
             acquisition_value = float(acquisition[chosen_index])
         else:
@@ -221,7 +271,9 @@ class MultiObjectiveBayesianOptimizer:
                     break
         proposal_seed = _digest({"study": study.study_id, "iteration": iteration,
                                  "candidate": candidate_id,
-                                 "observations": [item.fingerprint for item in items]})[:20]
+                                 "observations": [item.fingerprint for item in current],
+                                 "historical_observations": [
+                                     item.fingerprint for item in historical]})[:20]
         proposal = OptimizerProposal(
             proposal_id=f"optimizer-{proposal_seed}", study_id=study.study_id,
             candidate_id=candidate_id, iteration=iteration, parameters=parameters,
@@ -326,6 +378,18 @@ class OptimizationStudyStore:
         if observation.context.fingerprint != study.context_fingerprint:
             raise ValueError("Observation context does not match study")
         with self._connect() as connection:
+            # A resumed controller may replay an already committed Runtime
+            # observation.  Resolve that identity before enforcing the budget:
+            # an idempotent replay consumes no additional experimental slot.
+            existing = connection.execute(
+                """SELECT fingerprint FROM study_observations_v1
+                   WHERE study_id = ? AND observation_id = ?""",
+                (study_id, observation.observation_id),
+            ).fetchone()
+            if existing is not None:
+                if existing["fingerprint"] != observation.fingerprint:
+                    raise ValueError("Study observation conflicts with existing evidence")
+                return observation.observation_id
             count = connection.execute(
                 "SELECT COUNT(*) FROM study_observations_v1 WHERE study_id = ?",
                 (study_id,),

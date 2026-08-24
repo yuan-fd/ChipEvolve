@@ -15,7 +15,6 @@ def make_state(tmp_path: Path) -> ApiState:
         design_root=tmp_path / "designs", legacy_root=tmp_path / "legacy",
         yosys_bin=tmp_path / "missing-yosys",
         runtime_db_path=tmp_path / "runtime.db",
-        campaign_db_path=tmp_path / "campaign.db",
     )
 
 

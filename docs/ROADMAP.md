@@ -3,6 +3,8 @@
 status: accepted
 updated_at: 2026-08-06
 
+> 本表是 P0–P22 的历史实施账本，不是当前产品菜单。P12 的 Sol、P13 的 stage-aware 网格、P16 的 BYOK、P21 的人工建议审批均已退出 v2 产品路径；它们只可作为历史审计或论文消融材料。当前正式入口见 README 的“v2 Agent loop”。
+
 | 阶段 | 目标 | 真实性门槛 |
 | --- | --- | --- |
 | P0 | 安全基线、事实审计、版本锁定、架构/数据模型/ADR | Git 基线、22 tests、45 artifacts 校验、三仓库固定 |

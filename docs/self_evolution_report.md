@@ -1,4 +1,6 @@
-# Self-Evolution 入库问题报告（Tutorial + Report）
+# Self-Evolution 入库问题历史报告（v1，非当前接口说明）
+
+> 本文保留旧版手工 `collect-learning` 试验的审计证据。该产品入口已在 v2 删除；当前学习只能由唯一 BO/GP 闭环依据终态 EDA 证据自动触发。请勿照本文命令调用现行服务。
 
 > 审计日期：2026-08-16
 >

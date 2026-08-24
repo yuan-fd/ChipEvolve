@@ -65,10 +65,9 @@ def main() -> int:
         ROOT.parent / "OpenROAD-flow-scripts",
         design_root=ROOT / "var" / "designs", legacy_root=ROOT.parent / "iccad",
         runtime_db_path=ROOT / "var" / "public" / "runtime.db",
-        campaign_db_path=ROOT / "var" / "public" / "campaign.db",
         optimization_db_path=ROOT / "var" / "public" / "optimization.db",
         auth_db_path=ROOT / "var" / "public" / "web-auth.db",
-        byok_transport_secure=False, load_taiwei_plugin=False,
+ load_taiwei_plugin=False,
     )
     # skip designs already imported with the ORFS tag
     existing = {d["id"] for d in state.designs.list(limit=100)}

@@ -28,8 +28,7 @@ python scripts/run_platform_demo.py \
 
 ```bash
 python apps/api/app.py --host 127.0.0.1 --port 8000 \
-  --runtime-db /tmp/openroad-platform-p8-real-EXAMPLE/runtime.db \
-  --campaign-db /tmp/openroad-platform-p8-real-EXAMPLE/campaign.db
+  --runtime-db /tmp/openroad-platform-p8-real-EXAMPLE/runtime.db
 ```
 
 检查：
@@ -37,34 +36,34 @@ python apps/api/app.py --host 127.0.0.1 --port 8000 \
 ```bash
 curl -fsS http://127.0.0.1:8000/api/health
 curl -fsS http://127.0.0.1:8000/api/runtime/runs
-curl -fsS http://127.0.0.1:8000/api/campaigns
+curl -fsS http://127.0.0.1:8000/api/optimization/studies
 ```
 
-P12/P13 APIs are data/control endpoints; API does not directly run EDA:
+v2 只有一个平台模型入口和一个 2D 实现入口：
 
 ```bash
 curl -fsS -X POST http://127.0.0.1:8000/api/spec/sessions \
   -H 'Content-Type: application/json' \
-  -d '{"provider":"codex-cli","model":"gpt-5.6-terra","message":"..."}'
+  -d '{"message":"..."}'
 
-curl -fsS -X POST http://127.0.0.1:8000/api/campaigns/stage-aware \
+curl -fsS -X POST http://127.0.0.1:8000/api/v2/closed-loops \
   -H 'Content-Type: application/json' \
-  -d '{"design_id":"...","parameter_grid":{"core_utilization_pct":[20,30]},"max_parallel":2}'
+  -d '{"design_id":"...","objective_profile":"balanced"}'
 ```
 
-参数演化也支持一次性跑到安全边界，不需要客户端手动反复调用
-`advance`：
+使用返回的 `pipeline_id` 运行或恢复持久闭环：
 
 ```bash
-curl -fsS -X POST http://127.0.0.1:8000/api/evolution/campaigns/<id>/run-to-boundary \
-  -H 'Content-Type: application/json' -d '{"execute":true,"max_transitions":128}'
+curl -fsS -X POST http://127.0.0.1:8000/api/v2/closed-loops/<pipeline_id>/run-to-boundary \
+  -H 'Content-Type: application/json' -d '{}'
 ```
 
-该接口会自动执行 baseline、重复实验、停滞检测和预先声明的第二参数换向；
+该接口会自动执行重复 baseline、BO/GP 多参数组合实验、重复测量和停滞检测；
 遇到 `diagnosis_required` 就停止并返回完整历史，不会自动修改 RTL 或调用未批准的修复工具。
 
-Spec session 的 `/turn` 只追加提案；`/execute` 必须提交
-`{"confirmed":true}`。Codex Provider 使用本机登录态做验收，但不得读取、记录或复制
+Spec session 的 `/turn` 用于补齐规格，`/materialize-spec` 冻结 SpecIR；随后唯一的
+`/api/rtl/specs/<id>/run-to-baseline` 自动完成独立 Testbench、RTLScout、lint、仿真、
+mutation 质量门和 ORFS baseline。服务端固定模型使用本机登录态做验收，但不得读取、记录或复制
 认证文件。内测和正式付费服务均由运营方在平台侧配置模型凭据与轮换；浏览器不接收 API Key，也不提供 BYOK 路径。
 
 仅绑定 `127.0.0.1`；远程浏览使用 SSH tunnel。此内置服务器没有登录和 TLS，不能直接暴露到公网。

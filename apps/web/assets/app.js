@@ -9,8 +9,8 @@ const state = {
   rtlscoutStatus: null, selectedRtlscoutRun: null,
   requestedExtension: null, rtlscoutPoll: null, runtimePoll: null, healthPoll: null,
   health: null, auth: null, workspaceLoaded: false, locale: "en",
-  specSession: null, pendingCampaign: null, developerView: false,
-  backendMode: "2d", flowMode: "baseline",
+  specSession: null, developerView: false,
+  backendMode: "2d", activeClosedLoop: null,
 };
 const stages = ["synth", "floorplan", "place", "cts", "route", "finish"];
 const ZH = {
@@ -29,7 +29,7 @@ const ZH = {
   "overview.group.input": "设计输入", "overview.group.physical": "物理设计",
   "overview.group.optimize": "优化", "overview.group.results": "查看与学习",
   "hero.intro": "项目介绍", "hero.tutorial": "使用教程", "hero.feedback": "问题反馈",
-  "overview.cap1": "由自然语言创建设计，经人工审查 RTL 后完成可复现的物理实现。",
+  "overview.cap1": "由自然语言形成 SpecIR，自动经过独立验证 Agent、RTLScout 与可复现物理实现。",
   "overview.cap2.name": "EDA 智能助手", "overview.cap2": "通过自然语言控制流程、解读报告、定位问题并给出修复建议。",
   "overview.cap3.name": "流程优化", "overview.cap3": "支持阶段感知实验、有界搜索、BO/GP、Pareto 分析与 RL 建议。",
   "overview.cap4": "按需生成 OpenROAD 源码优化候选，并通过真实证据进行评估。",
@@ -81,8 +81,8 @@ const ZH = {
   "backend.util": "核心利用率 · %", "backend.density": "布局密度", "backend.target": "目标阶段",
   "backend.objective": "优化目标", "backend.objective.balanced": "综合平衡", "backend.objective.timing": "时序优先",
   "backend.objective.area": "面积优先", "backend.objective.power": "功耗优先", "backend.mode": "流程模式",
-  "backend.run.title": "运行 RTL-to-GDS 并监控阶段", "backend.run.subtitle": "查看当前设计的进度、恢复状态、指标和生成文件。",
-  "backend.run.select": "设计任务", "backend.run.action": "开始 RTL-to-GDS", "backend.run.compare": "比较该设计的历史任务",
+  "backend.run.title": "运行自主 BO/GP 闭环并监控阶段", "backend.run.subtitle": "查看重复 baseline、候选实验、恢复状态、指标和生成文件。",
+  "backend.run.select": "设计任务", "backend.run.action": "开始 Agent 自主 BO/GP 优化", "backend.run.compare": "比较该设计的历史任务",
   "backend.run.empty": "尚未选择任务", "backend.run.empty.help": "排队、运行和已完成的记录会显示在这里。",
   "backend.evidence.title": "版图、QoR 与实现证据", "backend.evidence.subtitle": "查看版图、时序、面积、功耗、DRC、报告和下载产物。",
   "backend.evidence.empty": "设计结果将在这里显示。", "backend.evidence.empty.help": "选择当前设计已完成的任务以读取版图和报告。",
@@ -118,13 +118,9 @@ const LOOSE_ZH = {
   "Lint and simulation": "Lint 与仿真", "Cost and structure": "成本与结构", "Selection": "选择",
   "Keep the best legal RTL": "保留最优合法 RTL", "Correct first, then lower cost": "先保证正确，再降低成本",
   "Evaluation evidence returns to the agent": "评估证据返回智能体", "Repeat until done or the step budget is reached": "重复执行，直到完成或达到步数预算",
-  "1. Configure the experiment": "1. 配置实验", "Choose what RTLScout should optimize and how much work it may perform.": "选择优化对象、成本指标和最大工作量。",
-  "Run mode": "运行模式", "Benchmark": "Benchmark", "Cost objective": "成本目标", "Maximum agent steps": "智能体最大步数",
-  "2. Connect a model provider": "2. 连接模型 Provider", "This only validates and stores a session profile. It does not start RTLScout.": "这里只验证并保存会话配置，不会启动 RTLScout。",
-  "Connect Provider": "连接 Provider", "3. Start optimization": "3. 开始优化", "RTLScout run dashboard": "RTLScout 运行仪表盘",
+  "RTLScout run dashboard": "RTLScout 运行仪表盘",
   "Current step": "当前步骤", "Evaluated candidates": "已评估候选", "Legal candidates": "合法候选", "Best cost": "最优成本",
   "Improvement": "优化幅度", "Runtime": "运行时间", "Candidate history": "候选历史", "Best candidate and changes": "最优候选与改动",
-  "Baseline flow": "基线流程", "Stage-aware batch": "阶段感知批量实验", "Agent-guided search": "Agent 引导搜索",
   "Finish · GDS": "完成 · GDS", "Routing": "布线", "Clock tree": "时钟树", "Placement": "布局", "Floorplan": "布局规划", "Synthesis": "逻辑综合",
   "Execution ready": "执行就绪", "Console ready": "控制台就绪", "API unavailable": "API 不可用", "Connecting": "连接中",
   "Platform API status": "平台 API 状态",
@@ -161,7 +157,7 @@ function applyLocale(locale) {
   renderExampleChips();
   renderDesignChips();
   if (state.platform) state.extensions = buildExtensions(state.platform);
-  if ($("#rtlscoutMode")) updateRtlscoutControls();
+  if ($("#runRtlscout")) updateRtlscoutControls();
   if (state.selectedRun) selectRun(state.selectedRun.run.run_id);
   if (state.selectedExtension) selectExtension(state.selectedExtension);
 }
@@ -254,7 +250,7 @@ async function logout() {
   state.workspaceLoaded = false;
   state.designs = []; state.runs = []; state.results = [];
   state.selectedDesign = null; state.selectedRun = null;
-  state.specSession = null; state.pendingCampaign = null;
+  state.specSession = null; state.activeClosedLoop = null;
   state.developerView = false;
   if (state.runtimePoll) clearTimeout(state.runtimePoll);
   if (state.rtlscoutPoll) clearTimeout(state.rtlscoutPoll);
@@ -308,7 +304,7 @@ function buildExtensions(platform) {
     {
       id: "dplevolve", name: "DPLEvolve / Tool-Evolve", layer: ui("source optimization", "源码优化"), status_label: ui("On demand", "按需启用"),
       summary: ui("OpenROAD source-code candidate generation, validation, QoR evaluation, and best-candidate tracking.", "生成 OpenROAD 源码候选，完成验证、QoR 评估与最优候选跟踪。"),
-      execution_class: ui("User-configured long-running task", "由用户配置的长时任务"), input: ui("Source request, model provider/API key, validation target and compute budget", "源码优化请求、模型配置、验证目标与计算预算"),
+      execution_class: ui("Platform-managed long-running task", "平台托管的长时任务"), input: ui("Source request, validation target and bounded compute budget", "源码优化请求、验证目标与有界计算预算"),
       safety_note: "Optional candidate generator. It never runs automatically and remains outside the primary RTL-to-GDS path.",
       workflow: ["Audit request and source baseline", "Generate reviewable candidates", "Compile and validate each candidate", "Measure QoR and retain the best verified result"],
     },
@@ -320,7 +316,7 @@ function buildExtensions(platform) {
       momcraft: ui("Microstrip geometry, effective permittivity, mesh, and frequency", "微带几何、有效介电常数、网格与频率"),
       cktcraft: ui("Bounded component- or transistor-level SPICE .op netlist", "有界的元件级或晶体管级 SPICE .op 网表"),
       rtlcraft: ui("Python hardware DSL and generation configuration", "Python 硬件 DSL 与生成配置"),
-      edacode: ui("Analog or mixed-signal design workspace and model provider", "模拟/混合信号设计工作区与模型 Provider"),
+      edacode: ui("Analog or mixed-signal model-assisted design workspace", "模型辅助的模拟/混合信号设计工作区"),
       implcraft: ui("Registered RTL and implementation configuration", "已登记 RTL 与实现配置"),
     };
     const localized = {
@@ -382,13 +378,9 @@ async function loadRtlscoutStatus() {
     const status = await api("/api/extensions/rtlscout");
     state.rtlscoutStatus = status;
     $("#runRtlscout").disabled = !status.ready;
-    $("#providerState").textContent = status.codex_cli?.available
+    $("#modelServiceState").textContent = status.codex_cli?.available
       ? ui(`Ready · ${status.codex_cli.model}`, `已就绪 · ${status.codex_cli.model}`)
       : ui("Platform model unavailable", "平台模型暂不可用");
-    $("#providerHint").textContent = ui(
-      "Internal test mode uses the platform-managed Codex session. No browser API key or third-party provider profile is used.",
-      "内测阶段统一使用平台托管的 Codex 会话；浏览器不提交 API Key，也不使用第三方 Provider 配置。"
-    );
     if (!status.ready) message("#rtlscoutMessage", `${ui("RTLScout is unavailable", "RTLScout 当前不可用")}: ${status.reason}`, true);
     updateRtlscoutControls();
   } catch (error) {
@@ -507,10 +499,7 @@ function renderDesignChips() {
 
 async function selectDesign(id) {
   if (!id) return;
-  if (state.selectedDesign?.id && state.selectedDesign.id !== id) {
-    state.pendingCampaign = null;
-    if ($("#batchPlanReview")) $("#batchPlanReview").hidden = true;
-  }
+  if (state.selectedDesign?.id && state.selectedDesign.id !== id) state.activeClosedLoop = null;
   const design = await api(`/api/designs/${encodeURIComponent(id)}`);
   state.selectedDesign = design;
   $("#frontendDesign").value = id;
@@ -666,14 +655,9 @@ async function createSpec() {
   button.disabled = true;
   message("#specMessage", "Creating a reviewable specification session…");
   try {
-    const payload = {
-      message: prompt,
-      provider: "codex-cli",
-      // The server is the sole model authority in internal-test mode.  This
-      // explicit value keeps an older cached health response from reviving the
-      // retired Sol/BYOK route in the browser.
-      model: "gpt-5.6-terra",
-    };
+    // The browser supplies design intent only. Provider, credentials and
+    // model selection belong exclusively to the internal platform service.
+    const payload = {message: prompt};
     if (state.selectedDesign) payload.design_id = state.selectedDesign.id;
     const result = await post("/api/spec/sessions", payload);
     state.specSession = result;
@@ -726,61 +710,39 @@ async function approveSpecRtl() {
     state.specSession.frozenSpec = result.spec;
     renderSpecReview(result.session);
     updateRtlscoutControls();
-    message("#specMessage", ui(`SpecIR ${result.spec.top} is frozen. Attach its verification oracle and run RTLScout-v2.`, `SpecIR ${result.spec.top} 已冻结。请附加验证 oracle 后运行 RTLScout-v2。`));
+    message("#specMessage", ui(`SpecIR ${result.spec.top} is frozen. The platform will now create and freeze independent verification automatically.`, `SpecIR ${result.spec.top} 已冻结。平台接下来会自动生成并冻结独立验证环境。`));
   } catch (error) { message("#specMessage", error.message, true); }
   finally { button.disabled = false; }
 }
 
 function updateRtlscoutControls() {
   const frozenSpec = state.specSession?.frozenSpec;
-  const cost = $("#rtlscoutCost").value;
-  const steps = Math.max(1, Math.min(Number($("#rtlscoutSteps").value) || 3, 8));
   $("#rtlscoutModeNote").textContent = ui("By default a separately attributed verification agent creates and freezes the testbench; candidate RTL never supplies its own correctness check.", "默认由独立归属的验证 Agent 自动生成并冻结 testbench；候选 RTL 不能自带正确性判定。");
   $("#rtlscoutLaunchSummary").textContent = frozenSpec
-    ? `${frozenSpec.top} · ${ui("minimize", "最小化")} ${cost.replaceAll("_", " ")} · ${steps} ${ui("steps", "步")}`
+    ? `${frozenSpec.top} · ${ui("server-owned bounded verification policy", "服务器托管的有界验证策略")}`
     : ui("Freeze SpecIR, then start the automatic dual-agent flow", "先冻结 SpecIR，再启动自动双 Agent 流程");
-  $("#runRtlscout").textContent = ui("Run automatic RTLScout-v2 →", "运行自动 RTLScout-v2 →");
+  $("#runRtlscout").textContent = ui("Run verified RTLScout-to-baseline flow →", "运行 RTLScout 验证到 baseline 全流程 →");
   $("#runRtlscout").disabled = !frozenSpec || state.rtlscoutStatus?.ready === false;
 }
 
 async function submitRtlscout() {
   const spec = state.specSession?.frozenSpec;
-  const testbench = $("#rtlscoutTestbench").value.trim();
   if (!spec) return message("#rtlscoutMessage", ui("Freeze a reviewed SpecIR first.", "请先冻结已审查的 SpecIR。"), true);
   const button = $("#runRtlscout"); button.disabled = true;
   try {
-    const payload = {cost_metric: $("#rtlscoutCost").value,
-      max_steps: Math.max(1, Math.min(Number($("#rtlscoutSteps").value) || 3, 8))};
-    const result = testbench
-      ? await post(`/api/rtl/specs/${encodeURIComponent(spec.spec_id)}/rtlscout`, {
-          ...payload, testbench_source: testbench, oracle_origin: $("#rtlscoutOracleOrigin").value,
-          oracle_reviewed_by: $("#rtlscoutOracleReviewer").value.trim(),
-        })
-      : await post(`/api/rtl/specs/${encodeURIComponent(spec.spec_id)}/auto-rtlscout`, payload);
-    state.selectedRtlscoutRun = result.run.run_id;
-    message("#rtlscoutMessage", testbench
-      ? ui("Imported verification oracle and RTLScout-v2 task submitted.", "已提交导入验证 oracle 与 RTLScout-v2 任务。")
-      : ui("Verification Agent generated a separate testbench and RTLScout-v2 was submitted. Runtime will record lint, simulation, and mutation evidence.", "验证 Agent 已生成独立 testbench，RTLScout-v2 已提交；Runtime 将记录 lint、仿真与变异测试证据。"));
-    await loadRuns(result.run.run_id);
+    const payload = {};
+    const result = await post(
+      `/api/rtl/specs/${encodeURIComponent(spec.spec_id)}/run-to-baseline`, payload);
+    const runtimeSteps = (result.steps || []).filter(item => item.run_id);
+    state.selectedRtlscoutRun = runtimeSteps.at(-1)?.run_id || null;
+    const revisions = Number(result.rtl_revision || 0);
+    message("#rtlscoutMessage", result.status === "baseline_succeeded"
+      ? ui(`RTLScout, independent lint/simulation/mutation gates, and the OpenROAD baseline passed after ${revisions} automatic revision(s).`, `RTLScout、独立 lint/仿真/变异质量门和 OpenROAD baseline 已通过，共自动修订 ${revisions} 次。`)
+      : ui(`The verified flow stopped at ${result.boundary || result.status}; inspect the recorded evidence.`, `验证全流程停在 ${result.boundary || result.status}；请查看已记录证据。`),
+      result.status !== "baseline_succeeded");
+    await loadRuns(state.selectedRtlscoutRun);
   } catch (error) { message("#rtlscoutMessage", error.message, true); }
   finally { updateRtlscoutControls(); }
-}
-
-async function draftTestbench() {
-  const spec = state.specSession?.frozenSpec;
-  if (!spec?.spec_id) return message("#rtlscoutMessage", ui("Freeze a reviewed SpecIR before requesting a testbench draft.", "请先冻结已审核的 SpecIR，再生成 testbench 草稿。"), true);
-  const button = $("#draftTestbench"); button.disabled = true;
-  message("#rtlscoutMessage", ui("Previewing the independent verification-agent testbench…", "正在预览独立验证 Agent 生成的 testbench……"));
-  try {
-    const result = await post(`/api/rtl/specs/${encodeURIComponent(spec.spec_id)}/testbench-draft`, {});
-    $("#rtlscoutTestbench").value = result.draft?.testbench_source || "";
-    const quality = result.structural_floor_passed
-      ? ui("The draft passed the structural floor. The normal automatic path will generate and freeze its own separately attributed copy.", "草稿已通过结构最低门；正常自动路径会生成并冻结独立归属的副本。")
-      : `${ui("The draft did not pass the structural floor", "草稿未通过结构最低门")}: ${result.structural_floor_error || "unknown"}`;
-    message("#rtlscoutMessage", quality, !result.structural_floor_passed);
-    updateRtlscoutControls();
-  } catch (error) { message("#rtlscoutMessage", error.message, true); }
-  finally { button.disabled = false; }
 }
 
 async function loadRuns(preferred = null) {
@@ -1098,80 +1060,29 @@ async function submitFlow() {
   if (!id) return message("#flowMessage", ui("Select a registered design first.", "请先选择已登记设计。"), true);
   const button = $("#submitFlow");
   button.disabled = true;
-  const mode = state.flowMode || "baseline";
-  if (mode === "baseline") {
-    state.pendingCampaign = null;
-    $("#batchPlanReview").hidden = true;
-  }
   const objective = $('input[name="flowObjective"]:checked')?.value || "balanced";
-  message("#flowMessage", mode === "baseline" ? ui("Saving the design task…", "正在保存设计任务……") : ui("Creating a bounded experiment plan for review…", "正在创建有界实验计划，等待审查……"));
+  message("#flowMessage", ui("Starting the autonomous loop: three baseline measurements, followed by repeated BO/GP experiments…", "正在启动自主闭环：先重复测量三次 baseline，再自动开展 BO/GP 多参数实验……"));
   try {
-    const base = {design_id: id, clock: $("#flowClock").value.trim() || null, platform: $("#flowPdk").value, clock_period_ns: Number($("#flowPeriod").value), core_utilization_pct: Number($("#flowUtil").value), place_density: Number($("#flowDensity").value), target_stage: $("#flowTarget").value, objective, flow_mode: mode};
-    if (mode === "baseline") {
-      const detail = await post("/api/runtime/runs/from-design", base);
-      message("#flowMessage", ui("The design task is saved. Its position, estimated wait, and live stage status appear below.", "设计任务已保存；下方会显示前面人数、预计等待时间和实时阶段状态。"));
-      await loadRuns(detail.run.run_id);
-    } else {
-      // The server expands the selected preference into a published 2^3
-      // interaction design and persists its objective weights with the run.
-      const campaign = await post("/api/campaigns/stage-aware", {...base, name: `${mode}-${objective}-${id}`, max_parallel: 1, top_k: 2, max_repairs: mode === "agent" ? 2 : 0, max_total_runs: 8});
-      state.pendingCampaign = campaign;
-      renderBatchPlan(campaign);
-      message("#flowMessage", ui(`Batch experiment plan created with ${campaign.members.length} candidates. It has not been submitted for execution.`, `批量实验计划已创建，共 ${campaign.members.length} 个候选；尚未提交执行。`));
-    }
+    const base = {
+      design_id: id, clock: $("#flowClock").value.trim() || null,
+      platform: $("#flowPdk").value,
+      objective_profile: objective,
+    };
+    const created = await post("/api/v2/closed-loops", base);
+    state.activeClosedLoop = created.pipeline_id;
+    const result = await post(`/api/v2/closed-loops/${encodeURIComponent(created.pipeline_id)}/run-to-boundary`, {});
+    const loop = result.state || {};
+    const best = Number(loop.best_utility || 0) * 100;
+    const statusText = loop.status === "diagnosis_required"
+      ? ui("Three consecutive rounds did not improve enough; parameter search stopped and a stage-diagnosis evidence packet was produced.", "连续三轮改善不足；参数搜索已停止，并生成了阶段诊断证据包。")
+      : ui(`The autonomous loop stopped at “${loop.status || "recorded"}” after ${loop.round || 0} BO/GP rounds. Best verified relative utility: ${best.toFixed(2)}%.`, `自主闭环在 ${loop.round || 0} 轮 BO/GP 后停于“${loop.status || "已记录"}”；最佳实测相对效用为 ${best.toFixed(2)}%。`);
+    message("#flowMessage", statusText);
+    await loadRuns((loop.active_run_ids || [])[0] || null);
   } catch (error) {
     message("#flowMessage", error.message, true);
   } finally {
     button.disabled = false;
-    updateFlowMode();
   }
-}
-
-function renderBatchPlan(campaign) {
-  const root = $("#batchPlanReview");
-  root.hidden = false;
-  $("#batchPlanCandidates").innerHTML = (campaign.members || []).map((member, index) => {
-    const parameters = Object.entries(member.parameters || {})
-      .filter(([name]) => ["clock_period_ns", "core_utilization_pct", "place_density", "target_stage"].includes(name))
-      .map(([name, value]) => `${name.replaceAll("_", " ")} = ${value}`).join(" · ");
-    return `<div class="batch-candidate"><span>${String(index + 1).padStart(2, "0")}</span><b>${esc(parameters || ui("Inherited baseline parameters", "继承基线参数"))}</b></div>`;
-  }).join("");
-}
-
-async function approveBatchPlan() {
-  if (!state.pendingCampaign) return;
-  const button = $("#approveBatchPlan");
-  button.disabled = true;
-  message("#flowMessage", ui("Starting the approved batch experiment…", "正在启动已批准的批量实验……"));
-  try {
-    const result = await post(`/api/campaigns/${encodeURIComponent(state.pendingCampaign.campaign_id)}/submit`, {});
-    $("#batchPlanReview").hidden = true;
-    state.pendingCampaign = null;
-    message("#flowMessage", ui(`${result.run_ids.length} design tasks started. Progress is shown below one task at a time.`, `已启动 ${result.run_ids.length} 个设计任务；下方会逐个显示当前任务进度。`));
-    await loadRuns(result.run_ids[0] || null);
-  } catch (error) { message("#flowMessage", error.message, true); }
-  finally { button.disabled = false; }
-}
-
-function setFlowMode(mode) {
-  state.flowMode = mode;
-  $$("[data-flow-mode]").forEach(btn => btn.classList.toggle("active", btn.dataset.flowMode === mode));
-  updateFlowMode();
-}
-
-function updateFlowMode() {
-  const mode = state.flowMode || "baseline";
-  const baseline = mode === "baseline";
-  $("#submitFlow").textContent = baseline
-    ? ui("Start RTL-to-GDS", "开始 RTL-to-GDS")
-    : mode === "agent"
-      ? ui("Create Agent Plan", "生成 Agent 智能方案")
-      : ui("Create Batch Plan", "创建批量实验计划");
-  $("#flowModeNote").textContent = baseline
-    ? ui("Baseline measures one fixed design. QoR preference does not alter an ORFS command here; choose Batch or Agent to compare candidates under the selected preference.", "基线模式只测量一个固定设计；这里的 QoR 偏好不会暗中改变 ORFS 命令。请选择批量或 Agent，才能按该偏好比较候选。")
-    : mode === "agent"
-      ? ui("Agent mode reads the knowledge base, proposes parameters with reasons; you review before execution.", "Agent 模式会读取经验库，带理由给出参数建议；执行前由你审核。")
-      : ui("Batch mode creates bounded neighbor candidates for review; they do not execute automatically.", "批量模式会创建相邻参数候选供审查，不会自动执行。");
 }
 
 function backendMode(mode) {
@@ -1348,7 +1259,7 @@ function selectExtension(id) {
 }
 
 function taiwei3dConfigForm() {
-  const period = $("#flowPeriod")?.value || "10";
+  const period = "10";
   const clock = $("#flowClock")?.value?.trim() || "clk";
   return `<div class="specialist-form taiwei3d-form" style="margin-top:12px;display:grid;gap:9px">
     <b style="color:var(--heading);font-size:12px">${ui("3D implementation configuration", "3D 实现配置")}</b>
@@ -1475,49 +1386,13 @@ async function selectResult(id) {
     const visualizationUrl = record.visualization_url || layoutView?.url;
     const visual = visualizationUrl ? `<img src="${esc(visualizationUrl)}" alt="Project visualization">` : '<div class="empty"><span>□</span><h3>Visualization registered with run artifacts.</h3></div>';
     const analysis = detail.analysis || {};
-    const learningAction = record.record_type === "runtime_run" && record.status === "succeeded"
-      ? `<div class="learning-collection"><div><b>${ui("Add verified experience to Self-Evolution", "将验证经验加入自演化")}</b><span>${ui("This explicit action preserves provenance and prevents failed runs from becoming training truth.", "该操作会保留来源，并避免失败任务成为学习事实。")}</span></div><button class="button primary" id="collectLearning">${ui("Collect verified run", "收集验证结果")}</button><p class="message" id="collectLearningMessage"></p></div>` : "";
     const designArtifacts = record.record_type === "design" ? `<div class="artifact-grid"><a class="artifact-link" href="/api/designs/${encodeURIComponent(record.id)}/source?kind=rtl" target="_blank"><b>RTL source</b><span>${esc(detail.rtl_file)}</span></a><a class="artifact-link" href="/api/designs/${encodeURIComponent(record.id)}/source?kind=netlist" target="_blank"><b>Gate netlist</b><span>${esc(detail.netlist_file)}</span></a><a class="artifact-link" href="/api/designs/${encodeURIComponent(record.id)}/schematic.svg" target="_blank"><b>Circuit schematic</b><span>${esc(detail.schematic_file)}</span></a></div>` : "";
     const metricTable = metrics.length ? `<div class="metric-record"><h3>Implementation metrics</h3><div class="kv-grid">${metrics.map(metric => `<div class="kv"><span>${esc(metric.name)}</span><b>${esc(metric.value)} ${esc(metric.unit || "")}</b></div>`).join("")}</div></div>` : "";
-    $("#resultDetail").innerHTML = `<div class="project-detail-head"><span class="availability">${esc(record.record_type)} · ${esc(record.status)}</span><h2>${esc(resultDisplayName(record))} · ${esc(record.name)}</h2><p>${ui("Readable project label; the authoritative identifier remains in the expandable raw record.", "此处使用可读项目名称；权威标识保留在下方可展开的原始记录中。")}</p></div><div class="project-overview"><div>${visual}</div><div class="kv-grid"><div class="kv"><span>Project type</span><b>${esc(record.project_type)}</b></div><div class="kv"><span>Module / design</span><b>${esc(detail.module || task.design_id || record.name)}</b></div><div class="kv"><span>Gate instances</span><b>${esc(analysis.instance_count ?? "Available in implementation reports")}</b></div><div class="kv"><span>Runtime plugin</span><b>${esc(task.plugin_id || "Frontend design service")}</b></div><div class="kv"><span>Runtime stages</span><b>${esc((detail.stages || []).length || "Frontend only")}</b></div><div class="kv"><span>Artifacts</span><b>${esc(artifacts.length || (record.record_type === "design" ? "RTL, netlist, schematic" : "Pending"))}</b></div><div class="kv"><span>Replay context</span><b>${record.replayable ? "Registered" : "Pending / not applicable"}</b></div></div></div>${designArtifacts}${artifacts.length ? `<div class="artifact-grid">${artifacts.map(artifact => `<a class="artifact-link" href="${esc(artifact.url)}" target="_blank" rel="noopener"><b>${esc(artifact.kind)}</b><span>${esc(artifact.store_key)} · ${esc((artifact.sha256 || "").slice(0, 10))}…</span></a>`).join("")}</div>` : ""}${metricTable}${learningAction}<details class="raw-record"><summary>Authoritative project record</summary><pre class="detail-code">${esc(JSON.stringify(detail, null, 2))}</pre></details>`;
-    if ($("#collectLearning")) $("#collectLearning").addEventListener("click", () => collectLearning(record.id, task));
+    $("#resultDetail").innerHTML = `<div class="project-detail-head"><span class="availability">${esc(record.record_type)} · ${esc(record.status)}</span><h2>${esc(resultDisplayName(record))} · ${esc(record.name)}</h2><p>${ui("Readable project label; the authoritative identifier remains in the expandable raw record.", "此处使用可读项目名称；权威标识保留在下方可展开的原始记录中。")}</p></div><div class="project-overview"><div>${visual}</div><div class="kv-grid"><div class="kv"><span>Project type</span><b>${esc(record.project_type)}</b></div><div class="kv"><span>Module / design</span><b>${esc(detail.module || task.design_id || record.name)}</b></div><div class="kv"><span>Gate instances</span><b>${esc(analysis.instance_count ?? "Available in implementation reports")}</b></div><div class="kv"><span>Runtime plugin</span><b>${esc(task.plugin_id || "Frontend design service")}</b></div><div class="kv"><span>Runtime stages</span><b>${esc((detail.stages || []).length || "Frontend only")}</b></div><div class="kv"><span>Artifacts</span><b>${esc(artifacts.length || (record.record_type === "design" ? "RTL, netlist, schematic" : "Pending"))}</b></div><div class="kv"><span>Replay context</span><b>${record.replayable ? "Registered" : "Pending / not applicable"}</b></div></div></div>${designArtifacts}${artifacts.length ? `<div class="artifact-grid">${artifacts.map(artifact => `<a class="artifact-link" href="${esc(artifact.url)}" target="_blank" rel="noopener"><b>${esc(artifact.kind)}</b><span>${esc(artifact.store_key)} · ${esc((artifact.sha256 || "").slice(0, 10))}…</span></a>`).join("")}</div>` : ""}${metricTable}<details class="raw-record"><summary>Authoritative project record</summary><pre class="detail-code">${esc(JSON.stringify(detail, null, 2))}</pre></details>`;
     $("#projectDetailSection").classList.add("open");
     $("#projectDetailSection").scrollIntoView({behavior: "smooth", block: "start"});
   } catch (error) {
     $("#resultDetail").innerHTML = `<div class="empty-row">${esc(error.message)}</div>`;
-  }
-}
-
-async function collectLearning(runId, task) {
-  const button = $("#collectLearning");
-  button.disabled = true;
-  message("#collectLearningMessage", ui("Collecting verified metrics with provenance…", "正在连同来源信息收集验证指标……"));
-  try {
-    const receipt = await post(`/api/runtime/runs/${encodeURIComponent(runId)}/collect-learning`, {
-      project_id: task.project_id || "openroad-platform",
-      pdk_id: task.parameters?.platform || "registered-platform",
-      toolchain_id: `${task.plugin_id || "design"}-${task.plugin_version || "registered"}`,
-      metric_parser_version: "web-evidence-v1",
-    });
-    message("#collectLearningMessage", ui(`Verified experience collected · ${receipt.status || "recorded"}.`, `验证经验已收集 · ${receipt.status || "已登记"}。`));
-  } catch (error) {
-    message("#collectLearningMessage", error.message, true);
-  } finally { button.disabled = false; }
-}
-
-async function runAutoOptimize() {
-  const button = $("#runAutoOptimize");
-  if (button) button.disabled = true;
-  message("#evolutionActionMessage", ui("Running optimization study over the observed corpus…", "正在基于观测数据运行优化研究……"));
-  try {
-    const result = await post("/api/optimization/auto", {});
-    message("#evolutionActionMessage", ui(`Study created with ${result.observation_count} observations; recommendation ready (${result.recommendation?.policy_kind}).`, `已基于 ${result.observation_count} 条观测创建研究并生成建议（${result.recommendation?.policy_kind}）。`));
-    await loadEvolution();
-    if (result.agent_trace_id) await loadAgentTrace(result.agent_trace_id, "#agentTraceRec");
-  } catch (error) {
-    message("#evolutionActionMessage", error.message, true);
-  } finally {
-    if (button) button.disabled = false;
   }
 }
 
@@ -1529,50 +1404,16 @@ async function loadEvolution() {
     $("#evoBenchmarks").textContent = counts.benchmarks;
     $("#evoObservations").textContent = counts.observed_samples;
     $("#evoStudies").textContent = counts.optimization_studies;
-    $("#evoRecommendations").textContent = counts.recommendations;
+    $("#evoDecisions").textContent = counts.closed_loop_decisions;
     $("#knowledgeList").innerHTML = [...data.knowledge_sources, ...data.benchmarks].map(item => `<div class="data-item"><div><b>${esc(item.title || item.source_id || item.benchmark_id)}</b><span>${esc(item.organization || item.version || item.entrypoint)}</span></div><small>${esc(item.content_kind || item.license_id)}</small></div>`).join("") || '<div class="empty-row">No audited public sources are registered.</div>';
     $("#studyList").innerHTML = data.studies.map(item => `<div class="data-item"><div><b>${esc(item.design_id)}</b><span>${esc(item.observation_count)} observations · ${esc(item.proposal_count)} proposals</span></div><small>${esc(item.status)}</small></div>`).join("") || '<div class="empty-row">No optimization study has been created yet.</div>';
     $("#researchMethodList").innerHTML = (data.research_methods || []).map(item => `<div class="data-item"><div><b>${esc(item.title)}</b><span>${esc(item.role)} · ${esc((item.implementation || []).join(" / "))}</span></div><small>DOI ${esc(item.doi)}</small></div>`).join("") || '<div class="empty-row">No research methods are registered.</div>';
-    $("#recommendationList").innerHTML = data.recommendations.map(item => {
-      const recommendation = item.recommendation || item;
-      const confidence = recommendation.confidence || {};
-      return `<div class="recommendation-item"><div><b>${esc(recommendation.policy_kind || "Optimizer recommendation")}</b><span>${esc(JSON.stringify(recommendation.parameters || {}))}</span><span>Confidence ${Number(confidence.overall || 0).toFixed(2)} · ${confidence.ood ? "Outside observed support" : "Within observed support"} · ${esc((confidence.reasons || []).join("; "))}</span></div><div class="decision-actions"><small>${esc(recommendation.permission_tier || "T1 advice")}</small><button class="button small" data-recommendation-action="accepted" data-recommendation-id="${esc(recommendation.recommendation_id)}">Approve Plan</button><button class="button small" data-recommendation-action="rejected" data-recommendation-id="${esc(recommendation.recommendation_id)}">Reject</button></div></div>`;
-    }).join("") || '<div class="empty-row">Recommendations will appear here with confidence, context, and decision controls.</div>';
-    $$('[data-recommendation-action]').forEach(button => button.addEventListener("click", () => decideRecommendation(button.dataset.recommendationId, button.dataset.recommendationAction)));
-    loadRecentAgentTraces("#agentTraceRec", "recommendation");
+    $("#closedLoopDecisionList").innerHTML = (data.closed_loop_decisions || []).map(item => {
+      const loop = item.state || {};
+      return `<div class="data-item"><div><b>${esc(loop.design_id || item.subject_id || "Closed loop")}</b><span>${esc(loop.round || 0)} BO/GP rounds · ${esc((loop.history || []).length)} measured decisions · best verified utility ${Number(loop.best_utility || 0).toFixed(4)}</span></div><small>${esc(loop.status || "recorded")}</small></div>`;
+    }).join("") || '<div class="empty-row">Completed autonomous BO/GP decisions will appear here after measured runs.</div>';
   } catch (error) {
     $("#knowledgeList").innerHTML = `<div class="empty-row">${esc(error.message)}</div>`;
-  }
-}
-
-async function decideRecommendation(id, action) {
-  const buttons = $$(`[data-recommendation-id="${id}"]`);
-  buttons.forEach(button => { button.disabled = true; });
-  message("#evolutionActionMessage", action === "accepted" ? ui("Creating a reviewed experiment plan…", "正在创建已审查的实验计划……") : ui("Recording rejection…", "正在记录拒绝决定……"));
-  try {
-    const result = await post(`/api/recommendations/${encodeURIComponent(id)}/decision`, {action, create_campaign: action === "accepted", submit: false});
-    await loadEvolution();
-    if (result.campaign_created) {
-      $("#evolutionActionMessage").innerHTML = `${ui("The experiment plan is ready and has not started.", "实验计划已经就绪，尚未开始执行。")} <button class="button small" id="submitApprovedCampaign">${ui("Confirm execution", "确认执行")}</button>`;
-      $("#submitApprovedCampaign").addEventListener("click", () => submitApprovedRecommendation(id));
-    } else message("#evolutionActionMessage", "Decision recorded; no execution was started.");
-  } catch (error) {
-    message("#evolutionActionMessage", error.message, true);
-  } finally {
-    buttons.forEach(button => { button.disabled = false; });
-  }
-}
-
-async function submitApprovedRecommendation(id) {
-  const button = $("#submitApprovedCampaign");
-  if (button) button.disabled = true;
-  message("#evolutionActionMessage", ui("Starting the approved experiment…", "正在启动已批准的实验……"));
-  try {
-    const result = await post(`/api/recommendations/${encodeURIComponent(id)}/decision`, {action: "accepted", create_campaign: true, submit: true});
-    message("#evolutionActionMessage", ui(`${result.run_ids.length} design task started.`, `已启动 ${result.run_ids.length} 个设计任务。`));
-    await loadRuns();
-  } catch (error) {
-    message("#evolutionActionMessage", error.message, true);
   }
 }
 
@@ -1586,10 +1427,9 @@ function featureRouteAction(element) {
   route(element.dataset.route);
   if (element.dataset.backendTarget === "3d") backendMode("3d");
   if (element.dataset.backendTarget === "2d") backendMode("2d");
-  if (element.dataset.flowFocus === "campaign") setFlowMode("campaign");
   if (element.dataset.focus) {
     const FOCUS_IDS = {upload: "rtlFile", spec: "specPrompt", examples: "exampleSelect",
-                       agent: "recommendationList"};
+                       agent: "closedLoopDecisionList"};
     // Stage 3.4: homepage entry buttons also switch the frontend input-mode tab.
     const INPUT_MODES = {upload: "upload", spec: "spec", examples: "examples"};
     const mode = INPUT_MODES[element.dataset.focus];
@@ -1674,19 +1514,11 @@ $("#importRtl").addEventListener("click", importRtl);
 $("#createSpec").addEventListener("click", createSpec);
 $("#continueSpec").addEventListener("click", continueSpec);
 $("#approveSpecRtl").addEventListener("click", approveSpecRtl);
-$("#rtlscoutMode").addEventListener("change", updateRtlscoutControls);
-$("#rtlscoutTestbench").addEventListener("input", updateRtlscoutControls);
-$("#rtlscoutCost").addEventListener("change", updateRtlscoutControls);
-$("#rtlscoutSteps").addEventListener("input", updateRtlscoutControls);
 $("#runRtlscout").addEventListener("click", submitRtlscout);
-$("#draftTestbench").addEventListener("click", draftTestbench);
 $("#runSelect").addEventListener("change", event => selectRun(event.target.value));
 $("#submitFlow").addEventListener("click", submitFlow);
-$("#approveBatchPlan").addEventListener("click", approveBatchPlan);
-$$("[data-flow-mode]").forEach(btn => btn.addEventListener("click", () => setFlowMode(btn.dataset.flowMode)));
-const autoBtn = $("#runAutoOptimize");
-if (autoBtn) autoBtn.addEventListener("click", runAutoOptimize);
-$$('[data-locale]').forEach(button => button.addEventListener("click", () => { applyLocale(button.dataset.locale); updateFlowMode(); if (!state.selectedRun) renderStageRail(new Map()); }));
+// The v2 product has one implementation entry: the autonomous BO/GP loop.
+$$('[data-locale]').forEach(button => button.addEventListener("click", () => { applyLocale(button.dataset.locale); if (!state.selectedRun) renderStageRail(new Map()); }));
 $("#refreshResults").addEventListener("click", loadResults);
 $("#developerScope").addEventListener("click", async () => {
   state.developerView = !state.developerView;
@@ -1699,7 +1531,6 @@ $$('#resultFilters button').forEach(button => button.addEventListener("click", (
 let initialLocale = "en";
 try { initialLocale = new URLSearchParams(location.search).get("lang") || localStorage.getItem("openroad-platform-locale") || "en"; } catch (_) { /* storage may be disabled */ }
 applyLocale(initialLocale);
-updateFlowMode();
 // Stage 3.4: the natural-language Spec tab is the emphasized default entry.
 selectInputMode("spec");
 (async () => {

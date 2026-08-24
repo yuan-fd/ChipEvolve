@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import subprocess
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -35,6 +36,13 @@ def main() -> int:
                 handle.write(f"$ {' '.join(command)}\n{run.stdout}\n"); rows.append({"check": name, "exit_code": run.returncode})
                 if run.returncode:
                     _write(args.result, {"schema_version": 1, "status": "failed", "exit_code": run.returncode, "started_at": started, "ended_at": _now(), "metrics": [], "artifacts": [], "failure": {"category": "rtl_simulation_failed", "message": f"{name} failed; see log"}, "provenance": {"adapter": "rtl-sim-v1", "checks": rows}}); return run.returncode
+                if name == "simulate":
+                    summaries = re.findall(r"TB_SUMMARY\s+total=(\d+)\s+errors=(\d+)", run.stdout)
+                    oracle_passed = (bool(summaries) and int(summaries[-1][0]) > 0
+                                     and int(summaries[-1][1]) == 0
+                                     and bool(re.search(r"(?m)^PASS\s*$", run.stdout)))
+                    if not oracle_passed:
+                        _write(args.result, {"schema_version": 1, "status": "failed", "exit_code": 1, "started_at": started, "ended_at": _now(), "metrics": [], "artifacts": [], "failure": {"category": "rtl_simulation_failed", "message": "simulation did not emit a zero-error TB_SUMMARY and PASS; see log"}, "provenance": {"adapter": "rtl-sim-v2", "checks": rows}}); return 1
         report = outputs / "simulation.json"; report.write_text(json.dumps({"top": inputs["top"], "checks": rows, "rtl_sha256": _sha(rtl), "testbench_sha256": _sha(tb)}, indent=2), encoding="utf-8")
         _write(args.result, {"schema_version": 1, "status": "succeeded", "exit_code": 0, "started_at": started, "ended_at": _now(), "metrics": [{"name": "rtl.simulation", "value": 1, "unit": "pass"}], "artifacts": [{"kind": "simulation_report", "path": "outputs/simulation.json"}, {"kind": "log", "path": "outputs/simulation.log"}], "failure": None, "provenance": {"adapter": "rtl-sim-v1", "checks": rows, "input_sha256": {"rtl": inputs["rtl"]["sha256"], "testbench": inputs["testbench"]["sha256"]}}})
         return 0

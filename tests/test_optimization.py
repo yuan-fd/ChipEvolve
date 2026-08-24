@@ -76,6 +76,45 @@ def test_numpy_gp_returns_mean_and_nonnegative_uncertainty():
     assert abs(mean[0]) < 0.01
 
 
+def test_gp_accepts_replicate_mean_noise_and_bo_avoids_failure_neighbourhood():
+    x = np.array([[0.0], [1.0]])
+    y = np.array([1.0, 0.0])
+    gp = GaussianProcessRegressorLite().fit(x, y, observation_noise=np.array([.04, .01]))
+    mean, stddev = gp.predict(np.array([[.5]]))
+    assert np.isfinite(mean).all() and np.isfinite(stddev).all()
+
+    study = _study(max_runs=12)
+    repeated = _observations() + [
+        dataclasses.replace(_observation(5, 40, .55, 121, -.07),
+                            observation_id="observation-replica", run_id="run-replica",
+                            attempt_id="attempt-replica"),
+        dataclasses.replace(_observation(6, 58, .78, 0, 0),
+                            observation_id="observation-failed", status="failed",
+                            metrics={}, metric_units={}),
+    ]
+    proposal = MultiObjectiveBayesianOptimizer(pool_size=128).propose(study, repeated)
+    assert proposal.predictions
+    assert all(item.model_id == "gp-rbf-replicate-noise-numpy-v2"
+               for item in proposal.predictions)
+
+
+def test_context_exact_historical_memory_warm_starts_gp_without_spending_run_budget():
+    study = _study(max_runs=2)
+    current = [_observations()[0]]
+    historical = _observations()[1:]
+    proposal = MultiObjectiveBayesianOptimizer(pool_size=128).propose(
+        study, current, historical_observations=historical)
+    assert proposal.iteration == 1
+    assert proposal.predictions  # one current point alone could not train this GP
+    refs = {pointer.ref for pointer in proposal.evidence}
+    assert "artifact:result-1" in refs
+
+    with pytest.raises(ValueError, match="budget"):
+        MultiObjectiveBayesianOptimizer(pool_size=128).propose(
+            dataclasses.replace(study, max_runs=1), current,
+            historical_observations=historical)
+
+
 def test_bo_proposal_is_deterministic_bounded_predicted_only_and_plan_data():
     study = _study()
     observations = _observations()
@@ -116,6 +155,21 @@ def test_study_store_is_idempotent_context_bound_and_reports_pareto(tmp_path):
     wrong_context = dataclasses.replace(_observations()[0], context=_context("aes"))
     with pytest.raises(ValueError, match="context"):
         store.add_observation(study.study_id, wrong_context)
+
+
+def test_observation_replay_remains_idempotent_after_run_budget_is_full(tmp_path):
+    study = _study(max_runs=1)
+    store = OptimizationStudyStore(tmp_path / "full-study.db")
+    store.create(study)
+    first = _observations()[0]
+    store.add_observation(study.study_id, first)
+
+    # Durable controller recovery may replay the last committed observation.
+    # It must not be rejected merely because all experimental slots are used.
+    assert store.add_observation(study.study_id, first) == first.observation_id
+    assert len(store.observations(study.study_id)) == 1
+    with pytest.raises(ValueError, match="budget"):
+        store.add_observation(study.study_id, _observations()[1])
 
 
 def test_pareto_front_keeps_tradeoffs_and_removes_dominated():

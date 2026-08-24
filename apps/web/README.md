@@ -9,8 +9,8 @@ The dependency-free single-page application has five bilingual views:
 3. **Backend Design**: flow configuration, six-stage progress, layout, QoR,
    reports, artifacts, and specialist implementation entry points.
 4. **Projects & Results**: vertical project index and complete per-project detail.
-5. **Self-Evolution**: a visual knowledge/observation-to-decision feedback loop,
-   human-controlled recommendations, and expandable research records.
+5. **Self-Evolution**: a read-only visual record of the autonomous
+   knowledge/observation-to-decision feedback loop and research provenance.
 
 The built-in example catalog includes starter circuits plus an ALU, controller,
 UART transmitter, and compact RISC-V teaching core. Small netlists use a full
@@ -28,11 +28,12 @@ and CktCraft. RTLCraft, EDACode, and ImplCraft adapters remain available for
 compatibility and historical evidence, but are not duplicated in the primary
 RTL or physical-design interface. Specialist details open inside Backend.
 
-Frontend and Backend use a compact interactive-demo workspace: a centered
-single column, top workspace switcher, numbered panel headers, and an explicit
-input → configuration → action → status → evidence sequence. Backend baseline
-mode queues one Runtime run; Stage-aware Campaign and Agent-guided modes create
-bounded review plans without automatic execution. The header `中文 / EN` switch
+Frontend and Backend use a compact workspace: a centered single column, top
+workspace switcher, numbered panel headers, and an explicit input → autonomous
+action → status → evidence sequence. Backend exposes one 2D product action:
+the durable repeated-baseline → BO/GP → stall diagnosis → learning loop. A
+single Runtime baseline and fixed scans exist only inside research harnesses,
+not as user-selectable modes. The header `中文 / EN` switch
 persists locally, and `?lang=zh` / `?lang=en` can select a language for a shared
 review URL.
 

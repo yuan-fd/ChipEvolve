@@ -20,7 +20,7 @@ from typing import Any, Iterable, Mapping
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 PUBLIC_KINDS = {"official_documentation", "paper_derived_claim",
-                "upstream_benchmark_metadata"}
+                "upstream_benchmark_metadata", "bibliographic_metadata"}
 LICENSE_DECISIONS = {"redistributable", "metadata_only", "restricted", "rejected"}
 
 
@@ -48,6 +48,12 @@ class KnowledgeSource:
     redistributable: bool
     hash_basis: str = ""
     notes: str = ""
+    authors: tuple[str, ...] = ()
+    venue: str = ""
+    year: int | None = None
+    doi: str = ""
+    arxiv_id: str = ""
+    hash_input: str = ""
 
     def validate(self) -> None:
         if not IDENTIFIER.fullmatch(self.source_id):
@@ -62,13 +68,33 @@ class KnowledgeSource:
             raise ValueError("Invalid license decision")
         if not SHA256.fullmatch(self.content_sha256):
             raise ValueError("Invalid source content SHA-256")
-        if (self.hash_basis and
-                hashlib.sha256(self.hash_basis.encode()).hexdigest() != self.content_sha256):
+        # Old lockfiles stored the exact hash input in ``hash_basis``.  New
+        # bibliographic entries derive it from typed metadata, so changing a
+        # title, author list, venue, year, DOI or arXiv version invalidates the
+        # pin rather than silently retaining a label-only hash.
+        if self.content_kind == "bibliographic_metadata":
+            author_text = (f"{self.authors[0]} et al." if len(self.authors) > 5
+                           else ";".join(self.authors))
+            venue_text = "arXiv" if self.venue == "arXiv preprint" else self.venue
+            pinned_input = "|".join((self.title, author_text, venue_text,
+                                     str(self.year or ""), self.doi or self.arxiv_id))
+        else:
+            pinned_input = self.hash_input or self.hash_basis
+        if (pinned_input and
+                hashlib.sha256(pinned_input.encode()).hexdigest() != self.content_sha256):
             raise ValueError("Source content SHA-256 does not match its pinned hash basis")
         if self.content_kind not in PUBLIC_KINDS:
             raise ValueError("External source cannot use observed_fact")
         if self.redistributable and self.license_decision != "redistributable":
             raise ValueError("Only redistributable sources may cache content")
+        if self.year is not None and not 1900 <= self.year <= 2100:
+            raise ValueError("Invalid bibliographic year")
+        if self.doi and not self.doi.startswith("10."):
+            raise ValueError("Invalid DOI")
+        if self.arxiv_id and not re.fullmatch(r"\d{4}\.\d{4,5}(?:v\d+)?", self.arxiv_id):
+            raise ValueError("Invalid arXiv identifier")
+        if any(not author.strip() for author in self.authors):
+            raise ValueError("Invalid author list")
 
     def to_dict(self) -> dict[str, Any]:
         self.validate()
@@ -93,7 +119,8 @@ class DocumentClaim:
             raise ValueError("Invalid claim identity")
         if not self.locator.strip() or not self.text.strip() or len(self.text) > 16_000:
             raise ValueError("Invalid claim content")
-        if self.evidence_level not in {"official", "peer_reviewed", "artifact", "metadata"}:
+        if self.evidence_level not in {"official", "peer_reviewed", "preprint",
+                                       "artifact", "metadata"}:
             raise ValueError("Invalid claim evidence level")
 
     def to_dict(self) -> dict[str, Any]:
@@ -196,7 +223,8 @@ class PublicKnowledgeRegistry:
             """)
 
     def import_manifest(self, manifest: Mapping[str, Any]) -> CorpusSnapshot:
-        sources = [KnowledgeSource(**item) for item in manifest.get("sources", ())]
+        sources = [KnowledgeSource(**{**item, "authors": tuple(item.get("authors", ()))})
+                   for item in manifest.get("sources", ())]
         claims = [DocumentClaim(**{**item, **{
             key: tuple(item.get(key, ())) for key in
             ("platforms", "toolchains", "stages", "design_classes")

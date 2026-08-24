@@ -13,7 +13,7 @@ def _tool(path: Path, body: str) -> Path:
 def test_mutation_plugin_records_real_outcomes_not_self_reported(tmp_path):
     rtl = tmp_path / "dut.sv"; rtl.write_text("module dut(input a,b,output y); assign y=(a == b) && 1; endmodule\n")
     tb = tmp_path / "tb.sv"; tb.write_text("module tb; endmodule\n")
-    compiler = _tool(tmp_path / "bin" / "iverilog", "#!/bin/sh\nout=\nprev=\nsecond_last=\nlast=\nfor arg in \"$@\"; do [ \"$prev\" = -o ] && out=$arg; second_last=$last; last=$arg; prev=$arg; done\nif grep -q '!=' \"$second_last\"; then printf '#!/bin/sh\\nexit 1\\n' > \"$out\"; else printf '#!/bin/sh\\nexit 0\\n' > \"$out\"; fi\nchmod +x \"$out\"\n")
+    compiler = _tool(tmp_path / "bin" / "iverilog", "#!/bin/sh\nout=\nprev=\nsecond_last=\nlast=\nfor arg in \"$@\"; do [ \"$prev\" = -o ] && out=$arg; second_last=$last; last=$arg; prev=$arg; done\nif grep -q '!=' \"$second_last\"; then printf '#!/bin/sh\\necho \"TB_SUMMARY total=1 errors=1\"\\nexit 0\\n' > \"$out\"; else printf '#!/bin/sh\\necho \"TB_SUMMARY total=1 errors=0\"\\necho PASS\\nexit 0\\n' > \"$out\"; fi\nchmod +x \"$out\"\n")
     vvp = _tool(tmp_path / "bin" / "vvp", "#!/bin/sh\n\"$1\"\n")
     manifest = rtl_mutation_plugin_manifest(iverilog_bin=compiler, vvp_bin=vvp, python_executable=sys.executable)
     runtime = WorkflowRuntime(RuntimeStore(tmp_path / "runtime.db"), PluginRegistry([manifest]), workspace_root=tmp_path / "runs")
@@ -23,3 +23,6 @@ def test_mutation_plugin_records_real_outcomes_not_self_reported(tmp_path):
     assert run.status.value == "succeeded"
     report = next(x for x in runtime.describe(run.run_id)["stages"][0]["attempts"][0]["artifacts"] if x["kind"] == "mutation_report")
     assert report["size_bytes"] > 0
+    payload = __import__("json").loads((Path(runtime.describe(run.run_id)["stages"][0]["attempts"][0]["workspace"]) / report["store_key"]).read_text())
+    assert payload["killed_count"] >= 1
+    assert payload["mutation_score"] > 0

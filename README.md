@@ -11,7 +11,7 @@ An open platform for chip-design automation: 2D / 3D physical design with an AI 
 Turning chip design from a manual flow into an **automated + self-learning** open platform:
 
 - **Automated flow**: input RTL, automatically complete 2D / 3D physical design (synthesis → floorplan → placement → routing → GDS), with full traceable evidence.
-- **Self-learning**: every successful run is collected into the knowledge base; AI reviews history and recommends next-step parameters (self-evolution loop).
+- **Evidence-backed learning**: every terminal repeated run is retained; the autonomous BO/GP loop uses context-matched evidence, verifies the next parameter combination, and stores both improvement and failure outcomes.
 - **Open extension**: plugin architecture — a new EDA tool only needs an adapter following the interface; plugins never interfere with each other.
 
 **In one sentence: RTL goes in, GDS comes out, experience is kept, and the platform gets smarter.**
@@ -22,48 +22,45 @@ Turning chip design from a manual flow into an **automated + self-learning** ope
 
 ![Platform architecture](docs/images/architecture.png)
 
-*Overall: web workspace → API service → SQLite queue → worker → workflow runtime + plugin registry → 2D / 3D toolchains → evidence base → self-evolution → AI suggestions → human decision.*
+*Overall: web workspace → the single autonomous BO/GP entry → durable checkpoint → workflow runtime → repeated OpenROAD measurements → hard safety/quality gates → stall diagnosis → evidence learning.*
 
 ![Design workflow](docs/images/workflow.png)
 
-*Input RTL (SHA-256 fingerprinted) → two branches: 2D (ORFS 6 stages) and 3D (TaiWei 20 stages) → GDS + metrics → knowledge base (verified runs only) → AI suggestions (GP/BO + behavior cloning) → human approval.*
+*Natural-language SpecIR → independent Verification Agent → RTLScout → 2D ORFS baseline → repeated BO/GP experiments → three-stall diagnosis → automatically gated evidence learning. Existing RTL import and TaiWei 3D remain explicit side inputs, not alternative optimization modes.*
 
 ### Agent architecture (self-evolution)
 
 ```mermaid
 graph TD
     U[User · design intent] -->|natural-language spec| FE[Frontend · spec-to-rtl agent]
-    FE -->|registered RTL| BD[flow-agent · WorkflowRuntime]
-    BD -->|run + evidence| OBS[(observations · verified)]
+    FE -->|independently verified RTL| B0[automatic repeated baseline]
+    B0 --> BD[autonomous BO/GP loop · WorkflowRuntime]
+    BD -->|run + evidence| OBS[(replicated observations · verified)]
     OBS -->|observations| BO[BO/GP optimizer<br/>MultiObjectiveBayesianOptimizer]
-    BO -->|parameter proposal| REC[recommendation · bo-gp]
-    REC -->|human approval| DEC{human in the loop}
-    DEC -->|accepted| CAM[campaign · batch experiments]
-    CAM -->|new observations| OBS
-    OBS -.->|trajectories| BC[behavior-cloning shadow policy · offline RL]
-    OBS -.->|only on improvement| LSN[(lessons)]
-    LSN -.->|distill| SK[(skills)]
-    SK -.->|guide next hypothesis| BO
+    BO -->|coupled parameter proposal| DEC{hard constraints<br/>budget · allowlist · PPA}
+    DEC -->|admitted| BD
+    DEC -->|3 stalled rounds| DIA[stage diagnosis packet]
+    OBS -->|positive and negative outcomes| MEM[(context-scoped evidence memory)]
+    MEM -->|numeric warm start + validated rules| BO
     KB[(RAG knowledge base<br/>papers · docs · benchmarks)] -->|prior + rationale| FE
     KB -->|prior + rationale| BO
 ```
 
-### Evolve-agent loop (Optimizer → Disruptor → Coder)
+### v2 Agent loop (one product path)
 
 ```mermaid
 graph LR
-    subgraph Optimizer[OptimizerAgent · each round]
-        A1[1 analyze<br/>attribution + trend] --> A2[2 hypothesize<br/>single parameter]
-        A2 --> A3[3 plan<br/>execution_allowed=False]
-        A3 --> A4[4 execute<br/>via scheduler, human-approved]
-        A4 --> A5[5 score + record + lessons]
+    subgraph Optimizer[Autonomous BO/GP Agent · each round]
+        A1[1 map + observe<br/>replicated EDA evidence] --> A2[2 hypothesize<br/>coupled parameter vector]
+        A2 --> A3[3 hard gate<br/>allowlist · budget · constraints]
+        A3 --> A4[4 execute<br/>via Workflow Runtime]
+        A4 --> A5[5 verify + review + remember]
         A5 --> A1
     end
-    LG[(IterationLedger<br/>file-backed state)] <--> Optimizer
-    Optimizer --> TR[(AgentTrace<br/>auditable)]
-    TR --> D[DisruptorAgent<br/>stall detection → redirect]
-    D -->|widen exploration / objective shift| A2
-    C[CoderAgent<br/>future · source edits] -.->|isolated validation gate| A3
+    CP[(Durable checkpoint<br/>round · replicas · decisions)] <--> Optimizer
+    Optimizer --> TR[(Evidence trace<br/>auditable)]
+    TR --> D[Diagnosis boundary<br/>three consecutive stalls]
+    D -->|stage evidence + falsifiable hypothesis| MEM[(Evidence memory)]
 ```
 
 ---
@@ -75,16 +72,16 @@ graph LR
 | 2D physical design (ORFS 6-stage) | ✅ Working | Nangate45 RTL→GDS verified end-to-end |
 | 3D physical design (TaiWei) | ✅ Working | 3 platforms × any design; 3 real variants verified |
 | Web workspace | ✅ Available | Overview / Frontend / Backend / Projects / Self-Evolution / Tutorial |
-| Natural-language RTL generation | ✅ Available | Spec-to-RTL via server codex model, human review before registration |
+| Natural-language RTL generation | ✅ Available | Server Codex parses SpecIR; a separate verification agent freezes a testbench/oracle before RTLScout candidate search |
 | Frontend LLM entry | ✅ Available | Three entry buttons (upload / LLM spec / examples), agent run trace dashboard |
-| Agent architecture | ✅ Working | OptimizerAgent loop (analyze→hypothesize→plan→score→record) + Disruptor + Coder interface |
-| Self-evolution (knowledge + AI suggestions) | ✅ Working | Verified collection only; GP/BO + behavior cloning + lessons/skills + feedback loop |
-| Lessons & skills | ✅ Working | Improvement-only distillation; context-scoped retrieval; planning-side skill application |
+| Agent architecture | ✅ Working | Persistent SpecIR/RTL and BO/GP checkpoints, independent verification gates, Runtime evidence, and three-stall diagnosis boundary |
+| Self-evolution | ✅ Working | Repeated observed evidence; coupled BO/GP; three-stall diagnosis; positive/negative context-scoped memory |
+| Causal evidence learning | ✅ Working | Hypothesis ledger, controlled 2×2 interaction tests, holdout validation, and rule revocation after contradictory evidence |
 | Agent trace dashboard | ✅ Working | Every LLM/agent operation traced; step durations & metric comparison |
 | Plugin ecosystem | ✅ Ready | TaiWei / RTLScout / AgenticPD / EDACraft / ImplCraft / DPLEvolve |
-| Batch experiments (Campaign / Agent search) | ✅ Working | 12 campaigns / 68 members executed; reviewable plans, human-confirmed |
+| Autonomous BO/GP implementation loop | ✅ Implemented | One product entry; repeated baseline/candidate runs, coupled-parameter proposals, hard constraints, and three-stall diagnosis |
 | No-auth internal mode | ✅ Available | `OPENROAD_PLATFORM_NO_AUTH=1` skips registration |
-| LLM online optimization | 🚧 Needs config | BYOK or shared model; credentials in memory only |
+| Platform model | ✅ Server managed | Fixed internal Codex model; browser accepts no Provider or API key |
 
 > Full capability map: Overview page + [Tutorial 01](docs/tutorials/01_openroad_platform_overview.md).
 
@@ -99,7 +96,7 @@ openroad-platform/
 │   └── web/                 # Frontend web workspace (bilingual)
 ├── packages/
 │   ├── contracts/           # Data contracts: TaskSpec / PluginManifest / artifact rules
-│   ├── scheduler/           # Scheduling: SQLite queue, Runtime, worker, campaigns
+│   ├── scheduler/           # Scheduling: SQLite queue, Runtime, worker; research campaigns stay outside the product API
 │   ├── execution/           # Execution: plugin registry, 2D/3D adapters, process isolation
 │   ├── analysis/            # Analysis + learning: metrics, knowledge, GP/BO, suggestions
 │   └── visualization/       # Visualization: Graphviz, KLayout, 3D views
@@ -136,16 +133,16 @@ REST API (every web feature is callable via API):
 | Endpoint | Purpose |
 | --- | --- |
 | `/api/auth/*` | Login / register (skippable in no-auth mode) |
-| `/api/designs/*` | Design registration / import / generation |
-| `/api/runtime/runs/*` | 2D/3D task submit, progress, cancel, artifacts |
-| `/api/agent/iterate` | Run one OptimizerAgent loop (planning-only, human review) |
+| `/api/spec/sessions` → `/api/rtl/specs/<id>/run-to-baseline` | Sole natural-language SpecIR → independently verified RTLScout path |
+| `/api/designs/*` | Registered design evidence and explicit existing-RTL import |
+| `/api/runtime/runs/*` | Internal child-run progress, cancel, evidence, and artifacts |
+| `/api/v2/closed-loops` | The only 2D product start endpoint: repeated baseline → autonomous BO/GP |
+| `/api/v2/closed-loops/<id>/run-to-boundary` | Resume until budget completion or the fixed three-stall diagnosis boundary |
 | `/api/agent/traces` | Agent run traces (every LLM/agent operation, auditable) |
 | `/api/extensions/taiwei/run` | 3D task submit (platform / parameters) |
 | `/api/extensions/edacraft/*` | Specialist tools (TCAD / SPICE / ...) |
 | `/api/platform/results` | Projects and results |
-| `/api/runtime/runs/<id>/collect-learning` | Knowledge collection |
-| `/api/learning/observations` | List collected knowledge |
-| `/api/recommendations/*` | AI suggestions and human decisions |
+| `/api/learning/observations` | Read-only evidence learned automatically by the closed loop |
 
 **Plugin three pieces**: ① `plugin.json` (identity: capabilities/tools/artifact rules)
 ② `xxx_plugin.py` (TaskSpec builder) ③ `xxx_adapter.py` (runs the tool, collects outputs).
@@ -189,12 +186,12 @@ mkdir -p "$PLATFORM_STATE"
 # Terminal 1: worker
 python3 scripts/run_runtime_worker.py \
   --db var/platform.db --orfs-root ../OpenROAD-flow-scripts \
-  --runtime-db "$PLATFORM_STATE/runtime.db" --campaign-db "$PLATFORM_STATE/campaign.db"
+  --runtime-db "$PLATFORM_STATE/runtime.db"
 
 # Terminal 2: web
 python3 apps/api/app.py --host 127.0.0.1 --port 8000 \
   --db var/platform.db --orfs-root ../OpenROAD-flow-scripts \
-  --runtime-db "$PLATFORM_STATE/runtime.db" --campaign-db "$PLATFORM_STATE/campaign.db"
+  --runtime-db "$PLATFORM_STATE/runtime.db"
 ```
 
 ### 5-minute walkthrough

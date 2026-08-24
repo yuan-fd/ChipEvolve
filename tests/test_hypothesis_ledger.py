@@ -16,6 +16,24 @@ def test_reflection_requires_controlled_evidence_before_transfer(tmp_path):
     assert len(ledger.history(hypothesis["hypothesis_id"])) == 2
 
 
+def test_interaction_hypothesis_can_pre_register_presence_or_absence():
+    hypothesis = reflection_hypothesis(
+        claim="parameters may interact", mechanism="shared physical resources",
+        context={"design": "gcd"}, producer="diagnosis-agent",
+        proposed_intervention={"kind": "2x2"},
+        evidence_refs=[{"ref": "run:r1", "sha256": "a" * 64}])
+    nonzero = assess_hypothesis(
+        hypothesis, intervention_report={"causal_eligible": True,
+                                         "interaction_effect": 0.25},
+        expected_direction="nonzero")
+    absent = assess_hypothesis(
+        hypothesis, intervention_report={"causal_eligible": True,
+                                         "interaction_effect": 0.0},
+        expected_direction="zero")
+    assert nonzero["status"] == "supported"
+    assert absent["status"] == "supported"
+
+
 def test_causal_reflection_agent_emits_only_a_bounded_non_executable_study(monkeypatch):
     import json
     import subprocess

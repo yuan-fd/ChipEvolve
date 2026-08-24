@@ -29,9 +29,9 @@ def main() -> int:
         ROOT / "var" / "platform.db", ROOT / "var" / "uploads",
         ROOT.parent / "OpenROAD-flow-scripts",
         design_root=work / "designs", legacy_root=ROOT.parent / "iccad",
-        runtime_db_path=work / "runtime.db", campaign_db_path=work / "campaign.db",
+        runtime_db_path=work / "runtime.db",
         optimization_db_path=work / "optimization.db",
-        byok_transport_secure=False, load_taiwei_plugin=False,
+ load_taiwei_plugin=False,
     )
     session, _ = state.auth.register("l1-verify-user", "l1-verify-pass-1")
     owner_id = session.user_id

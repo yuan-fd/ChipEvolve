@@ -51,10 +51,9 @@ def main() -> int:
         ROOT.parent / "OpenROAD-flow-scripts",
         design_root=ROOT / "var" / "designs", legacy_root=ROOT.parent / "iccad",
         runtime_db_path=ROOT / "var" / "public" / "runtime.db",
-        campaign_db_path=ROOT / "var" / "public" / "campaign.db",
         optimization_db_path=ROOT / "var" / "public" / "optimization.db",
         auth_db_path=ROOT / "var" / "public" / "web-auth.db",
-        byok_transport_secure=False, load_taiwei_plugin=False,
+ load_taiwei_plugin=False,
     )
     owner_id = "user-ea0c3d1f4520448d99a22d2dc7f7b250"  # yuanwenjie (already in live auth)
     before = len(state.tenant_learning_store.list(owner_id, "openroad-platform"))

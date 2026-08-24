@@ -58,7 +58,10 @@ def rtl_verify_plugin_manifest(*, verilator_bin: str | Path, yosys_bin: str | Pa
             {"kind": "verification_report", "required": True},
             {"kind": "log", "required": True},
         ),
-        environment={"VERILATOR_BIN": str(verilator), "YOSYS_BIN": str(yosys),
+        # Do not export VERILATOR_BIN: the Verilator Perl launcher interprets
+        # that upstream variable as its compiled backend. Pointing it back to
+        # the launcher causes infinite recursive `--get-supported` processes.
+        environment={"RTL_VERIFY_VERILATOR": str(verilator), "YOSYS_BIN": str(yosys),
                      "PATH": os.pathsep.join((str(verilator.parent), str(yosys.parent), "/usr/bin", "/bin"))},
     )
     manifest.validate()

@@ -36,9 +36,9 @@ def main() -> int:
         ROOT / "var" / "platform.db", ROOT / "var" / "uploads",
         ROOT.parent / "OpenROAD-flow-scripts",
         design_root=ROOT / "var" / "designs", legacy_root=ROOT.parent / "iccad",
-        runtime_db_path=work / "runtime.db", campaign_db_path=work / "campaign.db",
+        runtime_db_path=work / "runtime.db",
         optimization_db_path=work / "optimization.db",
-        byok_transport_secure=False, load_taiwei_plugin=False,
+ load_taiwei_plugin=False,
     )
     rtl = ROOT / "tests" / "fixtures" / "p2_mux_2to1.v"
     task = build_orfs_task(

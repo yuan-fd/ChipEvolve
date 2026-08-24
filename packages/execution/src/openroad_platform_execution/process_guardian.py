@@ -193,6 +193,33 @@ class ProcessGuardian:
         """Snapshot Linux descendants, including children that called setsid()."""
         if not Path("/proc").is_dir():
             return {root_pid}
+        # Linux exposes a direct child index for every task.  Following that
+        # index is O(size of this process tree); scanning every PID on a busy
+        # EDA server made a 250 ms cancellation take several seconds.
+        result = {root_pid}
+        pending = [root_pid]
+        indexed = True
+        while pending:
+            parent = pending.pop()
+            children_path = Path(f"/proc/{parent}/task/{parent}/children")
+            try:
+                child_ids = children_path.read_text(encoding="utf-8").split()
+            except (FileNotFoundError, PermissionError, ProcessLookupError, OSError):
+                if parent == root_pid:
+                    indexed = False
+                continue
+            for value in child_ids:
+                try:
+                    child = int(value)
+                except ValueError:
+                    continue
+                if child not in result:
+                    result.add(child)
+                    pending.append(child)
+        if indexed:
+            return result
+
+        # Portable /proc fallback for kernels without the children index.
         children: dict[int, list[int]] = {}
         for entry in Path("/proc").iterdir():
             if not entry.name.isdigit():

@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>基于OpenROAD的AgenticEDA自演化平台开题报告（四轮审稿版）</title>
+<style>
+:root{--ink:#172033;--muted:#5e6b7d;--blue:#536f9e;--mint:#397e6c;--rose:#a35762;--sand:#8d702b;--line:#d6dde7;--bg:#edf1f6}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Arial,"Noto Sans CJK SC","Microsoft YaHei",sans-serif;line-height:1.76}main{max-width:1240px;margin:24px auto;background:white;padding:54px 68px;box-shadow:0 10px 32px #24364c18}h1{font-size:36px;line-height:1.35;margin:0 0 12px;color:#162a46}h2{margin:50px 0 18px;padding:11px 15px;border-left:6px solid var(--blue);background:#f1f5fb;color:#1c416e;font-size:25px}h3{margin:31px 0 10px;color:#28577d;font-size:19px}h4{margin:23px 0 8px;font-size:16px;color:#354b66}.lead{font-size:19px;color:#354861}.meta{color:#687588;margin:8px 0 25px}.statement,.plain,.warning,.evidence-box,.review{padding:16px 19px;margin:16px 0;border-radius:9px;border:1px solid}.statement{background:#f4f7fb;border-color:#b6c5d8}.plain{background:#effaf7;border-color:#91c5b8}.warning{background:#fff3f4;border-color:#dca7ad}.evidence-box{background:#fff9eb;border-color:#d8c58c}.review{background:#f5f2ff;border-color:#b9acd8}table{width:100%;border-collapse:collapse;margin:15px 0 23px;font-size:14px}th,td{border:1px solid #cfd8e3;padding:9px 10px;vertical-align:top}th{background:#eaf0f7;color:#24486d;text-align:left}tr:nth-child(even) td{background:#fbfcfe}ol li,ul li{margin:7px 0}.toc{columns:2;column-gap:42px}.fig{margin:25px 0 30px;padding:11px;border:1px solid #d6dde7;background:#fff;box-shadow:0 4px 13px #263c5410}.fig img{display:block;width:100%;height:auto}.caption{font-size:13px;color:#526074;margin:9px 5px 2px}.formula{font-family:Georgia,"Times New Roman",serif;background:#f6f8fb;border-left:4px solid #7387a2;padding:13px 18px;margin:14px 0}.tag{display:inline-block;padding:2px 9px;border-radius:12px;margin:2px;font-size:12px;background:#e8eef7;color:#28547f}.ok{color:#21704f;font-weight:bold}.limit{color:#a04651;font-weight:bold}.ext{color:#7156a0;font-weight:bold}.small{font-size:12px;color:#697589}.status{white-space:nowrap;font-weight:bold}.quote{border-left:4px solid #a9b6c7;padding-left:15px;color:#46566b}.kpi{font-size:20px;font-weight:bold;color:#24567f}.pagebreak{break-before:page}.nowrap{white-space:nowrap}a{color:#1e659f;text-decoration:none}a:hover{text-decoration:underline}@media(max-width:800px){main{margin:0;padding:25px 18px}.toc{columns:1}table{font-size:12px}h1{font-size:28px}}@media print{body{background:white}main{max-width:none;margin:0;padding:0 10mm;box-shadow:none}.fig{break-inside:avoid}h2{break-after:avoid}table{break-inside:auto}tr{break-inside:avoid}}
+</style></head><body><main>
+<h1>基于 OpenROAD 的 AgenticEDA 自演化平台：从自然语言芯片设计到可审计闭环优化</h1>
+<p class="lead">开题报告·四轮严格审稿版。本文不把“接了一个大模型”当作研究成果，而是说明平台怎样解析设计意图、生成并验证 RTL、运行 OpenROAD、转换 EDA 数据、搜索组合参数、识别停滞、提出受限动作，并把经过复验的经验反馈到下一轮。</p>
+<p class="meta">袁文杰：平台主线 / Agent / 数据接口 / 自演化 / 论文实验　｜　沈夏南：TaiWei3D　｜　刘宏博：RTL生成　｜　戴家乐：有限动作工具　｜　事实核查日期：2026-08-25</p>
+<div class="warning"><b>重要事实边界。</b> 图展示最终目标架构，不使用 v2.0、v3.0、v4.0 标签，也不暗示所有目标能力都已完成。正文明确区分三类内容：<b>平台已经跑出的证据</b>、<b>仍需完成的研究任务</b>、<b>外部论文作者报告的结果</b>。外部结果一律不算作本平台成果。</div>
+
+<h2>摘要：这个课题到底要解决什么</h2>
+<p>OpenROAD 已经能完成从综合、布局、时钟树、布线到 GDS 的开放流程，但它面对的是脚本、参数和大量工程报告；大语言模型擅长理解自然语言，却不能靠“说得像专家”证明电路正确、PPA 变好或修复没有副作用。本课题的目标，是在两者之间建立一个可靠的实验系统：大模型负责理解、规划、提出假设和解释，受保护 Runtime 负责执行；<b>在已经接入且能产生receipt的验证门上</b>，Verilator、Yosys、OpenROAD和当前DRC/时序检查负责判定；更强的LVS、CEC/formal和3D fresh-signoff属于按条件或后续接入能力。证据数据库负责追溯，受控实验和留出设计负责检验经验能否迁移。</p>
+<p>用大白话说，平台不是让 AI “替工程师按几个按钮”，而是让它像一个受实验制度约束的研究团队：写 RTL 的人不能改试卷，写试卷的人不能给自己判分；优化器只能提出下一组值得测的参数，不能把预测值冒充真实 PPA；一次成功只能记为一次观察，不能直接升格为规律；跨设计复验失败的经验也必须保存，用来阻止下一次犯同样的错。</p>
+<table><tr><th>核心研究问题</th><th>具体问题</th><th>怎样才算回答了</th></tr>
+<tr><td>RQ1：自然语言到 RTL</td><td>怎样把不严谨的需求变成端口、时钟、复位、行为和验收条件明确的规格？RTL作者和Testbench作者怎样分离？</td><td>固定题与开放规格、多seed；报告编译、功能、mutation、coverage/formal、成本和后端PPA，保留所有失败。</td></tr>
+<tr><td>RQ2：EDA数据到AI证据</td><td>怎样让Agent看到路径、实例、网、违例和运行上下文，又不因摘要丢掉关键细节？</td><td>原文、KPI摘要、Typed EDAIR、图+向量四组诊断对照；核验对象数量、数值、单位、source span和证据回读。</td></tr>
+<tr><td>RQ3：组合参数探索</td><td>怎样在有限预算内探索参数组合，处理多目标、失败配置和噪声，并在停滞时换方向？</td><td>default/random/BO/Agent同预算、多设计、真实flow seed；报告anytime regret、hypervolume、失败率和校准。</td></tr>
+<tr><td>RQ4：深层自演化</td><td>系统怎样从“记住成功配置”升级为带机制、反证条件和迁移边界的知识？</td><td>局部受控干预、效应与不确定性、预注册holdout、正负迁移知识卡；做真实四臂消融。</td></tr>
+<tr><td>RQ5：Agent架构</td><td>多角色和阶段化控制是否真的减少误诊、越权和无效实验，而不只是多写几个Agent名字？</td><td>flat/no-review/no-checkpoint/full architecture同任务同预算；测QoR、定位率、恢复成本和非法动作率。</td></tr></table>
+
+<h2>目录</h2>
+<ol class="toc"><li>平台定位与最终工作流</li><li>Agent如何规划、执行与受约束</li><li>RTL生成：拆开RTLScout内部</li><li>EDA-to-AI低失真数据接口</li><li>BO/GP组合参数探索</li><li>自演化与知识准入</li><li>当前真实证据与严格边界</li><li>2025–2026前沿逐项对标</li><li>四名成员任务与验收</li><li>TaiWei3D独立研究线</li><li>论文级实验与统计</li><li>实施阶段、风险与参考文献</li></ol>
+<h3>术语速查：第一次读项目先看这张表</h3>
+<table><tr><th>术语</th><th>一句中文定义</th></tr>
+<tr><td>SpecIR</td><td>把自然语言需求变成端口、位宽、时钟、行为、约束和验收条件的结构化规格合同。</td></tr>
+<tr><td>EDAIR</td><td>把运行、指标、时序路径、实例、网和违例统一成带来源指针的类型化EDA证据对象。</td></tr>
+<tr><td>CircuitOps</td><td>以cell/pin/net属性表和关系表表达电路连接，方便图查询和机器学习。</td></tr>
+<tr><td>EvidencePacket</td><td>一次Agent诊断实际拿到的有界证据包，包含事实、遗漏清单和回读原文件的方法。</td></tr>
+<tr><td>ActionSpec</td><td>受限动作合同：写明假设、依据、目标对象、允许动作、预期、预算和停止条件。</td></tr>
+<tr><td>Holdout</td><td>不参与提出规律的留出设计，用来检查经验换一个设计后是否仍成立。</td></tr>
+<tr><td>CEC</td><td>组合/顺序等价检查；只有存在参考实现或等价目标时才适用。</td></tr>
+<tr><td>qNEHVI</td><td>面向有噪声多目标批次实验的超体积采集函数；属于目标算法，不是当前实验已验证能力。</td></tr></table>
+
+<h2>一、平台定位与最终工作流</h2>
+<p>平台位于自然语言需求与 OpenROAD 工具链之间。它不是替换 OpenROAD，而是给现有 EDA 工具增加四层能力：设计意图合同、Agent实验控制、EDA证据接口、可复验知识循环。最终用户给出自然语言规格，平台自动完成规格结构化、测试生成、RTL候选演化和前端验证；通过的 RTL 进入 OpenROAD，先得到共同 baseline，再由 BO/GP 和 Agent 在预算内做参数组合实验；连续三个批次没有可靠改善时，平台冻结搜索轨迹并把诊断包交给 Repair Agent；后者只能提出白名单动作，所有动作都由 Runtime 执行并重新验收；经过局部干预和留出设计复验的经验进入知识库，影响下一轮提案。</p>
+<div class="fig"><img src="AgenticEDA_开题报告_四轮审稿版_图片/01_drawio_style.svg" alt="AgenticEDA最终工作流"><p class="caption">图1　最终目标工作流。图按参考图风格分成三条大泳道，每个框均写明输入、处理和输出。底部思考链不是隐藏的“思维过程文本”，而是八类可审计结构化事件。</p></div>
+<h3>1.1 两条闭环怎样衔接</h3>
+<ol><li><b>前端正确性闭环：</b>自然语言→SpecIR→职责与写权限独立的Verification Agent→冻结Testbench→RTLScout候选→compile/lint/simulation/mutation→合格RTL。这里“独立”不是独立模型：当前Verification与RTL角色都由同一托管模型 <code>gpt-5.6-terra</code> 执行。</li><li><b>后端QoR闭环：</b>合格RTL→共同baseline→EDAIR/CircuitOps证据→BO/GP组合提案→真实OpenROAD实验→统计审查→停滞换向→受限动作→复测→知识准入。</li><li><b>共同原则：</b>两个闭环都使用受保护评估器。候选生成者看得到错误反馈，但无权修改判分工具、原始报告和准入门。</li></ol>
+<h3>1.2 PPA偏好不是空按钮</h3>
+<p>用户选择“平衡 / 面积 / 时序 / 性能”后，系统把偏好转换成版本化 <code>objective_profile</code>：每个指标有方向、权重、归一化基准和硬约束。偏好只影响候选排序，不能覆盖安全门。例如“面积优先”可以提高 area 权重，但 setup WNS、DRC、失败率等硬约束仍必须通过。当前轻量实现采用加权标量效用；论文目标将同时报告 Pareto 前沿和 hypervolume，避免一组权重掩盖真实取舍。</p>
+<div class="formula">u(x)=Σ w<sub>i</sub>·s<sub>i</sub>(x)，其中 s<sub>i</sub> 先按 baseline 与目标方向归一化；若任何硬约束失败，则候选不可行，不参与“更优”排名。</div>
+
+<h2>二、Agent如何规划、执行与受约束</h2>
+<p>本平台采用“一份执行权，多种提案角色”。Spec、Verification、RTL、Optimizer、Repair、Reviewer 和 Memory 角色可以各自生成结构化产物，但只有 Runtime 可以启动插件和命令，只有固定评估器可以写入终态指标。这样做不是为了让架构图看起来复杂，而是为了把冲突职责分开：提出假设的人不能直接把假设变成事实，修改候选的人不能修改验证器，保存知识的人不能跳过复验。</p>
+<table><tr><th>角色</th><th>看到什么</th><th>必须输出什么</th><th>禁止做什么</th></tr>
+<tr><td>Judge / Orchestrator</td><td>全局目标、阶段状态、预算、checkpoint</td><td>阶段路由、分支与停止决策</td><td>不能直接改RTL、Tcl或源码</td></tr>
+<tr><td>Spec Agent</td><td>自然语言需求、目标工艺与约束</td><td>SpecIR、歧义清单、验收条件</td><td>不能把未确认内容静默补成事实</td></tr>
+<tr><td>Verification Agent</td><td>SpecIR，不看RTL作者私有推理</td><td>Testbench/reference model/SVA/coverage计划及哈希</td><td>冻结后不能配合RTL修改判题规则</td></tr>
+<tr><td>RTLScout Agent</td><td>SpecIR、冻结验证包、结构化错误反馈</td><td>候选RTL、父子lineage、修改理由</td><td>不能写Testbench、不能自由shell</td></tr>
+<tr><td>Optimizer</td><td>同上下文观测矩阵、失败配置、目标偏好</td><td>带预测均值/方差/采集值的参数组合</td><td>不能把GP预测写成实测QoR</td></tr>
+<tr><td>Repair Agent</td><td>阶段诊断包、对象级EDAIR、白名单动作</td><td>假设、依据、动作、预期、停止条件</td><td>不能越过ActionSpec和源码门禁</td></tr>
+<tr><td>Reviewer</td><td>baseline/candidate完整证据</td><td>接受/拒绝/复验/回滚及理由</td><td>不能只看最好单次或删除失败</td></tr>
+<tr><td>Memory / Teacher</td><td>复验后的正反证据与上下文指纹</td><td>知识卡、适用边界、检索建议</td><td>未经holdout不能授予自动动作资格</td></tr></table>
+<h3>2.1 “地图→语义→实验→假设→实现→验证→审查→记忆”分别产出什么</h3>
+<table><tr><th>阶段</th><th>结构化产物</th><th>检查点</th></tr>
+<tr><td>地图</td><td>设计、PDK、工具、阶段、已有run、可用插件和缺失证据的状态图</td><td>是否引用真实ID；是否把不存在的工具写成可用</td></tr>
+<tr><td>语义</td><td>SpecIR或诊断语义；单位、对象、歧义和unknown字段</td><td>unknown保持unknown，不用默认值掩盖</td></tr>
+<tr><td>实验</td><td>变量、对照、预算、重复、seed、硬约束、停止规则、协议hash</td><td>候选是否同预算、是否真正改变flow seed</td></tr>
+<tr><td>假设</td><td>claim、mechanism、falsifier、context fingerprint、证据引用</td><td><code>execution_allowed=false</code></td></tr>
+<tr><td>实现</td><td>批准的参数向量或ActionSpec、私有workspace、patch/hash</td><td>Runtime是唯一实现权威</td></tr>
+<tr><td>验证</td><td>fresh run、终态、原始artifact、指标、失败和耗时</td><td>不得复用候选自报结果</td></tr>
+<tr><td>审查</td><td>硬约束、重复统计、效果大小、接受/拒绝/回滚</td><td>单次最优不等于可靠改善</td></tr>
+<tr><td>记忆</td><td>版本化知识卡、正/负迁移、过期与撤销状态</td><td>知识只给建议，动作仍需重新提案</td></tr></table>
+<h3>2.2 当前Agent架构证据支持到哪里</h3>
+<p>8月25日四设计真实闭环 trace 均出现八个核心阶段；FIFO、UART 完成闭环，GCD、ibex_alu 正确进入 <code>diagnosis_required</code>。同时存在 baseline/candidate 部分提交恢复、终态幂等、非法 clock 参数拒绝和浏览器越权字段拒绝测试。这证明状态机、checkpoint和权限词表能够工作；但现有审计主要检查事件标签和字段自洽，尚未完成 flat agent / no Judge / no checkpoint / full architecture 的同预算消融，因此不能说“多Agent已经提高QoR”。</p>
+
+<h2>三、RTL生成：把RTLScout内部完整拆开</h2>
+<p>RTLScout 不是一个可以用名字遮住细节的黑盒。它在平台中承担的是“候选演化控制器”：根据规格和验证反馈管理候选树，使用受限文件工具修改 RTL，调用固定 evaluator，比较功能和成本，再决定保留父候选、修补或开新分支。Testbench 由另一个 Verification Agent 自动生成并冻结；“独立”指职责、提示、工作区和写权限分离，不代表当前使用两个不同模型——两种角色目前都由平台托管的 <code>gpt-5.6-terra</code> 执行。</p>
+<div class="fig"><img src="AgenticEDA_开题报告_四轮审稿版_图片/04_drawio_style.svg" alt="RTLScout详细内部流程"><p class="caption">图2　Testbench作者、RTL作者和评估器三方分离。红色反馈有两种：RTL功能错误返回RTLScout；测试检错能力不足返回Verification Agent。图是最终方法框架；当前证据只达到固定四题各单seed可执行性演示。</p></div>
+<h3>3.1 从用户输入到冻结规格</h3>
+<ol><li>用户给出任意自然语言需求，不要求属于 gcd/FIFO/UART/ibex 题库。</li><li>Spec Agent 抽取 top module、端口方向、位宽、时钟/复位、握手时序、状态行为、异常行为、PPA偏好和硬约束。</li><li>无法确定的内容进入 <code>open_questions</code>；可以安全假设的内容写入 <code>assumptions</code>，不能悄悄补全。</li><li>生成机器可读 SpecIR 和给人看的规格摘要。固定四题只是回归测试集，用于防止平台修改后能力退化，不是输入白名单。</li></ol>
+<h3>3.2 Testbench、Oracle和RTLScout是什么关系</h3>
+<div class="plain"><b>大白话解释：</b>Testbench 是“考试程序”，负责给电路输入并检查输出；Oracle 是“判对判错的依据”，可能是reference model、scoreboard、断言或协议规则，不一定是一份golden RTL；RTLScout 是“做题并根据错题反馈修改答案的人”。自动化要求Testbench也由机器生成，而不是每次请人写，但自动生成不等于可以自证正确，所以必须用mutation、coverage、形式属性或参考模型检查试卷够不够强。</div>
+<table><tr><th>检查层</th><th>具体做什么</th><th>能证明什么</th><th>不能证明什么</th></tr>
+<tr><td>Compile / elaboration</td><td>模块、端口、参数、SystemVerilog语法能否展开</td><td>文件结构合法</td><td>功能正确</td></tr>
+<tr><td>Verilator lint</td><td>位宽、未驱动、锁存、不可达、时序语义等静态问题</td><td>发现一类常见编码风险</td><td>所有输入序列都正确</td></tr>
+<tr><td>Yosys check / synth</td><td>网表可综合、多驱动、组合环等</td><td>可进入综合及基础结构检查</td><td>与规格等价</td></tr>
+<tr><td>Functional simulation</td><td>冻结TB产生输入，scoreboard/SVA检查输出</td><td>测试覆盖到的行为通过</td><td>未覆盖行为正确</td></tr>
+<tr><td>Mutation quality</td><td>主动制造算术、比较、状态等小错误，看TB能否杀死</td><td>TB对指定可执行错误的敏感性</td><td>formal proof；无效mutant不能算通过</td></tr>
+<tr><td>CEC / formal</td><td>存在reference或前后等价要求时证明等价/属性</td><td>给定模型与假设下更强保证</td><td>自然语言本身没有歧义</td></tr>
+<tr><td>OpenROAD PPA</td><td>真实综合、布局、CTS、布线、GDS</td><td>特定PDK/工具/约束下的后端结果</td><td>功能正确；GP预测不能替代</td></tr></table>
+<h3>3.3 RTLScout一次迭代的具体算法</h3>
+<ol><li><b>初始化：</b>加载 SpecIR、冻结 VerificationPackage、parent/elite候选、workspace、max steps和token预算。</li><li><b>计划：</b>模型先选择修语法、修功能、降低结构成本或开新分支，输出结构化意图。</li><li><b>受限编辑：</b>只允许 list/read/create/replace/diff 候选RTL，不允许shell、网络、修改TB或评估器。</li><li><b>快速门：</b>Verilator/Yosys 做compile/lint/synthesis；失败返回文件、行号、类别和有界原文。</li><li><b>功能门：</b>冻结TB仿真；如有条件再执行SVA/CEC。RTL失败只返回给RTL作者。</li><li><b>测试质量门：</b>计算 <code>killed/executable</code>，同时报告 generated、invalid、survived；invalid比例过高应拒绝质量声明。</li><li><b>成本门：</b>只有功能通过候选才能比较Yosys/ABC cost；这只是前端代理成本，最终PPA必须由OpenROAD重测。</li><li><b>选择：</b>更优候选写入archive并记录parent→child、RTL SHA、生成模型和评估receipts；不更优则保留parent并继续。</li><li><b>晋级：</b>独立Runtime重新跑compile/sim/mutation，合格后才允许启动OpenROAD baseline。</li></ol>
+<h3>3.4 当前真实结果与不能越过的边界</h3>
+<table><tr><th>设计</th><th>自然语言→GDS</th><th>候选文件数</th><th>Mutation</th><th>严格解释</th></tr>
+<tr><td>FIFO</td><td class="ok">单seed链路完成</td><td>16</td><td>19/19 executable killed，invalid 0</td><td>一次固定suite可执行性演示，不等于充分功能验证</td></tr>
+<tr><td>GCD</td><td class="ok">单seed链路完成</td><td>8</td><td>8/8 executable killed；16中8个invalid</td><td>score=1.0但invalid率50%，不能只报1.0</td></tr>
+<tr><td>UART TX</td><td class="ok">单seed链路完成</td><td>8</td><td>6/6 executable killed；15中9个invalid</td><td>invalid率60%；另有两次TB/Verilator timing失败前像</td></tr>
+<tr><td>ibex_alu</td><td class="ok">单seed链路完成</td><td>16</td><td>9/10 executable killed；12中2个invalid</td><td>仍有1个可执行mutant存活；这是ALU子模块，不是完整CPU</td></tr></table>
+<p>这组结果可以安全声称：四个固定规格各一个生成seed，从自然语言、自动Testbench、RTLScout、lint、仿真、mutation一直跑到非空GDS，证明固定suite的端到端可行性。它不能证明“任意自然语言都能生成”、不能给出多seed成功率，也不能把“RTL和TB字节不同于golden fixture”当作功能等价证据。下一轮必须增加开放规格、多模块设计、每题至少5个模型seed、reference model/coverage/formal，并核验候选SHA唯一性和真实lineage。</p>
+
+<h2>四、EDA-to-AI数据接口：AI实际读的是什么</h2>
+<p>AI不应该只读一段手工摘要，也不应该把数百MB日志全部塞进上下文。前者会丢细节，后者超出上下文并让噪声淹没信号。平台采用“原始权威层＋专用parser＋Typed IR＋关系图/表＋分级EvidencePacket”架构：摘要用于导航，对象用于定位，原文片段用于核验；每层都保留回到原artifact的指针。</p>
+<div class="fig"><img src="AgenticEDA_开题报告_四轮审稿版_图片/03_drawio_style.svg" alt="EDA到AI数据转换"><p class="caption">图3　低失真并非不压缩，而是“压缩造成的损失可见，重要事实可按ID回读”。逻辑netlist连接与物理DEF/ODB网络必须分开命名，避免把逻辑对象冒充物理对象。</p></div>
+<h3>4.1 五层数据结构</h3>
+<ol><li><b>原始层：</b>RTL、脚本、log、report、netlist、SDC、Liberty、DEF、ODB、SPEF、GDS。登记 SHA-256、大小、类型、run/stage、工具commit和flow seed。</li><li><b>Parser层：</b>OpenROAD metrics/stage JSON、OpenSTA timing block、DEF component/net、netlist连接等专用解析器；每个parser有版本、单位、source span、未解析块和截断状态。</li><li><b>Typed IR层：</b>Run、Stage、Event、Metric、TimingPath、TimingPoint、Instance、Net、Violation、Connectivity。不存在的信息保持 null/unknown。</li><li><b>图与表层：</b>CircuitOps cell/pin/net property tables与edge tables；稳定主键、row count、表hash和跨artifact实体关系。</li><li><b>Agent查询层：</b>L0 KPI→L1阶段→L2对象/子图→L3原文片段。每个EvidencePacket带 <code>loss_manifest</code>、artifact目录和query trace。</li></ol>
+<h3>4.2 当前四设计EDAIR实际产出了什么</h3>
+<table><tr><th>对象</th><th>四设计合计</th><th>当前可以说明</th><th>当前不能说明</th></tr>
+<tr><td>数值KPI</td><td>每设计12项</td><td>可做全局筛选</td><td>不能单独定位根因</td></tr>
+<tr><td>TimingPath</td><td>18条</td><td>已从报告恢复少量路径对象</td><td>未证明覆盖原报告所有路径；points可能为空</td></tr>
+<tr><td>逻辑instance/net</td><td>1,885 / 2,236</td><td>网表连接可查询</td><td>不是完整物理网络</td></tr>
+<tr><td>物理instance投影</td><td>4,704</td><td>已恢复DEF component级对象</td><td>width/height/orientation与ODB细节未完整核验</td></tr>
+<tr><td>原始artifact目录</td><td>84个</td><td>有SHA指针和按需回读入口</td><td>当前审计只检查SHA字符串长度，仍需重算文件hash</td></tr>
+<tr><td>Agent facts</td><td>190条</td><td>上下文是有界的</td><td>尚未证明30–50题诊断准确率提高</td></tr></table>
+<div class="warning"><b>当前EDAIR消融的正确说法：</b>它证明比12项KPI摘要提供了更多可查询对象和provenance；不能据此声称“低失真已经验证”或“Agent诊断更准”。现有 <code>loss_manifest.timing_paths=0</code> 只表示已解析列表没有因packet上限再次截断，不代表parser没有漏掉原报告路径。真正的保真度要看 <code>parser_fidelity.unparsed_blocks</code>，并与原报告、DEF/ODB做抽样或round-trip核验。</div>
+<h3>4.3 与 CircuitOps、EDATracer 的关系</h3>
+<p>CircuitOps（ICCAD 2023）把电路转换为可供ML使用的属性表与关系表，提供 cell/pin/net 图式基础；EDATracer（2026预印本）进一步把source、scripts、logs、netlists、reports组织为知识图谱和语义向量索引，在18.9GB、2,787个可综合设计、90问benchmark上报告跨artifact问答结果。平台借鉴的是“结构图＋语义索引＋逐句证据回链”，但不能照搬其规模数字当作自己的成绩。我们的研究任务是建立OpenROAD专用实体/关系schema和诊断题集，比较 raw / summary / EDAIR / graph+vector 的准确率、证据率、遗漏、token与延迟。</p>
+
+<h2>五、BO与GP怎样探索组合参数</h2>
+<p>贝叶斯优化的作用不是直接把芯片“算好”，而是减少昂贵的OpenROAD试验次数。它根据已经测过的参数组合拟合代理模型，估计未测组合可能有多好、模型有多不确定，再选择下一组最值得真实测量的点。参数组合必须整体输入模型，因此它可以学习 <code>core_utilization × place_density</code> 这类组合效应；一次只改一个参数只能做局部敏感性分析，不能替代组合搜索。</p>
+<div class="fig"><img src="AgenticEDA_开题报告_四轮审稿版_图片/06_drawio_style.svg" alt="BO和GP参数探索"><p class="caption">图4　上半部分给出一次BO迭代的数学和数据流；左下是完整campaign与停滞换向；右下直接写出8月25日实验的证据和方法学缺口。</p></div>
+<h3>5.1 当前轻量算法：精确到可复现参数</h3>
+<ol><li>只接受同一design fingerprint、PDK、tool commit、stage和parser版本的观测；研究预算由 <code>study.max_runs</code> 限制。</li><li>连续参数按上下界映射到[0,1]。每轮使用 <code>study.seed + iteration×1009</code> 初始化随机数，在每个维度生成512点确定性Latin-hypercube候选池；与已测点最大坐标差≤1e−8的点删除。</li><li>相同参数向量的成功重复先分组；每个目标以组均值训练，观测噪声取样本方差除以组大小。当前实验没有真实改变flow seed，因此该方差会错误地接近0。</li><li>每个目标拟合exact RBF GP：length scale=0.35，基础jitter=1e−6；Cholesky失败时最多把jitter逐次放大10倍共8次。核超参数当前不从数据学习。</li><li>每个目标按已观测组均值的min/max缩放，max目标用 <code>(μ−min)/(max−min)</code>，min目标用 <code>(max−μ)/(max−min)</code>；range≤1e−12时scale取1。权重除以总权重后合成效用均值，方差按独立目标平方加权。</li><li>Expected Improvement使用 <code>ξ=0.05</code>。失败/不完整观测不训练QoR GP，但以长度尺度0.20的局部核和Beta(1,1)平滑估计经验可行概率，最终采集值为 <code>EI×P(feasible)</code>。</li><li>使用 <code>numpy.argmax</code> 选择采集值最大点；完全并列时选择候选池中第一个。成功完整观测少于2条时选择LHS池第一个点，采集值记0。</li><li>硬约束在调度/验收层执行：setup WNS≥0、<code>has_drc_errors=false</code>。当前 <code>balanced</code> 权重为timing 0.40、area 0.35、power 0.25；单目标profile权重为1。</li></ol>
+<div class="formula">I(x)=μ(x)−u<sub>best</sub>−ξ；z=I(x)/σ(x)；EI(x)=I(x)Φ(z)+σ(x)φ(z)。σ大代表模型不确定，鼓励探索；μ好代表可能改善，鼓励利用。</div>
+<p>论文目标不是把当前实现包装成高级MOBO，而是明确升级：连续/整数/类别混合编码、Sobol/LHS warm start、失败/超时可行性模型、真实异方差噪声、qNEI/qNEHVI、Pareto archive、hypervolume和trust-region/全局重启。</p>
+<h3>5.2 停滞怎样判定，为什么是三轮</h3>
+<p>每个batch结束后更新best-so-far和Pareto集合。连续三个batch的改善低于预注册实用阈值，且置信区间不支持可靠改善时，才判为停滞。三轮是工程默认值，不是自然定律，必须在协议中固定并做敏感性分析。停滞后先改变参数子空间、采集函数或目标权重；仍无改善再输出stage diagnosis packet交给Repair Agent。Repair Agent不是直接改源码，而是提出“假设—证据—动作—预期—停止条件”的ActionSpec。</p>
+<h3>5.3 8月25日BO对随机实验究竟说明什么</h3>
+<p>现有汇总包含4设计×3 optimizer seed标签；BO和seeded random各144个terminal run，预算相等。设计级中位数胜负为2:2：UART和ibex_alu的BO中位数较好，GCD和FIFO的随机搜索较好。达到0.5%阈值的design-seed单元是BO 7/12、random 4/12。这是有价值的描述性证据，但还不是统计优越性证明。</p>
+<div class="warning"><b>必须修正的实验设计：</b>当前每配置三个 <code>replica_index</code> 没有把不同工具flow seed传给ORFS，因此同一角点常得到完全相同的PPA；IQR=0不是“平台很稳定”，而是伪重复。BO首个seed为20260824，random首个seed为20260825，也不是严格配对。当前优化器代码会按相同参数聚合重复点，不会把三条baseline简单当成三个不同X；但伪重复仍使组内方差估计为0，只剩1e−6基础jitter，GP依旧会过度自信。正式论文实验必须使用共同baseline、配对policy seed、真实不同flow seed、anytime AUC/regret和层级bootstrap/permutation。</div>
+
+<h2>六、自演化：从运行事实到可复验知识</h2>
+<p>只记录“这次参数成功了”不是学习，因为系统不知道成功发生在什么设计、工艺、工具版本和约束下，也不知道是哪一个因素起作用，更不知道换一个设计是否反向。真正的自演化至少包含四级：观察事实、提出机制、受控干预、跨设计复验。RAG仍然有用，但它负责找到相关材料，不负责证明材料正确；外部论文和DPLEvolve知识只能作为先验和实验灵感，不能直接成为自动动作规则。</p>
+<div class="fig"><img src="AgenticEDA_开题报告_四轮审稿版_图片/02_drawio_style.svg" alt="自演化知识链"><p class="caption">图5　知识准入的完整目标链路。Observation、Hypothesis、Controlled Intervention、Holdout和Knowledge Card是不同状态，不能用一次LLM总结跨级。当前真实证据只有一个负迁移门控演示，不是真实四臂学习消融。</p></div>
+<div class="fig"><img src="AgenticEDA_开题报告_四轮审稿版_图片/05_drawio_style.svg" alt="证据知识卡"><p class="caption">图6　左侧是知识卡字段，右侧是GCD→FIFO真实反例。该例没有“学到一个调参秘诀”，而是学到“这条组合规律不能跨这两个设计直接复用”。</p></div>
+<h3>6.1 知识生命周期</h3>
+<p><b>Observation → Draft Hypothesis → Pre-registered Intervention → Supported/Refuted on source → Held-out Validation → Validated/Negative-transfer → Planner引用 → 新运行复验 → 更新/撤销/退休。</b></p>
+<p>知识卡必须保存context key、重复统计、claim、mechanism、intervention、falsifier、不确定性、run/artifact/protocol指针、生命周期和权限。<code>action_eligible</code> 表示这条知识可以给规划器作为候选依据；<code>execution_allowed</code> 仍然为false，真实动作必须重新走提案和Runtime门。</p>
+<h3>6.2 组合条件怎样用2×2实验识别</h3>
+<p>以参数A和B各取低/高两个水平，得到四个角点。B在A低时的效果与B在A高时的效果之差，就是difference-in-differences交互项：</p>
+<div class="formula">interaction = [Y(A<sub>high</sub>,B<sub>high</sub>)−Y(A<sub>high</sub>,B<sub>low</sub>)] − [Y(A<sub>low</sub>,B<sub>high</sub>)−Y(A<sub>low</sub>,B<sub>low</sub>)]。</div>
+<p>该方法能区分“两个参数各自有效”和“必须组合才有效”，但只有在每角真实独立重复、随机化执行顺序、报告方差/CI、预先规定最小效应阈值时，才具备统计解释。当前代码用 <code>abs(effect)&gt;1e−12</code> 判非零过于宽松，任何数值噪声都可能被当成局部支持，必须改成效应量＋不确定性门。</p>
+<h3>6.3 当前GCD→FIFO反例</h3>
+<p>在GCD中，<code>core_utilization_pct × place_density</code> 对 instance area 的局部interaction为+1.862；按预注册合同换FIFO复验后变成−1.596，方向反转。系统将知识卡标为 <code>refuted</code>、<code>promoted=false</code>、<code>action_eligible=false</code>，并生成 Teacher guidance：不得把源设计交互当作通用规则，先解释设计特征差异，再做第三设计确认。这证明准入门能够阻止一次具体负迁移。</p>
+<p>但这还不是“达到前沿深层因果学习”：三个replica仍是伪重复；没有方差、CI和效应阈值；只做了一个source→holdout对；指标是instance area，机制还需核验网表/缓冲单元变化。现有learning ablation也是脚本构造的counterfactual policy audit，而非四套策略真实跑同任务：<code>rag_only</code>会误迁移是脚本定义，不是实际RAG→Planner→EDA执行结果。正式消融必须让no-memory、RAG-only、observed-memory、causal+holdout四臂在多组leave-one-design-out任务上真实运行。</p>
+<h3>6.4 DPLEvolve知识库可以补什么</h3>
+<p>已获取的DPLEvolve副本包含多层知识，而不是只有Acknowledgement：placement/legalization/DPO算法说明，OpenDP论文与paper source索引，mechanism stack cards与skill cards，指标合同、证据政策、Teacher-child跨案例实验合同，以及dense legalizer、cut-row、runtime、handoff、source-level mechanism等案例笔记。适合用作Teacher预热、机制候选和停止条件模板。</p>
+<table><tr><th>DPLEvolve内容</th><th>可借鉴用途</th><th>接入边界</th></tr>
+<tr><td><code>knowledge/algorithms</code></td><td>理解legalization、DPO refinement、handoff和runtime机制</td><td>外部文档，只能作为prior</td></tr>
+<tr><td><code>index/mechanism_stack_cards.jsonl</code>、<code>skill_cards.jsonl</code></td><td>按阶段和证据路由到小范围技能，不批量塞上下文</td><td>卡片需版本、许可和来源登记</td></tr>
+<tr><td><code>contracts/metric_contract.md</code>、<code>evidence_policy.md</code></td><td>统一指标、done criteria、证据等级和失败处理</td><td>不能替代平台自己的Runtime artifact</td></tr>
+<tr><td>case evolution / support notes</td><td>生成机制假设、反例与受控实验计划</td><td>未经本平台复验不得action-eligible</td></tr></table>
+<p>当前只完成33条知识索引检查和 <code>jpeg_nangate45</code> Teacher dry-run；生成过teacher plan/student/review且prompt audit无warning，但没有调用模型、没有运行EDA。因此可以声称“知识可检索、Teacher控制面可运行”，不能声称“DPLEvolve知识已提高QoR”。</p>
+
+<h2>七、当前真实证据：做到了什么，尚未证明什么</h2>
+<p>以下表格以8月25日aggregate/audit为准，并加入代码级审稿发现。证据等级：A=真实多设计多seed且统计协议有效；B=真实多设计/多run但仍有方法学限制；C=真实单例或控制面证据；D=接口/单元/规划；R=外部论文。</p>
+<table><tr><th>模块</th><th>当前证据</th><th>可安全声明</th><th>不能声明/下一验收</th></tr>
+<tr><td>RTL全链</td><td class="status">B−（可执行性）</td><td>四固定规格各单seed由自然语言、自动TB、RTLScout跑到GDS；仅为固定suite一次可执行性演示</td><td>不能说功能充分验证或任意spec；需多seed、开放复杂规格、coverage/formal、mutation invalid上限</td></tr>
+<tr><td>参数探索</td><td class="status">B−</td><td>BO/random各144个真实terminal run，预算相等，设计胜负2:2</td><td>replica未传真实flow seed；需严格配对、AUC/regret、CI和GP校准</td></tr>
+<tr><td>闭环换向</td><td class="status">B</td><td>四设计有baseline、候选、停滞/诊断边界和可恢复checkpoint</td><td>需证明换向比继续盲搜更有效，并嵌入测试日志/commit/hash</td></tr>
+<tr><td>EDAIR</td><td class="status">B−</td><td>四设计导出对象、84个artifact指针和有界Agent facts</td><td>数量多不等于忠实；需parser round-trip和真实诊断QA消融</td></tr>
+<tr><td>因果准入门</td><td class="status">C+</td><td>一次GCD→FIFO反向holdout被拒绝，负迁移证据保留</td><td>伪重复、无CI、单一pair；不能称总体因果学习</td></tr>
+<tr><td>学习消融</td><td class="status">D+</td><td>知识准入逻辑对一个反例的counterfactual audit</td><td>不是真实四臂实验；需同预算Planner/Runtime执行</td></tr>
+<tr><td>Agent架构</td><td class="status">B−</td><td>八阶段trace、权限字段、checkpoint恢复与故障注入测试存在</td><td>事件标签不等于独立Agent有效；需架构消融与artifact交叉验证</td></tr>
+<tr><td>TaiWei3D</td><td class="status">C</td><td>固定官方链路存在单例和维护基础</td><td>不能说任意工艺；需设计×工艺矩阵、3D对象接口和ECO实验</td></tr></table>
+<div class="evidence-box"><b>一句话现状：</b>平台已经从“只有框架”进入“主链能真实执行且能留下证据”的阶段，但尚未达到可以发表强统计结论的阶段。最需要修的不是再加名词，而是把真实flow seed、配对实验、parser保真、真实学习消融和Agent架构消融做严。</div>
+
+<h2>八、2025–2026前沿工作逐项对标</h2>
+<p>本节不只列论文题目，而是按“对方解决什么—用了什么方法—我们借什么—如何证明不是照抄名词”逐项展开。2026年条目若尚为arXiv，均标为预印本。下表关于AgenticPD、EDATracer、ReviewDSE、AgenticECO、EvoDRC、DRC-Aid和EvolVE的规模与机制，锚定到2026-08-25在线核验的arXiv Atom摘要：分别为2607.04758v2、2608.04032v1、2607.11294v4、2608.03738v1、2607.20019v1、2607.22761v1、2601.18067v1；预印本更新后应重新核验版本。2025会议/期刊条目以文末DOI/Crossref元数据为锚点。正文未读取全文才能确认的细节不写成已核验事实。</p>
+<table><tr><th>工作</th><th>对方的核心方法和结果</th><th>本平台对应模块</th><th>必须做出的差异化证据</th></tr>
+<tr><td>ORFS-agent，MLCAD 2025</td><td>工具调用Agent围绕自然语言多目标约束迭代OpenROAD参数；重点是参数级DSE。</td><td>ExperimentPlan→Runtime→QoR回灌、偏好权重、工具反馈</td><td>加入真实噪声、停滞换向、对象级EDAIR、正负知识准入；同预算random/BO/Agent消融</td></tr>
+<tr><td>AgenticPD，2026预印本</td><td>Judge导航FP/PL/CTS/RT阶段Agent，复用checkpoint分支，统一post-route评价。</td><td>阶段化Agent、checkpoint、Judge/Runtime边界</td><td>flat/no Judge/no checkpoint/full架构消融；验证下游继承与最终signoff</td></tr>
+<tr><td>ReviewDSE，2026预印本</td><td>在私有workspace探索OpenROAD源码机制；校准设计warm start、Teacher review、受保护full-flow evaluator，记录正负机制证据。</td><td>源码级有限动作的未来控制合同、自演化知识卡</td><td>当前阶段只借证据制度；不得把未接入的源码探索写成现有功能</td></tr>
+<tr><td>EDATracer，2026预印本</td><td>跨source/script/log/netlist/report的知识图＋向量索引；建立18.9GB、2787设计、90问benchmark。</td><td>EDAIR/CircuitOps/graph+vector/逐句证据回链</td><td>建立OpenROAD专用诊断题集，做raw/summary/IR/graph四组数据消融</td></tr>
+<tr><td>AIVRIL2，DATE 2025</td><td>协作Agent读取EDA错误日志迭代修复RTL语法和功能。</td><td>RTLScout结构化错误反馈</td><td>增加冻结oracle、TB质量门、候选lineage和后端PPA复测</td></tr>
+<tr><td>VeriOpt，ICCAD 2025</td><td>Planner/Programmer/Reviewer/Evaluator多角色，使用综合与PPA反馈优化RTL。</td><td>RTL多角色和cost evaluator</td><td>单Agent/多角色、无PPA/有PPA、共享/冻结oracle消融</td></tr>
+<tr><td>AutoSilicon，TODAES 2025</td><td>把复杂RTL任务层级分解，子模块即时compile/test后再集成。</td><td>层级SpecIR和多模块验证目标</td><td>按模块数/依赖深度分桶，报告局部通过但集成失败率</td></tr>
+<tr><td>EvolVE，2026预印本</td><td>MCTS更擅长功能正确，Idea-Guided Refinement偏优化，Structured Testbench Generation加速演化；提供IC-RTL复杂任务。</td><td>RTLScout候选树、结构化TB</td><td>linear/MCTS/IGR同token和evaluation预算，报告pass@k、mutation、PPA与失败</td></tr>
+<tr><td>CircuitOps，ICCAD 2023</td><td>把VLSI电路转换成适合ML/生成式AI的cell/pin/net属性表和关系表。</td><td>逻辑网表关系视图</td><td>扩展到Runtime、timing、DEF/ODB实体并做主键/数值保真核验</td></tr>
+<tr><td>AgenticECO，2026预印本</td><td>基于TaiWei的证据门控3D ECO；EcoRoute最小扰动；fresh extraction后验max/min timing、DRC和结构等价。</td><td>TaiWei3D Repair Agent与有限动作合同</td><td>自然/注入缺陷、stock repair/full reroute/agent同预算，报告扰动率和五重门</td></tr>
+<tr><td>EvoDRC，2026预印本</td><td>layer-specific skill预热、bounded repair region、局部DRC/连通性/impact preview、自演化技能。</td><td>DRC有限动作与skill memory</td><td>无预热/静态技能/自演化技能三组，逐层清除率、新增DRV、连接性和runtime</td></tr>
+<tr><td>DRC-Aid，2026预印本</td><td>规则引擎把违例转为有限几何动作，LLM选择，budgeted DFS/backtracking，每步DRC/LVS。</td><td>动作菜单、搜索栈、回滚和fresh verifier</td><td>random/heuristic/LLM共享同一基础设施，避免把规则引擎贡献算给LLM</td></tr>
+<tr><td>ReSynthAI Contest，MLCAD 2025</td><td>physical-aware logic resynthesis问题与benchmark，不是一个已经可直接接入的“Resynth工具”。</td><td>物理感知重综合动作类别</td><td>cone选择、等价、重新STA/place/route；default/random/AI sequence同预算</td></tr></table>
+
+<h2>九、四名成员任务、论文对标与验收</h2>
+<h3>9.1 袁文杰：平台主线、Agent、自演化、数据接口和论文实验</h3>
+<p><b>研究责任：</b>把所有子模块连接成可信主线，并证明架构有效，而不是只维护网页。直接对标 ORFS-agent、AgenticPD、EDATracer、ReviewDSE 和 CircuitOps。</p>
+<table><tr><th>工作包</th><th>具体实现</th><th>交付物</th><th>验收</th></tr>
+<tr><td>实验控制</td><td>ExperimentPlan、Runtime、checkpoint、重入、终态、artifact registry、权限和预算</td><td>状态图、schema、故障恢复trace</td><td>中断后只补缺失run；终态幂等；越权字段和非法参数拒绝</td></tr>
+<tr><td>Agent架构</td><td>Judge路由、阶段Agent、Reviewer、Repair、Memory；proposal→task→artifact交叉引用</td><td>可查询decision trace</td><td>flat/no Judge/no checkpoint/full architecture同预算消融</td></tr>
+<tr><td>EDA-to-AI</td><td>parser adapters、Typed IR、CircuitOps关系、graph/vector双索引、loss与range回读</td><td>schema、parser fidelity、30–50题诊断集</td><td>对象/数值/单位/源行核验；四种数据输入消融</td></tr>
+<tr><td>BO与停滞</td><td>真实flow seed、噪声聚合、feasibility model、constrained MOBO、redirect</td><td>campaign trace、Pareto与anytime图</td><td>多设计配对实验、GP calibration、regret/hypervolume/失败率</td></tr>
+<tr><td>自演化</td><td>统一Observation/Hypothesis/Knowledge Card，正负证据、holdout、撤销</td><td>版本化知识库和Teacher引用链</td><td>真实四臂leave-one-design-out学习消融</td></tr></table>
+
+<h3>9.2 沈夏南：TaiWei3D维护与3D Agent</h3>
+<p><b>研究责任：</b>3D IC不是简单把2D flow多跑一层。需要表示tier、cross-tier net、bond/via、分层时序和3D特有缺陷，并让Agent在最小扰动和多门验证下做ECO。对标 AgenticECO、ASP-DAC 2025 PPA-aware tier partitioning、DATE 2026 critical-path-centric 3D placement和ICCAD 2025 P2P-Chiplet。</p>
+<table><tr><th>工作包</th><th>具体方法</th><th>交付物与验收</th></tr>
+<tr><td>可复现基线</td><td>固定TaiWei/ORD/tool commit、环境、官方design、PDK和命令</td><td>设计×工艺支持矩阵；每格写未支持/启动失败/跑通/签核</td></tr>
+<tr><td>3D数据接口</td><td>tier instance、cross-tier net/via、bond、每tier拥塞/时序、跨层关键路径</td><td>3D EDAIR schema；对象数与原报告/数据库抽样一致</td></tr>
+<tr><td>Partition/placement</td><td>聚类＋ILP、关键路径同层倾向、partition↔placement反馈</td><td>默认、cut-balanced、ILP/criticality refinement三组</td></tr>
+<tr><td>3D Repair Agent</td><td>缺陷分类、bounded ECO、EcoRoute/增量route、rollback</td><td>自然/注入缺陷；stock repair/full reroute/Agent同预算</td></tr>
+<tr><td>五重门</td><td>fresh extraction、max/min timing、DRC、结构等价、扰动率/clock保护</td><td>每次accepted repair均有完整receipts</td></tr></table>
+
+<h3>9.3 刘宏博：Spec到经验证RTL</h3>
+<p><b>研究责任：</b>不是调用一次LLM写Verilog，而是建设层级SpecIR、自动验证包、RTLScout候选搜索和后端PPA反馈。对标 AIVRIL2、VeriOpt、AutoSilicon 和 EvolVE。</p>
+<table><tr><th>工作包</th><th>具体方法</th><th>交付物与验收</th></tr>
+<tr><td>SpecIR</td><td>接口/时序/状态/异常/约束/假设/问题；多模块层级与子模块合同</td><td>固定四题＋开放规格；歧义处理准确率</td></tr>
+<tr><td>Verification Agent</td><td>reference model、scoreboard、directed/random、SVA、coverage plan、哈希冻结</td><td>mutation generated/executable/invalid/killed；coverage/formal receipts</td></tr>
+<tr><td>RTLScout</td><td>linear refinement、MCTS、IGR候选策略；受限工具和完整lineage</td><td>同token/evaluation预算比较pass@k和成本</td></tr>
+<tr><td>复杂设计</td><td>从单模块控制器升级到中型多模块与协议组件；ibex_alu与完整CPU严格分名</td><td>按模块数、依赖深度、状态空间分桶报告</td></tr>
+<tr><td>PPA联动</td><td>功能通过后OpenROAD重测；与reference/direct LLM比较分布</td><td>多seed median/IQR/range、失败率和Pareto</td></tr></table>
+
+<h3>9.4 戴家乐：有限动作工具接口</h3>
+<p><b>研究责任：</b>为Timing ECO、物理感知重综合、EvoDRC和来源/许可合格的源码演化器建立统一安全接口。当前开题阶段要先定义合同和逐工具验收，不提前假装所有工具已接入。对标 EvoDRC、DRC-Aid、AgenticECO、ReviewDSE 和 ReSynthAI。</p>
+<table><tr><th>统一接口要求</th><th>每个工具必须提交</th><th>验收门</th></tr>
+<tr><td>来源</td><td>repo URL、固定commit、license、构建说明</td><td>版本可复现；许可不明不得分发</td></tr>
+<tr><td>Manifest</td><td>输入/输出schema、依赖、资源、timeout、dry-run</td><td>缺字段拒绝调度</td></tr>
+<tr><td>ActionSpec</td><td>目标对象、白名单动作、影响区域、预期、停止条件</td><td>禁止任意shell/Tcl/共享源码写入</td></tr>
+<tr><td>执行隔离</td><td>private workspace、patch/hash、checkpoint、rollback</td><td>失败不污染baseline和其他任务</td></tr>
+<tr><td>Fresh verifier</td><td>timing、DRC/LVS、等价、连通性、扰动率、完整flow</td><td>工具自报分数不能作为最终结果</td></tr>
+<tr><td>证据状态</td><td>未接入 / adapter smoke / 真实单例 / 多设计验证</td><td>网页和论文不得越级显示</td></tr></table>
+
+<h2>十、TaiWei3D当前状态与研究边界</h2>
+<p>TaiWei3D是一条相对独立的3D IC研究线。当前平台能够维护固定官方链路和单例证据，但没有足够数据支持“任意工艺、任意设计都能跑通”。工艺可移植性不仅是更换LEF/Liberty：还涉及tier定义、bond/via规则、跨层寄生与时序、router能力、脚本假设和signoff工具。每新增工艺必须逐项验证数据文件、层映射、3D对象生成、阶段执行和最终门。</p>
+<table><tr><th>核查项</th><th>当前判断</th><th>下一步实验</th></tr>
+<tr><td>固定官方设计/工艺</td><td>存在真实单例和维护基础</td><td>锁定commit与artifact manifest，重复多seed</td></tr>
+<tr><td>任意RTL导入</td><td>未证明</td><td>小/中/多模块设计矩阵，记录失败阶段</td></tr>
+<tr><td>任意PDK</td><td>未证明，也不应默认成立</td><td>至少两种开放PDK；逐项适配与签核</td></tr>
+<tr><td>3D EDAIR</td><td>需补tier/cross-tier/bond/via专用对象</td><td>与TaiWei数据库和报告做数量/坐标/连接核验</td></tr>
+<tr><td>自演化失败原因</td><td>常见原因包括证据不足、动作超出可行域、修复后未fresh extraction、经验跨设计误迁移、工具链脚本假设不一致</td><td>对每类失败做可复放缺陷集和root-cause taxonomy</td></tr></table>
+
+<h2>十一、论文级实验清单与统计方法</h2>
+<table><tr><th>实验簇</th><th>对照臂</th><th>设计/重复</th><th>主要指标</th><th>结论门</th></tr>
+<tr><td>RTL生成</td><td>direct LLM；双Agent；RTLScout linear；MCTS；IGR</td><td>固定四题＋开放多模块；每题≥5模型seed</td><td>compile、functional pass、mutation invalid/killed、coverage/formal、token、steps、PPA</td><td>功能优先；多重比较修正；报告失败和pass@k</td></tr>
+<tr><td>Testbench贡献</td><td>模板TB；自动TB；自动TB+mutation；+coverage/formal</td><td>同RTL候选与故障注入集</td><td>故障检出率、invalid mutant率、误拒/漏检、成本</td><td>不能只用mutation score分母排除invalid</td></tr>
+<tr><td>参数探索</td><td>default、random、grid、scalarized EI、constrained qNEI/qNEHVI、Agent-guided</td><td>≥6 designs×2 PDK，配对policy/flow seeds</td><td>anytime regret、best-so-far AUC、hypervolume、可行率、失败率、wall time</td><td>共同baseline、同预算、bootstrap/层级模型</td></tr>
+<tr><td>停滞换向</td><td>继续原搜索；换参数子空间；Repair Agent；oracle诊断</td><td>预先构造不同瓶颈阶段</td><td>定位准确率、达标运行数、额外成本、错误换向率</td><td>换向收益须覆盖诊断成本</td></tr>
+<tr><td>EDA数据接口</td><td>raw、12-KPI summary、EDAIR、graph+vector</td><td>30–50题，人工证据标注，多阶段/多设计</td><td>答案与定位准确率、证据引用率、遗漏、token、延迟</td><td>blind评分；parser round-trip另行验收</td></tr>
+<tr><td>Agent架构</td><td>flat、无Judge、无checkpoint、无Reviewer、完整架构</td><td>同任务/工具/模型/预算</td><td>post-route QoR、定位率、非法动作、恢复时间、调用成本</td><td>拆分贡献，不把更多token当成架构收益</td></tr>
+<tr><td>深层学习</td><td>no memory、RAG-only、observed-only、causal+holdout</td><td>多source→holdout，leave-one-design-out</td><td>首轮成功率、达标实验数、负迁移率、机制预测错误、QoR</td><td>四臂必须真实调用Planner/Runtime，不用手工布尔字段</td></tr>
+<tr><td>TaiWei3D</td><td>default、stock repair、full reroute、Agentic bounded ECO</td><td>自然/注入缺陷，设计×工艺矩阵</td><td>清除率、新增违例、max/min timing、等价、扰动率、runtime</td><td>每个accepted结果通过fresh五重门</td></tr></table>
+<h3>11.1 统计报告最低要求</h3>
+<ul><li>预注册设计、指标、硬约束、实用提升阈值、seed、预算、停止规则和排除规则，并保存协议hash。</li><li>同一配置的重复必须真正改变工具flow seed；LLM seed与EDA seed分别记录。</li><li>报告全部terminal runs、失败率、中位数、IQR、范围和bootstrap置信区间；配对设计使用配对检验或层级模型。</li><li>序贯优化报告best-so-far曲线、AUC/regret和预算到达率，不只比较最后最好点。</li><li>多目标报告Pareto/hypervolume和硬约束；单次最好值只能作为示例，不能写“显著优化”。</li><li>外部论文规模、成功率和QoR改善必须标为“作者报告”，不得与本平台实验混表。</li></ul>
+
+<h2>十二、实施阶段与里程碑</h2>
+<p>图只展示最终架构；实施按依赖关系分四个阶段，不提前开发尚无上游证据支持的功能。</p>
+<ol><li><b>阶段A·可信主链：</b>修复真实flow seed、配对实验、候选lineage、mutation invalid门、parser保真和真实学习消融；使自然语言→RTL→baseline→N轮探索→停滞→诊断→知识闭环具备论文级证据。</li><li><b>阶段B·有限动作单工具：</b>逐个接入Timing ECO、物理感知重综合、EvoDRC和来源/许可合格的源码演化器；每个工具独立完成ActionSpec、sandbox、fresh verifier、rollback和多设计验证。</li><li><b>阶段C·跨阶段组合：</b>研究不同动作顺序、checkpoint继承和full-flow composability，识别局部改善在下游消失或反转的条件。</li><li><b>阶段D·规模化生态：</b>多设计、多PDK、多seed和开放任务持续运行；建立公开benchmark、诊断题集、模型/工具版本基线和可重复论文包。</li></ol>
+
+<h2>十三、主要风险与应对</h2>
+<table><tr><th>风险</th><th>会造成什么假象</th><th>应对</th></tr>
+<tr><td>自动TB太弱</td><td>错误RTL碰巧通过</td><td>mutation invalid门、coverage、reference model、SVA/formal；弱TB回Verifier</td></tr>
+<tr><td>重复实验没真正换seed</td><td>IQR=0，看起来异常稳定</td><td>flow命令中显式传seed，artifact记录，运行前后核验</td></tr>
+<tr><td>GP过度自信</td><td>重复baseline和tiny noise让EI偏向错误区域</td><td>按配置聚合、真实噪声、calibration、random fallback、trust region</td></tr>
+<tr><td>数据parser漏信息</td><td>Agent把“未解析”当成“不存在”</td><td>unparsed_blocks、loss manifest、hash range回读、原文抽样</td></tr>
+<tr><td>知识负迁移</td><td>旧设计经验伤害新设计</td><td>context fingerprint、holdout、negative evidence、撤销和第三设计确认</td></tr>
+<tr><td>多Agent只是标签</td><td>事件多但质量没提升</td><td>独立workspace/权限/产物；架构消融；proposal→run→artifact交叉验证</td></tr>
+<tr><td>局部动作破坏下游</td><td>当前阶段变好，post-route或signoff变差</td><td>checkpoint、fresh full-flow verifier、扰动预算和rollback</td></tr>
+<tr><td>工具名称误导</td><td>把benchmark、论文概念或未接入项目写成现有工具</td><td>固定commit/license/status四级，正文逐项写证据</td></tr></table>
+
+<h2>十四、四轮严格审稿记录</h2>
+<div class="review"><ol>
+<li><b>第一轮·事实正确性：</b>逐项核对8月25日六组aggregate/audit及脚本。修正旧报告仍把真实全链写成C级的问题；同时发现BO伪重复、causal无CI、learning ablation非真实四臂、EDAIR只计数不验保真、Agent audit过度信任自身字段、mutation invalid分母偏差。</li>
+<li><b>第二轮·方法与论文：</b>逐模块补出输入、算法、公式、角色、输出、失败分支和验收；以Crossref元数据和2026-08-25的arXiv Atom摘要/版本核验条目；按四名成员分别给出对标工作、借鉴方法、交付和消融。</li>
+<li><b>第三轮·可读性与科研图：</b>参照项目中两张AgenticPD图的泳道、柔和配色、细边框、阴影和审计底栏重画六图；逐图把产品名拆成内部步骤，并将真实证据和限制直接写进图。</li>
+<li><b>第四轮·渲染与匿名审稿：</b>解析全部SVG/draw.io XML，在线静态渲染全部Mermaid并检查viewBox，Firefox无头渲染六张PNG后逐图目视检查；DOCX再做结构、图片、表格和压缩包完整性验收。</li></ol>
+<p><b>关于“豆包/GPT/Gemini/DeepSeek圆桌”的事实说明：</b>本机仅有可调用的Codex/GPT配置，没有Gemini、DeepSeek或豆包CLI/API凭证，因此未伪造后三个模型的真实意见。四轮审稿是四个独立审稿角色流程，其中GPT审稿可真实执行；若后续提供三方API凭证，可把同一冻结交付包交给各模型盲审并附原始回复。</p></div>
+
+<h2>十五、结论</h2>
+<p>本课题的创新点不在于发明更多Agent名字，而在于把自然语言RTL生成、OpenROAD全流程、低失真EDA证据、组合参数搜索、停滞换向、有限动作和知识复验放进同一份受保护实验合同。当前平台已经证明主链能在四个固定设计上真实执行，并具备留下run、artifact和决策trace的基础；也已经暴露出最关键的科研缺口：独立随机重复、强验证、多任务真实消融、数据保真和跨设计统计。</p>
+<p>因此，下一阶段最有价值的工作不是继续扩张功能名录，而是把这些缺口补成不可辩驳的证据。完成后，平台可以合理支撑一篇以“可信AgenticEDA闭环基础设施与消融”为主题的论文；TimingECO、EvoDRC、重综合和源码演化器等工具应在主链验收后逐个接入，再研究它们能否形成完整生态。</p>
+
+<h2>十六、主要参考文献</h2>
+<ol class="small">
+<li>Ghose, A., Kahng, A. B., Kundu, S., Wang, Z. <a href="https://doi.org/10.1109/MLCAD65511.2025.11189204">ORFS-agent: Tool-Using Agents for Chip Design Optimization</a>. MLCAD 2025.</li>
+<li>Islam et al. <a href="https://doi.org/10.23919/DATE64628.2025.10992789">EDA-Aware RTL Generation with Large Language Models</a>（AIVRIL2）. DATE 2025.</li>
+<li>Tasnia et al. <a href="https://doi.org/10.1109/ICCAD66269.2025.11240771">VeriOpt: PPA-Aware High-Quality Verilog Generation via Multi-Role LLMs</a>. ICCAD 2025.</li>
+<li>Li et al. <a href="https://doi.org/10.1145/3737286">AutoSilicon: Scaling Up RTL Design Generation Capability of Large Language Models</a>. ACM TODAES 30(6), 2025.</li>
+<li>Hsin et al. <a href="https://arxiv.org/abs/2601.18067">EvolVE: Evolutionary Search for LLM-based Verilog Generation and Optimization</a>. arXiv:2601.18067, 2026预印本.</li>
+<li>Ren et al. <a href="https://arxiv.org/abs/2607.04758">AgenticPD: A Stage-Aware Agentic Framework for Physical Design QoR Optimization</a>. arXiv:2607.04758v2, 2026预印本.</li>
+<li>Tieu et al. <a href="https://arxiv.org/abs/2608.04032">EDATracer: An Agentic Framework for Large-Scale EDA Artifact Analysis</a>. arXiv:2608.04032, 2026预印本.</li>
+<li>Zheng et al. <a href="https://arxiv.org/abs/2607.11294">From Tool Invocation to Source-Mechanism Exploration: Protected White-Box DSE for Open-Source EDA</a>（ReviewDSE）. arXiv:2607.11294v4, 2026预印本.</li>
+<li>Ren et al. <a href="https://arxiv.org/abs/2608.03738">AgenticECO: An Agentic Framework for ECO on 3D Integrated Circuits</a>. arXiv:2608.03738, 2026预印本.</li>
+<li>Wu et al. <a href="https://arxiv.org/abs/2607.20019">EvoDRC: A Self-Evolving Agentic Framework for Automated DRC Violation Repair</a>. arXiv:2607.20019, 2026预印本.</li>
+<li>Mukherjee et al. <a href="https://arxiv.org/abs/2607.22761">DRC-Aid: Design-Rule Correction via Agentic Framework utilizing Inference-Time Large Language Models</a>. arXiv:2607.22761, 2026预印本.</li>
+<li>Jeong et al. <a href="https://doi.org/10.1145/3658617.3697733">PPA-Aware Tier Partitioning for 3D IC Placement with ILP Formulation</a>. ASP-DAC 2025.</li>
+<li>Park and Park. <a href="https://doi.org/10.23919/DATE69613.2026.11539673">Critical-Path-Centric 3D IC Placement for Timing Optimization</a>. DATE 2026.</li>
+<li>Wu et al. <a href="https://doi.org/10.1109/ICCAD66269.2025.11240768">P2P-Chiplet: Partition and Placement Co-Optimization for Multi-Chiplet Architecture</a>. ICCAD 2025.</li>
+<li>Gopalakrishnan et al. <a href="https://doi.org/10.1109/MLCAD65511.2025.11189135">MLCAD 2025 Contest on ReSynthAI: Physical-aware Logic Resynthesis using AI</a>.</li>
+<li>Liang et al. <a href="https://doi.org/10.1109/ICCAD57390.2023.10323611">CircuitOps: An ML Infrastructure Enabling Generative AI for VLSI Circuit Optimization</a>. ICCAD 2023.</li>
+</ol>
+</main></body></html>

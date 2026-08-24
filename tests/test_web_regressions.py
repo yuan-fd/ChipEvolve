@@ -15,7 +15,7 @@ def test_web_learning_collection_builds_valid_context_without_frontend_toolchain
         tmp_path / "platform.db", tmp_path / "uploads", tmp_path / "orfs",
         design_root=tmp_path / "designs", legacy_root=tmp_path / "legacy",
         yosys_bin=tmp_path / "missing-yosys", runtime_db_path=tmp_path / "runtime.db",
-        campaign_db_path=tmp_path / "campaign.db", load_taiwei_plugin=False,
+ load_taiwei_plugin=False,
     )
     task = TaskSpec(
         "web-learning", "openroad-platform", "gcd", "orfs",

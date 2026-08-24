@@ -12,11 +12,12 @@ from openroad_platform_contracts import EvidencePointer, LearningContext
 
 
 def _context(*, design="gcd", fingerprint="a" * 64,
-             toolchain="orfs-51ad123", stage="finish"):
+             toolchain="orfs-51ad123", stage="finish", constraint="0" * 64):
     return LearningContext(
         design_id=design, design_fingerprint=fingerprint, platform="nangate45",
         pdk_id="nangate45-public", toolchain_id=toolchain, flow_stage=stage,
         metric_parser_version="orfs-stage-json-1",
+        constraint_fingerprint=constraint,
     )
 
 
@@ -71,6 +72,10 @@ def test_hard_context_filter_precedes_ranking_and_general_scope_is_explicit(tmp_
         "placement density", _context(toolchain="orfs-other"),
     )
     assert wrong_toolchain.records == ()
+    relaxed_clock_context = rag.retrieve(
+        "placement density", _context(constraint="f" * 64),
+    )
+    assert [item["record_id"] for item in relaxed_clock_context.records] == [general.record_id]
     eligible = rag.retrieve("placement density", _context(), action_eligible_only=True)
     assert hypothesis.record_id not in {item["record_id"] for item in eligible.records}
 

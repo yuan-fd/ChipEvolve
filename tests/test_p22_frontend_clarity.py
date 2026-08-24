@@ -18,14 +18,16 @@ def test_frontend_exposes_readable_code_and_evidence_dashboard() -> None:
 
     assert "RTLScout run dashboard" in html
     assert "Automatic dual-agent flow" in html
-    assert "/auto-rtlscout" in javascript
+    assert "/run-to-baseline" in javascript
+    assert "/auto-rtlscout" not in javascript
     assert "TCADCraft" in javascript and "MoMCraft" in javascript
     assert "CktCraft" in javascript  # craft extensions render dynamically via /api/platform
     assert "RTLCraft" not in html and "EDACode" not in html
     assert ".code-viewer" in css and "background: #fff" in css
-    assert "Platform model" in html and "no user API key is accepted" in html
+    assert "Automatic policy" in html and "No API key or expert knob" in html
     assert "saveProvider" not in javascript and "providerKey" not in javascript
-    assert 'model: "gpt-5.6-terra"' in javascript
+    assert 'model: "gpt-5.6-terra"' not in javascript
+    assert 'provider: "codex-cli"' not in javascript
     assert "gpt-5.6-sol" not in javascript
     assert "formatCodeForDisplay" in javascript
     assert "result.all_evals" in javascript
@@ -41,14 +43,27 @@ def test_frontend_and_backend_follow_the_reference_task_sequence() -> None:
 
     assert html.index("Create or upload RTL") < html.index("Choose an audited RTL example")
     assert html.index("Choose an audited RTL example") < html.index("Synthesis results")
-    assert html.index("Choose a registered RTL design") < html.index("Configure implementation")
-    assert html.index("Configure implementation") < html.index("Run RTL-to-GDS and monitor stages")
+    assert html.index("Choose a registered RTL design") < html.index("Choose constraints and optimization goal")
+    assert html.index("Choose constraints and optimization goal") < html.index("Run RTL-to-GDS and monitor stages")
     assert html.index("Run RTL-to-GDS and monitor stages") < html.index("Layout, QoR, and implementation evidence")
     assert 'id="flowProgressBar"' in html
     assert 'id="backendDesignChips"' in html
     assert ".task-panel .stage" in css and "grid-template-columns: 18px 95px 1fr 55px" in css
     assert "attempt.metrics" in javascript
-    assert "2^3" in javascript and "max_total_runs: 8" in javascript
+    assert 'post("/api/v2/closed-loops", base)' in javascript
+    assert "repetitions: 3" not in javascript and "stall_window: 3" not in javascript
+    assert "max_transitions: 64" not in javascript
+    assert 'run-to-boundary`, {})' in javascript
+    assert 'id="flowUtil"' not in html
+    assert 'id="flowDensity"' not in html
+    assert 'id="flowPeriod"' not in html
+    assert 'id="flowTarget"' not in html
+    assert 'id="rtlscoutCost"' not in html
+    assert 'id="rtlscoutSteps"' not in html
+    assert 'id="rtlscoutMode"' not in html
+    assert "/collect-learning" not in javascript
+    assert "/api/campaigns/stage-aware" not in javascript
+    assert "recommendationList" not in html and "recommendationList" not in javascript
     assert "state.designs[0]" not in javascript
     assert "physicalRuns[0]" not in javascript
     assert "Design\", \"设计" in javascript and "Run\", \"任务" in javascript
@@ -68,7 +83,7 @@ def test_language_switch_has_persisted_real_translations() -> None:
 
     assert 'data-locale="zh"' in html and 'data-locale="en"' in html
     assert 'data-i18n="backend.run.action"' in html
-    assert '"backend.run.action": "开始 RTL-to-GDS"' in javascript
+    assert '"backend.run.action": "开始 Agent 自主 BO/GP 优化"' in javascript
     assert 'localStorage.setItem("openroad-platform-locale"' in javascript
     assert 'document.documentElement.lang = state.locale === "zh" ? "zh-CN" : "en"' in javascript
     html_keys = set(re.findall(r'data-i18n="([^"]+)"', html))
@@ -77,52 +92,52 @@ def test_language_switch_has_persisted_real_translations() -> None:
     assert html_keys <= translated_keys
 
 
-def test_rtlscout_web_rejects_removed_benchmark_only_entry(tmp_path: Path) -> None:
+def test_rtlscout_benchmark_only_entry_is_deleted(tmp_path: Path) -> None:
     state = ApiState(
         tmp_path / "platform.db", tmp_path / "uploads", tmp_path / "orfs",
         design_root=tmp_path / "designs", legacy_root=tmp_path / "legacy",
         yosys_bin=ROOT.parent / "bin/yosys",
         runtime_db_path=tmp_path / "runtime.db",
-        campaign_db_path=tmp_path / "campaign.db",
     )
-    with pytest.raises(RuntimeError, match="removed in v2"):
-        state.submit_rtlscout({
-        "mode": "offline_demo", "benchmark": "simple_adder",
-        "cost_metric": "yosys_cells", "max_steps": 3,
-        "api_key": "must-not-enter-task",
-        })
+    assert not hasattr(state, "submit_rtlscout")
 
 
-def test_backend_modes_keep_single_run_and_campaign_semantics_distinct(tmp_path: Path) -> None:
+def test_product_state_exposes_only_the_autonomous_bogp_business_path(tmp_path: Path) -> None:
+    """Old tutorial modes must be deleted, not merely hidden in the browser."""
     state = ApiState(
         tmp_path / "platform.db", tmp_path / "uploads", tmp_path / "orfs",
         design_root=tmp_path / "designs", legacy_root=tmp_path / "legacy",
         yosys_bin=ROOT.parent / "bin/yosys",
         runtime_db_path=tmp_path / "runtime.db",
-        campaign_db_path=tmp_path / "campaign.db",
     )
-    design = state.designs.import_rtl(
-        filename="mode_test.v",
-        source="module mode_test(input a, output y); assign y = a; endmodule\n",
-    )
-    detail = state.submit_runtime_design_run({
-        "design_id": design["id"], "objective": "timing", "flow_mode": "baseline",
-        "platform": "sky130hd",
-    })
-    labels = detail["run"]["task_spec"]["labels"]
-    assert labels["objective"] == "timing"
-    assert labels["flow_mode"] == "baseline"
-    assert detail["run"]["task_spec"]["parameters"]["platform"] == "sky130hd"
+    removed = {
+        "begin_four_gate_baseline", "start_evolution_campaign",
+        "create_stage_campaign", "submit_runtime_design_run",
+        "run_optimizer_iteration", "create_recommendation",
+        "decide_recommendation", "submit_campaign",
+        "submit_run",
+    }
+    assert all(not hasattr(state, name) for name in removed)
+    assert hasattr(state, "start_bayesian_closed_loop")
+    assert hasattr(state, "run_bayesian_closed_loop_to_boundary")
 
-    campaign = state.create_stage_campaign({
-        "design_id": design["id"], "objective": "area", "flow_mode": "agent",
-        "platform": "sky130hs",
-        "parameter_grid": {"core_utilization_pct": [25, 30, 35]},
-        "max_repairs": 2,
-    })
-    assert len(campaign["members"]) == 3
-    assert all(item["status"] == "unbound" for item in campaign["members"])
-    member = state.campaign_store.members(campaign["campaign_id"])[0]
-    assert member.task_spec.labels["objective"] == "area"
-    assert member.task_spec.labels["flow_mode"] == "agent"
-    assert member.task_spec.parameters["platform"] == "sky130hs"
+    # The autonomous Agent trace uses one stable vocabulary shared by the
+    # dashboard, experiment exporter and paper figures.
+    source = (ROOT / "apps/api/app.py").read_text(encoding="utf-8")
+    assert '"phase": "implementation"' not in source
+    assert '"phase": "validation"' not in source
+
+    api_source = source
+    assert 'path == "/api/v2/closed-loops"' in api_source
+    assert "/api/campaigns/stage-aware" not in api_source
+    assert "/api/four-gate/" not in api_source
+    assert "/api/providers" not in api_source
+    assert "/api/optimization/studies" not in api_source
+    assert not hasattr(state, "list_optimization_studies")
+    assert not hasattr(state, "get_optimization_study")
+
+    # BYOK was deleted from the execution boundary too, not merely hidden in
+    # the browser.  RTLScout cannot request third-party API credentials.
+    rtl_plugin = (ROOT / "packages/execution/src/openroad_platform_execution/rtlscout_plugin.py").read_text(encoding="utf-8")
+    for legacy_provider in ("anthropic", "deepinfra", "openrouter", "API_KEY"):
+        assert legacy_provider not in rtl_plugin

@@ -23,7 +23,7 @@ from typing import Any, Mapping, Protocol, Sequence
 from openroad_platform_contracts import PortSpec, TaskSpec
 
 
-ALLOWED_MODELS = {"gpt-5.6-terra", "gpt-5.6-sol"}
+ALLOWED_MODELS = {"gpt-5.6-terra"}
 ALLOWED_STAGES = {"synth", "floorplan", "place", "cts", "route", "finish"}
 # These are the normal 2D ORFS platforms available to v2.  TaiWei 3D remains
 # a separately pinned, explicit flow and is intentionally not guessed from

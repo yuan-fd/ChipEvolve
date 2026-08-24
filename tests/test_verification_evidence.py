@@ -26,3 +26,14 @@ def test_same_agent_cannot_claim_independent_oracle():
     report = {"eligible": True}
     assert not independent_verification_gate(candidate_generator="same-agent", verifier_identity="same-agent",
                                              testbench_origin="approved_generated", report=report)["accepted"]
+
+
+def test_verification_agent_origin_is_an_accepted_independent_oracle():
+    gate = independent_verification_gate(
+        candidate_generator="rtlscout-v2",
+        verifier_identity="verification-agent-v2/codex-cli",
+        testbench_origin="independent_verifier_agent",
+        report={"eligible": True},
+    )
+    assert gate["accepted_origin"] is True
+    assert gate["accepted"] is True
