@@ -63,7 +63,7 @@ def test_orfs_plugin_runs_full_runtime_chain_and_records_provenance(tmp_path):
     task = build_orfs_task(
         FIXTURES / "p2_mux_2to1.v",
         project_id="p2-test", design_id="mux-test", top="mux_2to1",
-        timeout_seconds=30, stage_timeout_seconds=10,
+        timeout_seconds=30, stage_timeout_seconds=10, or_seed=314159,
     )
     store = RuntimeStore(tmp_path / "runtime.db")
     runtime = WorkflowRuntime(
@@ -95,6 +95,8 @@ def test_orfs_plugin_runs_full_runtime_chain_and_records_provenance(tmp_path):
     assert snapshot["files"]["rtl"]["sha256"] == task.inputs["rtl"]["sha256"]
     assert snapshot["files"]["generated_config"]["sha256"]
     assert snapshot["files"]["platform_config"]["sha256"]
+    assert snapshot["request"]["or_seed"] == 314159
+    assert task.parameters["or_seed"] == 314159
     tool_events = [event for event in view["events"]
                    if event["event_type"].startswith("tool.stage.")]
     assert [event["payload"]["tool_stage"] for event in tool_events[::2]] == [

@@ -62,12 +62,28 @@ def main() -> int:
                          datetime.fromisoformat(ledger[0]["created_at"])
                          < datetime.fromisoformat(first_holdout))
     validation = source.get("validation") or {}
+    observed_by_role: dict[str, dict[tuple[float, float], list[int]]] = {}
+    for role in ("source", "holdout"):
+        grouped: dict[tuple[float, float], list[int]] = {}
+        for row in rows:
+            if row["role"] != role:
+                continue
+            parameters = row["parameters"]
+            key = (float(parameters["core_utilization_pct"]),
+                   float(parameters["place_density"]))
+            grouped.setdefault(key, []).append(int(parameters["or_seed"]))
+        observed_by_role[role] = grouped
+    seed_sets = [tuple(sorted(values)) for grouped in observed_by_role.values()
+                 for values in grouped.values()]
     checks = {
         "exact_repeated_2x2_run_count": len(source_ids) == 12 and len(holdout_ids) == 12,
         "all_runs_terminal_success": bool(rows) and all(row["status"] == "succeeded" for row in rows),
         "all_runs_have_attributed_analysis": all(
             isinstance(row["analysis_sha256"], str) and len(row["analysis_sha256"]) == 64
             for row in rows),
+        "paired_distinct_openroad_seeds": len(seed_sets) == 8
+            and len(seed_sets[0]) == 3 and len(set(seed_sets[0])) == 3
+            and all(values == seed_sets[0] for values in seed_sets),
         "timing_constraint_passed": all(
             isinstance(row["setup_wns_ns"], (int, float)) and row["setup_wns_ns"] >= 0
             for row in rows),

@@ -188,6 +188,23 @@ def test_default_non_nangate_floorplan_has_a_complete_initialization_policy(tmp_
     assert "DIE_AREA" not in config
 
 
+def test_orfs_random_seed_is_explicit_in_generated_config(tmp_path):
+    orfs, bin_dir = _fake_runtime(tmp_path)
+    rtl = tmp_path / "tiny.v"
+    rtl.write_text("module tiny(input a, output y); assign y=~a; endmodule\n")
+    runner = ORFSRunner(
+        orfs_root=orfs, work_root=tmp_path / "runs",
+        openroad_bin=bin_dir / "openroad", yosys_bin=bin_dir / "yosys",
+    )
+    plan = runner.prepare(RunRequest(
+        rtl_path=str(rtl), top="tiny", or_seed=271828,
+        target_stage=RunStage.SYNTH,
+    ))
+    config = Path(plan.config_path).read_text()
+    assert "export OR_SEED = 271828" in config
+    assert plan.request.or_seed == 271828
+
+
 def test_finish_json_fallback_preserves_terminal_qor_without_analysis_package(tmp_path):
     orfs, bin_dir = _fake_runtime(tmp_path)
     rtl = tmp_path / "top.v"; rtl.write_text("module top; endmodule\n")

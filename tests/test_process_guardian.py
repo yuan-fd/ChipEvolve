@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import time
 
+import pytest
+
 from openroad_platform_execution.process_guardian import ProcessGuardian
 
 
@@ -84,3 +86,24 @@ def test_timeout_is_not_starved_by_a_high_volume_output_stream(tmp_path):
     # defer a 250 ms deadline indefinitely (the old implementation could).
     assert time.monotonic() - started < 15
     assert (tmp_path / "noisy.log").stat().st_size > 0
+
+
+def test_unexpected_callback_failure_cleans_the_complete_process_tree(tmp_path):
+    pid_file = tmp_path / "callback-child.pid"
+    script = f"sleep 30 & child=$!; printf '%s' $child > {pid_file}; echo ready; wait"
+    guardian = ProcessGuardian(poll_interval=0.01, terminate_grace=0.1)
+
+    with pytest.raises(RuntimeError, match="closed parent channel"):
+        guardian.run(
+            ["bash", "-c", script], log_path=tmp_path / "callback.log",
+            timeout_seconds=10,
+            on_line=lambda _line: (_ for _ in ()).throw(
+                RuntimeError("closed parent channel")),
+        )
+
+    child_pid = int(pid_file.read_text())
+    for _ in range(50):
+        if not _process_is_running(child_pid):
+            break
+        time.sleep(0.02)
+    assert not _process_is_running(child_pid)

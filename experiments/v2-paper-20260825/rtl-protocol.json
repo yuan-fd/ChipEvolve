@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "protocol_id": "openroad-agenticeda-v2-rtl-20260825",
+  "frozen_before_main_results": true,
+  "question": "Does the separated Spec Agent, Verification Agent and iterative RTLScout flow produce independently checked RTL-to-GDS results more reliably than a first authored candidate or a mutation-off gate?",
+  "designs": ["gcd", "fifo", "uart_tx", "ibex_alu"],
+  "attempts_per_design": 5,
+  "attempt_identity": "fresh platform-managed gpt-5.6-terra invocation; no benchmark RTL or benchmark testbench is supplied",
+  "arms": ["first_authored_candidate", "rtlscout_iterative_evaluator", "mutation_off_counterfactual", "full_independent_verification_to_gds"],
+  "primary_outcomes": ["full_chain_pass_rate", "pass_at_k", "first_candidate_pass_rate", "iterative_rescue_count", "weak_verification_candidates_blocked", "unique_rtl_hashes", "unique_testbench_hashes"],
+  "gates": ["SpecIR", "independently generated frozen testbench", "RTLScout lint and simulation feedback", "Runtime compile/lint", "Runtime simulation", "mutation score at least 0.80", "full ORFS GDS"],
+  "failure_policy": "every failed invocation and intermediate candidate is retained; identical output hashes are reported and never presented as design diversity",
+  "claim_boundary": "fixed four-design suite under one managed model and toolchain; not arbitrary natural-language generalization"
+}

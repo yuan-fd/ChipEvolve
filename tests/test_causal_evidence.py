@@ -6,8 +6,8 @@ from apps.api.app import ApiState
 from types import SimpleNamespace
 import pytest
 
-def _view(util, density, value, replica, rtl="a" * 64, top="dut"):
-    return {"run":{"status":"succeeded","task_spec":{"task_id":f"task-{util}-{density}-{replica}","design_id":"design","plugin_id":"orfs","inputs":{"rtl":{"sha256":rtl},"top":top},"parameters":{"platform":"sky130hd","target_stage":"finish","core_utilization_pct":util,"place_density":density},"resources":{"toolchain_profile":"pinned"},"labels":{"replica_index":str(replica)}}},"stages":[{"attempts":[{"metrics":[{"name":"area","value":value}]}]}]}
+def _view(util, density, value, replica, rtl="a" * 64, top="dut", or_seed=1):
+    return {"run":{"status":"succeeded","task_spec":{"task_id":f"task-{util}-{density}-{replica}","design_id":"design","plugin_id":"orfs","inputs":{"rtl":{"sha256":rtl},"top":top},"parameters":{"platform":"sky130hd","target_stage":"finish","core_utilization_pct":util,"place_density":density,"or_seed":or_seed},"resources":{"toolchain_profile":"pinned"},"labels":{"replica_index":str(replica),"or_seed":str(or_seed)}}},"stages":[{"attempts":[{"metrics":[{"name":"area","value":value}]}]}]}
 
 def test_repeated_factorial_exposes_a_parameter_interaction():
     # density is harmful only at high utilization: interaction = 20.
@@ -18,6 +18,17 @@ def test_repeated_factorial_exposes_a_parameter_interaction():
     assert report["causal_eligible"] is True
     assert report["interaction_effect"] == 20
     assert "local" in report["claim"]
+
+
+def test_randomized_openroad_seed_is_a_block_not_a_changed_causal_context():
+    views=[]
+    for util,density,value in ((20,.4,100),(20,.6,100),(40,.4,110),(40,.6,130)):
+        views.extend([_view(util,density,value,0,or_seed=101),
+                      _view(util,density,value,1,or_seed=202)])
+    report=factorial_interaction_report(
+        views,first="core_utilization_pct",second="place_density",metric="area")
+    assert report["causal_eligible"] is True
+    assert report["interaction_effect"] == 20
 
 
 def test_interaction_becomes_a_falsifiable_holdout_study_not_an_auto_action():

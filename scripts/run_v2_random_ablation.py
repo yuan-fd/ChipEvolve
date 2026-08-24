@@ -17,7 +17,8 @@ if str(ROOT) not in sys.path:
 
 from apps.api.app import ApiState  # noqa: E402
 from openroad_platform_analysis import (  # noqa: E402
-    RuntimeEvidenceExporter, relative_utility, summarize_replicates,
+    RuntimeEvidenceExporter, paired_replica_seeds, relative_utility,
+    summarize_replicates,
 )
 from openroad_platform_execution import build_orfs_task  # noqa: E402
 
@@ -63,6 +64,7 @@ def main() -> int:
         raise SystemExit("real ORFS execution is unavailable")
 
     frozen_plan, design_records, run_groups = {}, {}, {}
+    replica_or_seeds = paired_replica_seeds(args.seed, REPETITIONS)
     all_run_ids = []
     for design_name in DESIGNS:
         package = ROOT / "benchmarks" / "v2" / design_name
@@ -83,9 +85,11 @@ def main() -> int:
                     clock_period_ns=10.0,
                     core_utilization_pct=vector["core_utilization_pct"],
                     place_density=vector["place_density"],
+                    or_seed=replica_or_seeds[replica],
                     labels={"v2_research": "seeded-random-ablation",
                             "random_seed": str(args.seed), "vector_index": str(vector_index),
-                            "replica_index": str(replica)},
+                            "replica_index": str(replica),
+                            "or_seed": str(replica_or_seeds[replica])},
                 )
                 run_id = state.runtime.submit(task).run_id
                 run_groups[key].append(run_id); all_run_ids.append(run_id)
@@ -93,7 +97,8 @@ def main() -> int:
     (output / "frozen-plan.json").write_text(json.dumps({
         "schema_version": 1, "kind": "v2_seeded_random_frozen_plan",
         "seed": args.seed, "designs": list(DESIGNS), "ranges": RANGES,
-        "repetitions": REPETITIONS, "vectors": frozen_plan,
+        "repetitions": REPETITIONS,
+        "paired_replica_or_seeds": list(replica_or_seeds), "vectors": frozen_plan,
         "run_groups": {f"{key[0]}:{key[1]}": value for key, value in run_groups.items()},
     }, ensure_ascii=False, sort_keys=True, indent=2), encoding="utf-8")
     with ThreadPoolExecutor(max_workers=min(args.max_parallel, len(all_run_ids))) as pool:
@@ -131,6 +136,7 @@ def main() -> int:
     report = {
         "schema_version": 1, "kind": "v2_equal_budget_seeded_random_ablation",
         "seed": args.seed, "ranges": RANGES, "repetitions": REPETITIONS,
+        "paired_replica_or_seeds": list(replica_or_seeds),
         "candidate_budget_per_design": 3, "design_rows": rows,
         "run_count": len(all_run_ids), "terminal_statuses": terminal,
         "failure_rate": sum(status != "succeeded" for status in terminal) / len(terminal),

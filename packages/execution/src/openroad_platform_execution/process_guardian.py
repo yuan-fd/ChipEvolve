@@ -68,22 +68,28 @@ class ProcessGuardian:
             )
             reader.start()
 
-            while proc.poll() is None:
-                # A noisy EDA process can produce lines faster than Python can
-                # write them.  Drain only one bounded batch here so that a
-                # permanently non-empty queue cannot starve timeout/cancel
-                # enforcement.
-                self._drain(lines, log, on_line, max_lines=32)
-                elapsed = time.monotonic() - started
-                if cancel_requested is not None and cancel_requested():
-                    cancelled = True
-                    self._terminate_tree(proc)
-                    break
-                if elapsed >= timeout_seconds:
-                    timed_out = True
-                    self._terminate_tree(proc)
-                    break
-                time.sleep(self.poll_interval)
+            try:
+                while proc.poll() is None:
+                    # A noisy EDA process can produce lines faster than Python can
+                    # write them.  Drain only one bounded batch here so that a
+                    # permanently non-empty queue cannot starve timeout/cancel
+                    # enforcement.
+                    self._drain(lines, log, on_line, max_lines=32)
+                    elapsed = time.monotonic() - started
+                    if cancel_requested is not None and cancel_requested():
+                        cancelled = True
+                        self._terminate_tree(proc)
+                        break
+                    if elapsed >= timeout_seconds:
+                        timed_out = True
+                        self._terminate_tree(proc)
+                        break
+                    time.sleep(self.poll_interval)
+            except BaseException:
+                # KeyboardInterrupt, a closed parent pipe, or an unexpected
+                # callback failure must not orphan a many-core EDA process.
+                self._terminate_tree(proc)
+                raise
 
             try:
                 proc.wait(timeout=self.terminate_grace)

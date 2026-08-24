@@ -6,11 +6,32 @@ the execution layer has produced immutable evidence.
 """
 from __future__ import annotations
 
+import hashlib
 import math
 import statistics
 from typing import Any, Iterable, Mapping, Sequence
 
 from openroad_platform_contracts import LearningObservation, ObjectiveSpec
+
+
+def paired_replica_seeds(experiment_seed: int, count: int) -> tuple[int, ...]:
+    """Derive stable OpenROAD seeds shared by every compared policy arm."""
+    if (not isinstance(experiment_seed, int) or isinstance(experiment_seed, bool)
+            or not 0 <= experiment_seed <= 2_147_483_647):
+        raise ValueError("experiment_seed must be between 0 and 2147483647")
+    if not 2 <= count <= 8:
+        raise ValueError("paired replica count must be between 2 and 8")
+    result: list[int] = []
+    index = 0
+    while len(result) < count:
+        digest = hashlib.sha256(
+            f"openroad-v2-paired-or-seed:{experiment_seed}:{index}".encode()
+        ).digest()
+        value = int.from_bytes(digest[:4], "big") & 0x7fffffff
+        if value not in result:
+            result.append(value)
+        index += 1
+    return tuple(result)
 
 
 def _quantile(values: Sequence[float], fraction: float) -> float:

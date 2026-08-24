@@ -54,6 +54,10 @@ class RunRequest:
     target_stage: RunStage = RunStage.FINISH
     core_utilization_pct: float = 10.0
     place_density: float = 0.45
+    # OpenROAD detailed routing randomizes the order of nets to reroute.  Keep
+    # this explicit so replicated paper experiments can use paired seeds
+    # instead of pretending that identical deterministic reruns are samples.
+    or_seed: int = 1
     minimum_die_size_um: float | None = None
     stage_timeout_seconds: int = 3600
     run_id: str = field(default_factory=lambda: uuid.uuid4().hex)
@@ -73,6 +77,9 @@ class RunRequest:
             raise ValueError("core_utilization_pct must be between 0 and 100")
         if not 0 < self.place_density <= 1:
             raise ValueError("place_density must be between 0 and 1")
+        if (not isinstance(self.or_seed, int) or isinstance(self.or_seed, bool)
+                or not 0 <= self.or_seed <= 2_147_483_647):
+            raise ValueError("or_seed must be an integer between 0 and 2147483647")
         if self.minimum_die_size_um is not None and not (
             5 <= self.minimum_die_size_um <= 10_000
         ):

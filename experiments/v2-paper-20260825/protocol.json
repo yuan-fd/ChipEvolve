@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "protocol_id": "openroad-agenticeda-v2-paper-20260825",
+  "frozen_before_new_main_results": true,
+  "scope": "v2 parameter-only autonomous closed loop; v3 repair executors excluded",
+  "toolchain": {
+    "flow": "OpenROAD-flow-scripts",
+    "platform": "nangate45",
+    "target_stage": "finish",
+    "clock_is_not_an_optimization_variable": true
+  },
+  "parameter_policy_primary": {
+    "hypothesis": "At equal full-flow evaluation budget, BO/GP improves balanced relative utility over seeded random.",
+    "designs": ["gcd", "fifo", "uart_tx", "ibex_alu"],
+    "policy_seeds": [41001, 41002, 41003, 41004, 41005, 41006, 41007, 41008, 41009, 41010],
+    "policies": ["bo_gp", "seeded_random"],
+    "vectors_per_design_policy_seed": 4,
+    "replicas_per_vector": 3,
+    "replica_randomization": "three distinct OR_SEED values derived from the policy seed and paired across policies and vectors",
+    "full_flow_runs_per_policy": 480,
+    "primary_outcome": "best feasible balanced relative utility after three candidate vectors",
+    "infeasible_cell_value": -1.0,
+    "infeasible_cell_rule": "if baseline and all three candidates lack a feasible complete summary, retain the cell and assign -1.0; otherwise select the largest feasible utility including the zero-utility baseline",
+    "secondary_outcomes": ["threshold event at 0.5%", "failure rate", "wall time", "area", "setup WNS", "power", "DRC"],
+    "primary_test": "two-sided paired sign-flip permutation test over 40 design-seed cells",
+    "interval": "seeded nonparametric bootstrap 95% CI for median paired difference",
+    "multiplicity": "per-design secondary tests use Holm correction",
+    "exclusions": "none after launch; timeout, crash and hard-constraint failures remain failures",
+    "stopping": "exactly three candidate vectors after a three-replica baseline"
+  },
+  "external_validity": {
+    "designs": ["aes", "jpeg", "spi", "uart"],
+    "source": "pinned ORFS multi-file RTL expanded into a content-addressed platform input",
+    "purpose": "cost, compatibility and failure-mode evidence; not pooled with the primary small-design significance test",
+    "stage_timeout_seconds": 14400,
+    "flow_timeout_seconds": 28800,
+    "liveness_rule": "elapsed wall time alone is not a hang signal; continue while CPU activity or logs/artifacts advance, and stop only at the frozen timeout or on an explicit terminal failure"
+  },
+  "other_registered_ablations": {
+    "rtl": "independent natural-language attempts; full Verification-Agent plus RTLScout gates versus weaker gate subsets; pass@1/pass@k and GDS-conditioned PPA",
+    "learning": "all ordered source/holdout design pairs under repeated 2x2 interventions; false-transfer admission of retrieval-only versus causal holdout",
+    "edair": "frozen factual/statistical/reasoning questions answered from KPI-only versus typed provenance-linked EDAIR",
+    "agent": "checkpoint recovery, authority, evidence completeness and token/context footprint versus removed components; no unsupported claim that orchestration alone raises QoR"
+  },
+  "claim_rules": [
+    "Do not call deterministic identical reruns independent PPA samples.",
+    "Do not replace failed or timed-out runs.",
+    "Do not claim arbitrary natural-language RTL generalization from the fixed suite.",
+    "Do not claim v3 stage-repair capability from a v2 diagnosis trace.",
+    "Report effect size, uncertainty and raw run counts together."
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "protocol_id": "openroad-agenticeda-v2-agent-ablation-20260825",
+  "frozen_before_main_results": true,
+  "question": "Which v2 Agent architecture components prevent duplicate experiments, unsupported actions and below-threshold promotions?",
+  "real_trace_designs": ["gcd", "fifo", "uart_tx", "ibex_alu"],
+  "arms": ["full_eight_phase_architecture", "no_checkpoint_counterfactual", "no_authority_gate_counterfactual", "no_review_threshold_counterfactual"],
+  "injected_failures": ["baseline interruption after first child", "candidate interruption after first child", "terminal duplicate resume"],
+  "primary_outcomes": ["duplicate_or_lost_runs", "unsupported_executable_hypotheses", "below_threshold_promotions", "evidence_complete_validation_events", "terminal_idempotence"],
+  "claim_boundary": "architecture reliability and safety ablation; it does not claim that orchestration alone improves physical QoR"
+}

@@ -17,16 +17,20 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from apps.api.app import ApiState  # noqa: E402
+from openroad_platform_analysis import paired_replica_seeds  # noqa: E402
+from scripts.v2_paper_designs import PAPER_DESIGNS, load_paper_design  # noqa: E402
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--design", choices=("gcd", "fifo", "uart_tx", "ibex_alu"),
+    parser.add_argument("--design", choices=PAPER_DESIGNS,
                         default="gcd")
     parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument("--max-rounds", type=int, default=3)
     parser.add_argument("--seed", type=int, default=20260824)
+    parser.add_argument("--stage-timeout", type=int, default=14_400)
+    parser.add_argument("--flow-timeout", type=int, default=28_800)
     parser.add_argument("--orfs-root", type=Path,
                         default=Path("/share/home/yuanwenjie/OpenROAD-flow-scripts"))
     args = parser.parse_args()
@@ -35,8 +39,7 @@ def main() -> int:
         raise SystemExit("output must be a new or empty directory")
     output.mkdir(parents=True, exist_ok=True)
 
-    package = ROOT / "benchmarks" / "v2" / args.design
-    manifest = json.loads((package / "package.json").read_text(encoding="utf-8"))
+    paper_design = load_paper_design(args.design, args.orfs_root)
     state = ApiState(
         output / "platform.db", output / "uploads", args.orfs_root,
         design_root=output / "designs", legacy_root=output / "legacy",
@@ -48,8 +51,7 @@ def main() -> int:
     if not health["execution_ready"]:
         raise SystemExit(f"real ORFS is not ready: {health}")
     design = state.designs.import_rtl(
-        filename=manifest["golden_rtl"],
-        source=(package / manifest["golden_rtl"]).read_text(encoding="utf-8"),
+        filename=paper_design.filename, source=paper_design.source,
         description=f"v2 real closed-loop fixture: {args.design}",
         owner_id=None,
     )
@@ -63,8 +65,8 @@ def main() -> int:
         "minimum_relative_improvement": .005,
         "target_stage": "finish",
         "platform": "nangate45",
-        "clock": manifest.get("clock"),
-        "clock_period_ns": 10.0,
+        "clock": paper_design.clock,
+        "clock_period_ns": paper_design.clock_period_ns,
         "core_utilization_pct": 30.0,
         "place_density": .55,
         "parameter_space": {
@@ -72,9 +74,13 @@ def main() -> int:
             "place_density": [.35, .75],
         },
         "max_parallel": args.repetitions,
+        "optimizer_seed": args.seed,
+        "replica_or_seeds": list(paired_replica_seeds(args.seed, args.repetitions)),
+        "stage_timeout_seconds": args.stage_timeout,
+        "flow_timeout_seconds": args.flow_timeout,
     })
     result = state.run_bayesian_closed_loop_to_boundary(
-        created["pipeline_id"], {"max_transitions": 32, "seed": args.seed})
+        created["pipeline_id"], {"max_transitions": 32})
     runtime_runs = state.list_runtime_runs(limit=100)["runs"]
     task_rows = []
     for item in runtime_runs:
@@ -90,6 +96,11 @@ def main() -> int:
         "schema_version": 1, "kind": "v2_real_closed_loop_report",
         "optimizer_seed": args.seed,
         "design": args.design, "design_record": design,
+        "paper_design": {
+            "top": paper_design.top, "clock": paper_design.clock,
+            "clock_period_ns": paper_design.clock_period_ns,
+            "source_kind": paper_design.source_kind,
+        },
         "health": {key: health[key] for key in (
             "execution_ready", "orfs_ready", "openroad", "yosys")},
         "pipeline_id": created["pipeline_id"], "checkpoint": result,
@@ -99,6 +110,7 @@ def main() -> int:
             "clock_period_ns_values": clock_values,
             "clock_frozen": invariant_passed,
             "search_parameters": ["core_utilization_pct", "place_density"],
+            "paired_replica_or_seeds": result["state"]["replica_or_seeds"],
             "reason": "clock is a design constraint, not an optimization knob",
         },
         "study": state.optimization_store.describe(result["state"]["study_id"])

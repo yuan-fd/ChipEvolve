@@ -22,7 +22,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from apps.api.app import ApiState  # noqa: E402
-from openroad_platform_analysis import followup_from_interaction  # noqa: E402
+from openroad_platform_analysis import (  # noqa: E402
+    followup_from_interaction, paired_replica_seeds,
+)
 from openroad_platform_execution import build_orfs_task  # noqa: E402
 
 
@@ -41,7 +43,7 @@ def _sha(path: Path) -> str:
 
 
 def _run_design(state: ApiState, *, design_name: str, repetitions: int,
-                max_parallel: int) -> tuple[dict, list[str]]:
+                max_parallel: int, replica_or_seeds: tuple[int, ...]) -> tuple[dict, list[str]]:
     package = ROOT / "benchmarks" / "v2" / design_name
     manifest = json.loads((package / "package.json").read_text(encoding="utf-8"))
     rtl_path = package / manifest["golden_rtl"]
@@ -56,9 +58,10 @@ def _run_design(state: ApiState, *, design_name: str, repetitions: int,
                 design_id=design["id"], top=manifest["top"], clock="clk",
                 platform_name="nangate45", target_stage="finish",
                 clock_period_ns=10.0, core_utilization_pct=first,
-                place_density=second,
+                place_density=second, or_seed=replica_or_seeds[replica],
                 labels={"v2_research": "causal-2x2-holdout",
-                        "replica_index": str(replica)},
+                        "replica_index": str(replica),
+                        "or_seed": str(replica_or_seeds[replica])},
             )
             run_ids.append(state.runtime.submit(task).run_id)
     with ThreadPoolExecutor(max_workers=min(max_parallel, len(run_ids))) as pool:
@@ -76,6 +79,8 @@ def main() -> int:
                         default="fifo")
     parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument("--max-parallel", type=int, default=12)
+    parser.add_argument("--seed", type=int, default=20260825,
+                        help="frozen experiment seed used to derive paired OpenROAD seeds")
     parser.add_argument("--orfs-root", type=Path,
                         default=Path("/share/home/yuanwenjie/OpenROAD-flow-scripts"))
     args = parser.parse_args()
@@ -83,6 +88,7 @@ def main() -> int:
         raise SystemExit("holdout design must differ from source design")
     if not 2 <= args.repetitions <= 8 or not 1 <= args.max_parallel <= 32:
         raise SystemExit("repetitions must be 2-8 and max-parallel 1-32")
+    replica_or_seeds = paired_replica_seeds(args.seed, args.repetitions)
     output = args.output.expanduser().resolve()
     if output.exists() and any(output.iterdir()):
         raise SystemExit("output must be a new or empty directory")
@@ -97,7 +103,7 @@ def main() -> int:
 
     source_design, source_ids = _run_design(
         state, design_name=args.source_design, repetitions=args.repetitions,
-        max_parallel=args.max_parallel)
+        max_parallel=args.max_parallel, replica_or_seeds=replica_or_seeds)
     source = state.causal_qor_report({
         "run_ids": source_ids, "first_parameter": FIRST,
         "second_parameter": SECOND, "metric": METRIC})
@@ -128,9 +134,11 @@ def main() -> int:
 
     holdout_design, holdout_ids = _run_design(
         state, design_name=args.holdout_design, repetitions=args.repetitions,
-        max_parallel=args.max_parallel)
+        max_parallel=args.max_parallel, replica_or_seeds=replica_or_seeds)
     validation = state.validate_causal_holdout({
         "source_run_ids": source_ids, "holdout_run_ids": holdout_ids,
+        "experiment_seed": args.seed,
+        "paired_replica_or_seeds": list(replica_or_seeds),
         "first_parameter": FIRST, "second_parameter": SECOND, "metric": METRIC,
         "hypothesis_id": hypothesis["hypothesis_id"],
         "expected_direction": expected,
@@ -141,6 +149,8 @@ def main() -> int:
         "schema_version": 1, "kind": "v2_real_causal_holdout",
         "source_design": source_design, "holdout_design": holdout_design,
         "source_run_ids": source_ids, "holdout_run_ids": holdout_ids,
+        "experiment_seed": args.seed,
+        "paired_replica_or_seeds": list(replica_or_seeds),
         "terminal_statuses": terminal, "source_report": source,
         "pre_registered_followup": followup, "hypothesis": hypothesis,
         "validation": validation,

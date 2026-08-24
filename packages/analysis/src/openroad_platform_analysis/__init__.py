@@ -56,7 +56,10 @@ from .verification_evidence import generate_mutants, mutation_report, independen
 from .edair import agent_evidence_view, artifact_ref, build_edair, evidence_packet, physical_ir, timing_ir
 from .circuitops_ir import circuitops_lpg_ir, export_netlist_to_circuitops, request_table_rows
 from .hypothesis_ledger import HypothesisLedger, assess_hypothesis, promote_after_holdout, reflection_hypothesis
-from .closed_loop import summarize_replicates, relative_utility, stalled_decision, diagnosis_packet
+from .closed_loop import (
+    summarize_replicates, relative_utility, stalled_decision, diagnosis_packet,
+    paired_replica_seeds,
+)
 from .paper_harness import PaperProtocolStore, compare_arms, preregister_protocol, summarize_arm
 
 __all__ = [
@@ -89,5 +92,6 @@ __all__ = [
     "circuitops_lpg_ir", "export_netlist_to_circuitops", "request_table_rows",
     "HypothesisLedger", "reflection_hypothesis", "assess_hypothesis", "promote_after_holdout",
     "summarize_replicates", "relative_utility", "stalled_decision", "diagnosis_packet",
+    "paired_replica_seeds",
     "PaperProtocolStore", "preregister_protocol", "summarize_arm", "compare_arms",
 ]

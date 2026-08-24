@@ -56,6 +56,8 @@ def _payload(design_id: str) -> dict:
         "objective_profile": "balanced", "repetitions": 3,
         "max_rounds": 6, "stall_window": 3,
         "minimum_relative_improvement": .25,
+        "optimizer_seed": 20260824,
+        "replica_or_seeds": [10101, 20202, 30303],
         "parameter_space": {
             "core_utilization_pct": [20.0, 65.0],
             "place_density": [.35, .78],
@@ -70,7 +72,7 @@ def test_closed_loop_runs_replicas_to_three_stall_diagnosis_and_resumes(tmp_path
     assert len(created["state"]["active_run_ids"]) == 3
 
     result = state.run_bayesian_closed_loop_to_boundary(
-        created["pipeline_id"], {"max_transitions": 16, "seed": 20260824})
+        created["pipeline_id"], {"max_transitions": 16})
     loop = result["state"]
     assert loop["status"] == "diagnosis_required"
     assert loop["stalled_rounds"] == 3
@@ -83,6 +85,11 @@ def test_closed_loop_runs_replicas_to_three_stall_diagnosis_and_resumes(tmp_path
                for item in loop["history"])
     assert len(state.runtime_store.list_runs()) == 12
     assert len(state.optimization_store.observations(loop["study_id"])) == 12
+    assert state.optimization_store.get(loop["study_id"]).seed == 20260824
+    for item in loop["history"]:
+        seeds = [state.runtime_store.get_run(run_id).task_spec.parameters["or_seed"]
+                 for run_id in item["summary"]["run_ids"]]
+        assert seeds == [10101, 20202, 30303]
     phases = [item["phase"] for item in loop["agent_events"]]
     assert phases[:3] == ["map", "semantic", "experiment"]
     assert {"hypothesis", "implement", "validate", "review",
@@ -113,6 +120,21 @@ def test_closed_loop_freezes_spec_clock_outside_bo_space(tmp_path, monkeypatch):
         "clock_period_ns": [5.0, 20.0],
     }
     with pytest.raises(ValueError, match="unsupported.*clock_period_ns"):
+        state.start_bayesian_closed_loop(payload)
+
+
+def test_research_flow_timeout_is_bounded_and_frozen_in_every_replica(tmp_path, monkeypatch):
+    state, design = _state(tmp_path, monkeypatch)
+    payload = _payload(design["id"])
+    payload.update({"stage_timeout_seconds": 7200, "flow_timeout_seconds": 14400})
+    created = state.start_bayesian_closed_loop(payload)
+    for run_id in created["state"]["active_run_ids"]:
+        task = state.runtime_store.get_run(run_id).task_spec
+        assert task.parameters["stage_timeout_seconds"] == 7200
+        assert task.timeout_seconds == 14400
+    payload["stage_timeout_seconds"] = 14_401
+    payload["experiment_key"] = "invalid-timeout"
+    with pytest.raises(ValueError, match="stage_timeout_seconds"):
         state.start_bayesian_closed_loop(payload)
 
 

@@ -1,5 +1,6 @@
-from openroad_platform_analysis import (diagnosis_packet, relative_utility,
-                                        stalled_decision, summarize_replicates)
+from openroad_platform_analysis import (diagnosis_packet, paired_replica_seeds,
+                                        relative_utility, stalled_decision,
+                                        summarize_replicates)
 from openroad_platform_contracts import (EvidencePointer, LearningContext,
                                          LearningObservation, ObjectiveSpec)
 
@@ -48,3 +49,10 @@ def test_failed_constraint_blocks_promotion_and_produces_non_executable_diagnosi
     packet = diagnosis_packet([{"round": 1, "summary": summary}], objectives)
     assert packet["execution_allowed"] is False
     assert packet["violated_constraints"]
+
+
+def test_paired_replica_seeds_are_stable_distinct_and_seed_sensitive():
+    first = paired_replica_seeds(20260825, 5)
+    assert first == paired_replica_seeds(20260825, 5)
+    assert len(first) == len(set(first)) == 5
+    assert first != paired_replica_seeds(20260826, 5)

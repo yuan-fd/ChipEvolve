@@ -87,6 +87,7 @@ class ORFSRunner:
             clock_period_ns=request.clock_period_ns,
             core_utilization_pct=request.core_utilization_pct,
             place_density=request.place_density,
+            or_seed=request.or_seed,
             minimum_die_size_um=request.minimum_die_size_um,
         )
         stages = tuple(stage for stage in RunStage
@@ -257,6 +258,7 @@ class ORFSRunner:
                 "clock_period_ns": plan.request.clock_period_ns,
                 "core_utilization_pct": plan.request.core_utilization_pct,
                 "place_density": plan.request.place_density,
+                "or_seed": plan.request.or_seed,
                 "minimum_die_size_um": plan.request.minimum_die_size_um,
                 "stage_timeout_seconds": plan.request.stage_timeout_seconds,
             },

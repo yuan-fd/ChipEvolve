@@ -22,9 +22,11 @@ def _contexts(task: Mapping, first: str, second: str) -> tuple[str, str, str | N
     local.pop("task_id", None)
     parameters = dict(local.get("parameters") or {})
     local["parameters"] = {key: value for key, value in parameters.items()
-                           if key not in {first, second}}
+                           # OR_SEED is a randomized blocking variable for
+                           # replicas, not a design condition or treatment.
+                           if key not in {first, second, "or_seed"}}
     labels = dict(local.get("labels") or {})
-    for key in ("replica_index", "evolution_campaign_id", "evolution_phase"):
+    for key in ("replica_index", "or_seed", "evolution_campaign_id", "evolution_phase"):
         labels.pop(key, None)
     local["labels"] = labels
     rtl = (dict(local.get("inputs") or {}).get("rtl") or {})

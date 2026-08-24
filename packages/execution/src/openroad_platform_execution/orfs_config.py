@@ -70,6 +70,7 @@ def write_design_files(
     clock_period_ns: float,
     core_utilization_pct: float,
     place_density: float,
+    or_seed: int = 1,
     minimum_die_size_um: float | None = None,
 ) -> Path:
     config_dir = workdir / "designs" / platform / design
@@ -85,6 +86,7 @@ def write_design_files(
         f"export SDC_FILE = $(DESIGN_HOME)/{platform}/$(DESIGN_NAME)/constraint.sdc",
         f"export CLOCK_PERIOD = {clock_period_ns:g}",
         f"export PLACE_DENSITY = {place_density:g}",
+        f"export OR_SEED = {or_seed}",
     ]
     if platform == "nangate45":
         (config_dir / "pdn.tcl").write_text(PDN_SIMPLE, encoding="utf-8")

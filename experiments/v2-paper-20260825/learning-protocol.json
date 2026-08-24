@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "protocol_id": "openroad-agenticeda-v2-learning-20260825",
+  "frozen_before_main_results": true,
+  "hypothesis": "A cross-design causal holdout gate prevents unsupported transfer rules that retrieval-only admission would retain, while preserving same-direction replicated compound conditions as bounded knowledge cards.",
+  "designs": ["gcd", "fifo", "uart_tx", "ibex_alu"],
+  "ordered_source_holdout_pairs": 12,
+  "intervention": "2x2 core_utilization_pct by place_density",
+  "levels": {"core_utilization_pct": [20.0, 65.0], "place_density": [0.35, 0.75]},
+  "replicas_per_corner": 3,
+  "paired_randomization": "three distinct OR_SEED values per ordered pair, shared across corners and source/holdout",
+  "metric": "finish__design__instance__area",
+  "arms": ["retrieval_only_counterfactual", "causal_holdout_gate"],
+  "primary_outcomes": ["false_transfer_rules_admitted", "validated_bounded_rules", "rejected_transfers", "ineligible_pairs"],
+  "exclusions": "none after launch; failed, timed-out, and ineligible pairs remain in the ledger",
+  "claim_boundary": "tests knowledge admission and transfer safety; downstream QoR benefit requires a separate equal-budget memory-versus-no-memory study"
+}

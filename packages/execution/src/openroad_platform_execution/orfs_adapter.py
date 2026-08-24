@@ -144,6 +144,7 @@ def _legacy_request(task: TaskSpec, staged_rtl: Path) -> RunRequest:
         target_stage=target,
         core_utilization_pct=float(parameters.get("core_utilization_pct", 10.0)),
         place_density=float(parameters.get("place_density", 0.45)),
+        or_seed=int(parameters.get("or_seed", 1)),
         minimum_die_size_um=(
             float(parameters["minimum_die_size_um"])
             if parameters.get("minimum_die_size_um") is not None else None

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "protocol_id": "openroad-agenticeda-v2-edair-qa-20260825",
+  "frozen_before_main_results": true,
+  "question": "Does provenance-linked typed EDAIR let the same managed model recover more correct EDA facts than a KPI-only summary without hiding information loss?",
+  "designs": ["gcd", "fifo", "uart_tx", "ibex_alu"],
+  "questions_per_design": 12,
+  "repetitions": 5,
+  "arms": ["kpi_only", "typed_edair"],
+  "question_types": ["qor", "stage_metric", "logical_structure", "physical_structure", "timing_path", "artifact_provenance", "parser_fidelity"],
+  "primary_outcomes": ["exact_answer_accuracy", "supported_answer_rate", "false_answer_rate", "unknown_rate", "wall_time", "output_bytes"],
+  "judge": "deterministic exact string or numeric tolerance 1e-6 against answers derived before model execution",
+  "failure_policy": "invalid JSON, missing answer, timeout, or model error remains an incorrect attempt",
+  "claim_boundary": "frozen factual QA over four real Nangate45 runs; not a universal diagnosis benchmark or downstream QoR claim"
+}

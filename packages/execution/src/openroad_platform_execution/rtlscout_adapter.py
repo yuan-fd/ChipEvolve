@@ -112,6 +112,8 @@ def _codex_cli_candidates(*, source: Path, python: Path, workspace: Path,
     top = str(spec["top"])
     agent_dir = workspace / "codex-agent"
     agent_dir.mkdir(parents=True, exist_ok=False)
+    history_dir = workspace / "candidate-history"
+    history_dir.mkdir(parents=True, exist_ok=False)
     immutable_tb = bench / "tb.sv"
     shutil.copy2(immutable_tb, agent_dir / "tb.sv")
     (agent_dir / "specir.json").write_text(json.dumps(spec, ensure_ascii=False, sort_keys=True, indent=2), encoding="utf-8")
@@ -148,6 +150,9 @@ def _codex_cli_candidates(*, source: Path, python: Path, workspace: Path,
                 feedback = "Candidate exceeds the 2 MiB RTL limit."
                 evaluations.append({"eval_index": step, "passed": False, "error": feedback})
                 continue
+            frozen_candidate = history_dir / f"step-{step:03d}.sv"
+            shutil.copy2(design, frozen_candidate)
+            candidate_sha256 = sha256(frozen_candidate)
             evaluation = workspace / f"codex-eval-{step}"
             saved = workspace / f"codex-eval-{step}-result"
             evaluation.mkdir()
@@ -170,6 +175,8 @@ def _codex_cli_candidates(*, source: Path, python: Path, workspace: Path,
                     f"{evaluator_tail}"
                 )
                 evaluations.append({"eval_index": step, "passed": False, "error": feedback})
+                evaluations[-1].update({"candidate": str(frozen_candidate.relative_to(workspace)),
+                                        "candidate_sha256": candidate_sha256})
                 continue
             report = json.loads(report_path.read_text(encoding="utf-8"))
             passed = bool(report.get("passed")) and judge.returncode == 0
@@ -187,7 +194,9 @@ def _codex_cli_candidates(*, source: Path, python: Path, workspace: Path,
                     **(report.get("metrics") if isinstance(report.get("metrics"), dict) else {}),
                     **(compatibility_cost.get("metrics") or {}),
                 }}
-            row = {"eval_index": step, "candidate": "design.sv", "passed": passed,
+            row = {"eval_index": step,
+                   "candidate": str(frozen_candidate.relative_to(workspace)),
+                   "candidate_sha256": candidate_sha256, "passed": passed,
                    "lint_ok": report.get("correctness", {}).get("lint_ok"),
                    "sim_ok": report.get("correctness", {}).get("sim_ok"),
                    "cost": cost, "compatibility_cost": compatibility_cost, "result": report}
@@ -305,6 +314,15 @@ def main(argv: list[str] | None = None) -> int:
             rtl = outputs / "design.sv"; shutil.copy2(Path(payload["best_design"]), rtl)
             report = outputs / "rtlscout_result.json"; report.write_text(
                 json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            history_manifest = outputs / "candidate_history.json"
+            history_manifest.write_text(json.dumps({
+                "schema_version": 1,
+                "kind": "rtlscout_candidate_history",
+                "spec_id": spec.get("spec_id"),
+                "testbench_sha256": expected_tb_hash,
+                "candidates": payload.get("evaluations") or [],
+                "claim_boundary": "Every authored RTL candidate is retained; evaluator pass is not a proof beyond the frozen verification package.",
+            }, ensure_ascii=False, sort_keys=True, indent=2), encoding="utf-8")
             summary = outputs / "summary.txt"; summary.write_text(
                 f"RTLScout Codex bridge: PASS; {payload['best_cost']} {payload['cost_metric']}\n",
                 encoding="utf-8")
@@ -319,6 +337,12 @@ def main(argv: list[str] | None = None) -> int:
                 "started_at": started, "ended_at": _now(), "metrics": metrics,
                 "artifacts": [{"kind": "rtl", "path": "outputs/design.sv", "language": "systemverilog"},
                               {"kind": "rtlscout_result", "path": "outputs/rtlscout_result.json"},
+                              {"kind": "rtl_candidate_history", "path": "outputs/candidate_history.json"},
+                              *[{"kind": "rtl_candidate", "path": item["candidate"],
+                                 "language": "systemverilog", "sha256": item["candidate_sha256"],
+                                 "eval_index": item["eval_index"]}
+                                for item in payload.get("evaluations") or []
+                                if item.get("candidate") and item.get("candidate_sha256")],
                               {"kind": "report", "path": "outputs/summary.txt"},
                               {"kind": "log", "path": "rtlscout.log"}], "failure": None,
                 "provenance": {"adapter": "rtlscout-v2-codex-bridge", "upstream_commit": actual_commit,

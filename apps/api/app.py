@@ -1180,10 +1180,31 @@ class ApiState:
             raise ValueError("v2 requires 2-8 repetitions, 1-20 rounds, and a fixed 3-round stall window")
         if repetitions * (rounds + 1) > 64:
             raise ValueError("baseline plus all repeated BO rounds must fit the 64-run study budget")
+        optimizer_seed = int(payload.get("optimizer_seed") or 20260824)
+        if not 0 <= optimizer_seed <= 2_147_483_647:
+            raise ValueError("optimizer_seed must be between 0 and 2147483647")
+        default_replica_seeds = (101, 211, 307, 401, 503, 601, 701, 809)
+        replica_or_seeds = [int(item) for item in (
+            payload.get("replica_or_seeds") or default_replica_seeds[:repetitions]
+        )]
+        if (len(replica_or_seeds) != repetitions
+                or len(set(replica_or_seeds)) != repetitions
+                or any(not 0 <= item <= 2_147_483_647 for item in replica_or_seeds)):
+            raise ValueError(
+                "replica_or_seeds must contain one distinct OpenROAD seed per repetition"
+            )
         minimum_improvement = float(payload.get("minimum_relative_improvement") or .005)
         if not 0 <= minimum_improvement <= .25:
             raise ValueError("minimum_relative_improvement must be between 0 and 0.25")
         platform = str(payload.get("platform") or "nangate45")
+        stage_timeout_seconds = int(payload.get("stage_timeout_seconds") or 3600)
+        flow_timeout_seconds = int(payload.get("flow_timeout_seconds") or 7200)
+        if not 60 <= stage_timeout_seconds <= 14_400:
+            raise ValueError("stage_timeout_seconds must be between 60 and 14400")
+        if not stage_timeout_seconds <= flow_timeout_seconds <= 28_800:
+            raise ValueError(
+                "flow_timeout_seconds must cover one stage and be at most 28800"
+            )
         base = build_orfs_task(
             self.designs.rtl_path(design_id, owner_id=owner_id, include_legacy=include_legacy),
             project_id="openroad-platform", design_id=design_id, top=design["module"],
@@ -1192,6 +1213,9 @@ class ApiState:
             clock_period_ns=float(payload.get("clock_period_ns") or 10),
             core_utilization_pct=float(payload.get("core_utilization_pct") or 30),
             place_density=float(payload.get("place_density") or .55),
+            or_seed=replica_or_seeds[0],
+            stage_timeout_seconds=stage_timeout_seconds,
+            timeout_seconds=flow_timeout_seconds,
             labels={"v2_closed_loop": "baseline", **({"owner_id": owner_id} if owner_id else {})},
         )
         hard_constraints = list(payload.get("hard_constraints") or [
@@ -1204,12 +1228,16 @@ class ApiState:
             "base_task": base.to_dict(), "parameter_space": [item.to_dict() for item in parameters],
             "objectives": [item.to_dict() for item in objectives],
             "hard_constraints": hard_constraints, "repetitions": repetitions,
+            "optimizer_seed": optimizer_seed,
+            "replica_or_seeds": replica_or_seeds,
             "max_rounds": rounds, "stall_window": 3,
             "minimum_relative_improvement": minimum_improvement,
             "max_parallel": max(1, min(int(payload.get("max_parallel") or repetitions), 16)),
             "round": 0, "stalled_rounds": 0, "best_utility": 0.0,
             "best_round": 0, "study_id": None, "history": [], "diagnosis": None,
-            "active_kind": "baseline", "active_parameters": dict(base.parameters),
+            "active_kind": "baseline", "active_parameters": {
+                item.name: base.parameters[item.name] for item in parameters
+            },
             "active_proposal_id": None, "active_run_ids": [],
             "agent_events": [
                 {"phase": "map", "claim": "bound design, platform, Runtime and run budget",
@@ -1233,9 +1261,12 @@ class ApiState:
             for replica in range(len(state["active_run_ids"]), state["repetitions"]):
                 task = TaskSpec.from_dict({**state["base_task"],
                     "task_id": f"{checkpoint['pipeline_id']}-baseline-r{replica}",
+                    "parameters": {**state["base_task"]["parameters"],
+                                   "or_seed": state["replica_or_seeds"][replica]},
                     "labels": {**state["base_task"].get("labels", {}),
                                "v2_pipeline_id": checkpoint["pipeline_id"],
-                               "v2_round": "baseline", "replica_index": str(replica)}})
+                               "v2_round": "baseline", "replica_index": str(replica),
+                               "or_seed": str(state["replica_or_seeds"][replica])}})
                 state["active_run_ids"].append(self.runtime.submit(task).run_id)
                 # Commit every child identity separately.  A crash can then
                 # resume from the first missing replica without orphaning or
@@ -1288,14 +1319,16 @@ class ApiState:
                                     if state["active_kind"] == "baseline"
                                     else f"{pipeline_id}-round-{state['round']}-r{replica}"),
                         "parameters": {**state["base_task"]["parameters"],
-                                       **state["active_parameters"]},
+                                       **state["active_parameters"],
+                                       "or_seed": state["replica_or_seeds"][replica]},
                         "labels": {**state["base_task"].get("labels", {}),
                                    "v2_pipeline_id": pipeline_id,
                                    "v2_round": ("baseline" if state["active_kind"] == "baseline"
                                                 else str(state["round"])),
                                    **({"optimizer_proposal_id": state["active_proposal_id"]}
                                       if state.get("active_proposal_id") else {}),
-                                   "replica_index": str(replica)}})
+                                   "replica_index": str(replica),
+                                   "or_seed": str(state["replica_or_seeds"][replica])}})
                     state["active_run_ids"].append(self.runtime.submit(task).run_id)
                     save()
                 run_ids = list(state["active_run_ids"])
@@ -1317,7 +1350,7 @@ class ApiState:
                     context_fingerprint=context.fingerprint, parameter_space=parameters,
                     objectives=objectives,
                     max_runs=min(64, state["repetitions"] * (state["max_rounds"] + 1)),
-                    seed=int(payload.get("seed") or 20260824), status="active",
+                    seed=int(state["optimizer_seed"]), status="active",
                 )
                 state["study_id"] = self.optimization_store.create(study)
                 historical = []
@@ -1516,12 +1549,14 @@ class ApiState:
             for replica in range(state["repetitions"]):
                 task = TaskSpec.from_dict({**state["base_task"],
                     "task_id": f"{pipeline_id}-round-{state['round']}-r{replica}",
-                    "parameters": {**state["base_task"]["parameters"], **proposal.parameters},
+                    "parameters": {**state["base_task"]["parameters"], **proposal.parameters,
+                                   "or_seed": state["replica_or_seeds"][replica]},
                     "labels": {**state["base_task"].get("labels", {}),
                                "v2_pipeline_id": pipeline_id,
                                "v2_round": str(state["round"]),
                                "optimizer_proposal_id": proposal.proposal_id,
-                               "replica_index": str(replica)}})
+                               "replica_index": str(replica),
+                               "or_seed": str(state["replica_or_seeds"][replica])}})
                 state["active_run_ids"].append(self.runtime.submit(task).run_id)
                 save()
         return {**checkpoint, "state": state,
