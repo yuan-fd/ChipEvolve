@@ -65,7 +65,7 @@ def test_health_distinguishes_web_and_execution_readiness(tmp_path):
     assert health["orfs_ready"] is False
     assert health["execution_ready"] is False
     assert health["runtime_worker_ready"] is False
-    assert health["byok_input_enabled"] is True
+    assert health["byok_input_enabled"] is False
     assert state.patch_registry.path.is_file()
 
 
@@ -152,14 +152,12 @@ def test_four_gate_decision_indexes_runtime_facts_but_not_reviewer_claims(tmp_pa
 
 def test_api_disables_browser_supplied_provider_credentials_in_internal_mode(tmp_path):
     state = make_state(tmp_path)
-    canary = "api-state-p16-canary"
-    with pytest.raises(ValueError, match="disabled in v2 internal mode"):
-        state.save_provider_profile({
-            "owner_id": "alice", "session_id": "browser", "profile_id": "local-fake",
-            "base_url": "http://127.0.0.1:12345/v1", "model": "fake",
-            "api_key": canary, "allow_private_endpoint": True,
-        })
-    assert canary.encode() not in state.provider_profiles.path.read_bytes()
+    # No provider API, profile/secret store, or fallback method is constructed
+    # at all. A browser-supplied key therefore has no application entrypoint.
+    assert not hasattr(state, "provider_profiles")
+    assert not hasattr(state, "save_provider_profile")
+    assert not hasattr(state, "list_provider_profiles")
+    assert not hasattr(state, "revoke_provider_secret")
 
 
 def test_runtime_and_campaign_queries_use_authoritative_store(tmp_path):
@@ -364,6 +362,26 @@ def test_design_import_creates_netlist_schematic_and_analysis(tmp_path):
     assert detail["analysis"]["instance_count"] > 0
     assert "module xor_gate" in detail["rtl_source"]
     assert "<svg" in state.designs.schematic(design["id"])
+
+
+def test_design_circuitops_export_is_rebuildable_and_read_only(tmp_path):
+    yosys = which("yosys")
+    if yosys is None:
+        pytest.skip("Yosys is not installed")
+    state = ApiState(
+        tmp_path / "platform.db", tmp_path / "uploads", tmp_path / "orfs",
+        design_root=tmp_path / "designs", legacy_root=tmp_path / "legacy",
+        yosys_bin=Path(yosys), runtime_db_path=tmp_path / "runtime.db",
+        campaign_db_path=tmp_path / "campaign.db",
+    )
+    design = state.designs.import_rtl(
+        filename="circuitops_top.v",
+        source="module circuitops_top(input a, input b, output y); assign y = a & b; endmodule\n",
+    )
+    result = state.designs.circuitops_export(design["id"])
+    assert result["execution_allowed"] is False
+    assert result["manifest"]["source_netlist"]["sha256"]
+    assert (state.designs._directory(design["id"]) / "circuitops-v1" / "export_manifest.json").is_file()
 
 
 def test_design_example_catalog_spans_starter_and_advanced_designs(tmp_path):

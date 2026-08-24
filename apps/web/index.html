@@ -36,7 +36,7 @@
     <section class="auth-card" role="dialog" aria-modal="true" aria-labelledby="authTitle">
       <button class="auth-close" id="authClose" aria-label="Close">×</button>
       <p class="eyebrow" data-i18n="auth.personal">Personal workspace</p><h2 id="authTitle" data-i18n="auth.title">Sign in to design</h2>
-      <p data-i18n="auth.help" title="Your account keeps designs, runs, reports, learning records, and model configuration separate from other users.">Your workspace stays separate from other users.</p>
+      <p data-i18n="auth.help" title="Your account keeps designs, runs, reports, and learning records separate from other users. The model is platform-managed.">Your workspace stays separate from other users; the model is platform-managed.</p>
       <label><span data-i18n="auth.username">Username</span><input id="authUsername" autocomplete="username" maxlength="32" placeholder="your-name"></label>
       <label><span data-i18n="auth.password">Password</span><input id="authPassword" type="password" autocomplete="current-password" maxlength="256" placeholder="At least 8 characters"></label>
       <div class="auth-actions"><button class="button primary" id="authLogin" data-i18n="auth.login">Sign in</button><button class="button" id="authRegister" data-i18n="auth.register">Create account</button></div>
@@ -163,7 +163,7 @@
           <div class="extension-task-body">
 
           <section class="rtlscout-explainer panel">
-            <div class="module-head"><div title="The agent may edit RTL, but it cannot declare success. Verilator and Yosys produce the recorded result."><b>How RTLScout works</b><span>Only Verilator and Yosys can declare success.</span></div><small>Agent loop</small></div>
+              <div class="module-head"><div title="A verification agent writes the self-checking testbench from SpecIR before RTLScout starts. RTLScout never supplies its own judge."><b>Automatic dual-agent flow</b><span>Verification Agent writes the judge; RTLScout writes RTL.</span></div><small>Agent loop</small></div>
             <div class="agent-flow" aria-label="RTLScout optimization workflow">
               <article><small>Input</small><b>Frozen SpecIR + oracle</b><span>Ports, objective, testbench, tool rules</span></article><i>→</i>
               <article><small>Agent</small><b>LLM proposes an edit</b><span>Create, inspect, replace, or apply a diff</span></article><i>→</i>
@@ -175,11 +175,11 @@
 
           <div class="rtlscout-setup">
             <section class="panel experiment-panel">
-              <div class="module-head"><div title="Choose what RTLScout should optimize and how much work it may perform."><b>1. Configure the experiment</b><span>Choose the objective and the work budget.</span></div></div>
+              <div class="module-head"><div title="The default path automatically makes a separately attributed testbench. Existing project testbenches may still be imported below."><b>1. Configure the automatic experiment</b><span>Choose the objective and work budget; the platform creates verification.</span></div></div>
               <div class="experiment-fields">
                 <label>Entry mode<select id="rtlscoutMode"><option value="specir">Frozen SpecIR only</option></select></label>
-                <label>Frozen testbench<textarea id="rtlscoutTestbench" rows="4" placeholder="module tb; /* frozen oracle for the requested SpecIR */ endmodule"></textarea><button class="button outline-blue" type="button" id="draftTestbench">Generate review-only AI draft</button><small>Drafts are never frozen automatically; review, edit, and name the oracle reviewer before submission.</small></label>
-                <label>Oracle source<select id="rtlscoutOracleOrigin"><option value="user_authored">User authored</option><option value="project_existing">Existing project testbench</option><option value="reference_model">Reference model</option><option value="approved_generated">AI draft, reviewed</option></select></label><label>Oracle reviewer<input id="rtlscoutOracleReviewer" placeholder="Name / review ID"></label>
+                <label>Optional imported testbench<textarea id="rtlscoutTestbench" rows="4" placeholder="Optional: existing project testbench or reference model"></textarea><button class="button outline-blue" type="button" id="draftTestbench">Preview verification-agent draft</button><small>Leave empty for the default automatic dual-agent flow. Use this field only to import an existing oracle.</small></label>
+                <label>Imported-oracle source<select id="rtlscoutOracleOrigin"><option value="user_authored">User authored</option><option value="project_existing">Existing project testbench</option><option value="reference_model">Reference model</option><option value="approved_generated">Previously reviewed AI draft</option></select></label><label>Imported-oracle owner<input id="rtlscoutOracleReviewer" placeholder="Optional unless importing testbench"></label>
                 <label>Cost objective<select id="rtlscoutCost"><option value="transistors">Transistor count · Yosys + ABC</option><option value="yosys_cells">Cell count · Yosys</option><option value="yosys_wires">Wire count · Yosys</option></select></label>
                 <label>Maximum agent steps<input id="rtlscoutSteps" type="number" min="1" max="8" value="3"></label>
               </div>
@@ -193,8 +193,8 @@
           </div>
 
           <section class="panel rtlscout-launch">
-            <div title="RTLScout-v2 is submitted from a frozen SpecIR lineage."><small>3. Submit from SpecIR</small><b id="rtlscoutLaunchSummary">Freeze specification and testbench first</b><span>No benchmark-only submission exists in v2.</span></div>
-            <button class="button primary" id="runRtlscout">SpecIR required <span>→</span></button>
+            <div title="RTLScout-v2 is submitted from a frozen SpecIR lineage."><small>3. Submit from SpecIR</small><b id="rtlscoutLaunchSummary">Freeze specification, then run the automatic dual-agent flow</b><span>No benchmark-only submission exists in v2.</span></div>
+            <button class="button primary" id="runRtlscout">Run automatic RTLScout-v2 <span>→</span></button>
           </section>
           <p class="message rtlscout-message" id="rtlscoutMessage" aria-live="polite"></p>
 

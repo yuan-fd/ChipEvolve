@@ -13,7 +13,8 @@ from pathlib import Path
 from typing import Any
 
 from openroad_platform_analysis.netlist import summarize_netlist
-from openroad_platform_analysis import build_design_ir, evidence_cards_from_design_ir
+from openroad_platform_analysis import (build_design_ir, evidence_cards_from_design_ir,
+                                         export_netlist_to_circuitops)
 from openroad_platform_visualization import (
     generate_module_svg, generate_schematic_svg, generate_svg, parse_ports_and_gates,
 )
@@ -178,6 +179,19 @@ class DesignService:
         ir = build_design_ir(netlist_path)
         return {"design_ir": ir, "evidence_cards": evidence_cards_from_design_ir(ir),
                 "authority": "synthesized netlist projection; cards are factual and non-executable"}
+
+    def circuitops_export(self, design_id: str, *, owner_id: str | None = None,
+                          include_legacy: bool = False) -> dict[str, Any]:
+        """Materialize the registered netlist as a provenance-bearing CircuitOps view."""
+        manifest = self.get(design_id, owner_id=owner_id, include_legacy=include_legacy)
+        netlist_path = self._directory(design_id) / manifest["netlist_file"]
+        output = self._directory(design_id) / "circuitops-v1"
+        result = export_netlist_to_circuitops(netlist_path, output,
+                                              design_name=manifest.get("module"),
+                                              platform=str(manifest.get("platform") or "unknown"))
+        return {"design_id": design_id, "manifest": result,
+                "authority": "registered netlist remains authoritative; CircuitOps is a rebuildable projection",
+                "execution_allowed": False}
 
     def import_rtl(
         self,

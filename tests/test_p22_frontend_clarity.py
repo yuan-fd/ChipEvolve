@@ -17,13 +17,16 @@ def test_frontend_exposes_readable_code_and_evidence_dashboard() -> None:
     javascript = (ROOT / "apps/web/assets/app.js").read_text(encoding="utf-8")
 
     assert "RTLScout run dashboard" in html
-    assert "How RTLScout works" in html
+    assert "Automatic dual-agent flow" in html
+    assert "/auto-rtlscout" in javascript
     assert "TCADCraft" in javascript and "MoMCraft" in javascript
     assert "CktCraft" in javascript  # craft extensions render dynamically via /api/platform
     assert "RTLCraft" not in html and "EDACode" not in html
     assert ".code-viewer" in css and "background: #fff" in css
     assert "Platform model" in html and "no user API key is accepted" in html
     assert "saveProvider" not in javascript and "providerKey" not in javascript
+    assert 'model: "gpt-5.6-terra"' in javascript
+    assert "gpt-5.6-sol" not in javascript
     assert "formatCodeForDisplay" in javascript
     assert "result.all_evals" in javascript
     assert 'route("backend")' in javascript

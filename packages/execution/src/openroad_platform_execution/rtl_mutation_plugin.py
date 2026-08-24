@@ -9,14 +9,17 @@ RTL_MUTATION_PLUGIN_VERSION = "1.0.0"
 
 def build_rtl_mutation_task(*, project_id: str, design_id: str, rtl_path: str | Path, testbench_path: str | Path,
                             testbench_top: str, spec_id: str, verification_id: str, verifier_identity: str,
-                            maximum_mutants: int = 32, minimum_score: float = .80, timeout_seconds: int = 900,
+                            maximum_mutants: int = 32, minimum_score: float = .80,
+                            per_mutant_timeout_seconds: int = 30, timeout_seconds: int = 900,
                             labels: dict[str, str] | None = None) -> TaskSpec:
     rtl, tb = Path(rtl_path).expanduser().resolve(), Path(testbench_path).expanduser().resolve()
     if not rtl.is_file() or not tb.is_file() or not testbench_top or not verifier_identity.strip(): raise ValueError("RTL, frozen testbench, top and verifier identity are required")
-    if not 1 <= maximum_mutants <= 128 or not 0 < minimum_score <= 1: raise ValueError("mutation bounds are invalid")
+    if (not 1 <= maximum_mutants <= 128 or not 0 < minimum_score <= 1
+            or not 1 <= per_mutant_timeout_seconds <= 300): raise ValueError("mutation bounds are invalid")
     task = TaskSpec(task_id=f"rtl-mutation-{uuid.uuid4().hex}", project_id=project_id, design_id=design_id, plugin_id=RTL_MUTATION_PLUGIN_ID,
         inputs={"rtl": _input(rtl), "testbench": _input(tb), "testbench_top": testbench_top, "spec_id": spec_id, "verification_id": verification_id},
-        parameters={"maximum_mutants": maximum_mutants, "minimum_score": minimum_score, "verifier_identity": verifier_identity},
+        parameters={"maximum_mutants": maximum_mutants, "minimum_score": minimum_score,
+                    "per_mutant_timeout_seconds": per_mutant_timeout_seconds, "verifier_identity": verifier_identity},
         resources={"toolchain_profile": "rtl-mutation"}, timeout_seconds=timeout_seconds,
         expected_artifacts=("mutation_report", "log"), labels=dict(labels or {}))
     task.validate(); return task

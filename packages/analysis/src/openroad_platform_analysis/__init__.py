@@ -53,7 +53,8 @@ from .causal_evidence import factorial_interaction_report, validate_holdout_inte
 from .causal_learning import followup_from_interaction, teacher_context_from_holdout
 from .native_orfs_evidence import native_orfs_run_view
 from .verification_evidence import generate_mutants, mutation_report, independent_verification_gate
-from .edair import agent_evidence_view, artifact_ref, build_edair, physical_ir, timing_ir
+from .edair import agent_evidence_view, artifact_ref, build_edair, evidence_packet, physical_ir, timing_ir
+from .circuitops_ir import circuitops_lpg_ir, export_netlist_to_circuitops, request_table_rows
 from .hypothesis_ledger import HypothesisLedger, assess_hypothesis, promote_after_holdout, reflection_hypothesis
 from .paper_harness import PaperProtocolStore, compare_arms, preregister_protocol, summarize_arm
 
@@ -83,7 +84,8 @@ __all__ = [
     "factorial_interaction_report", "validate_holdout_interaction",
     "followup_from_interaction", "teacher_context_from_holdout", "native_orfs_run_view",
     "generate_mutants", "mutation_report", "independent_verification_gate",
-    "artifact_ref", "timing_ir", "physical_ir", "build_edair", "agent_evidence_view",
+    "artifact_ref", "timing_ir", "physical_ir", "build_edair", "agent_evidence_view", "evidence_packet",
+    "circuitops_lpg_ir", "export_netlist_to_circuitops", "request_table_rows",
     "HypothesisLedger", "reflection_hypothesis", "assess_hypothesis", "promote_after_holdout",
     "PaperProtocolStore", "preregister_protocol", "summarize_arm", "compare_arms",
 ]

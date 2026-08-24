@@ -109,6 +109,59 @@ def agent_evidence_view(edair: Mapping[str, Any], *, max_items: int = 32) -> dic
             "execution_allowed": False}
 
 
+def evidence_packet(edair: Mapping[str, Any], *, focus: str = "diagnosis",
+                    max_items: int = 48) -> dict[str, Any]:
+    """Return a query-shaped agent packet without pretending it is the raw EDA data.
+
+    LLM contexts have a finite budget, whereas a DEF/ODB/timing report can be
+    very large.  This is therefore a *loss-accounting* interface: every fact
+    retains an artifact pointer and the packet explicitly says what was not
+    expanded.  An agent must request a bounded excerpt by artifact id when the
+    packet is insufficient; it may not infer that omitted objects do not
+    exist.  ``focus`` is intentionally descriptive only and has no execution
+    authority.
+    """
+    if edair.get("kind") != "edair" or not isinstance(edair.get("fingerprint"), str):
+        raise ValueError("expected EDAIR")
+    if focus not in {"diagnosis", "timing", "physical", "connectivity", "qor"}:
+        raise ValueError("unsupported evidence focus")
+    if not 1 <= max_items <= 256:
+        raise ValueError("max_items outside policy")
+    facts: list[dict[str, Any]] = []
+    timing = (edair.get("timing") or {}).get("paths", [])
+    physical = edair.get("physical") or {}
+    if focus in {"diagnosis", "timing", "qor"}:
+        for row in sorted(timing, key=lambda item: float(item.get("slack_ns", 0)))[:max_items]:
+            facts.append({"kind": "timing_path", "path_id": row["path_id"],
+                          "slack_ns": row["slack_ns"], "startpoint": row.get("startpoint"),
+                          "endpoint": row.get("endpoint"), "evidence": row["evidence"]})
+    if focus in {"diagnosis", "physical", "qor"}:
+        for row in physical.get("violations", []):
+            if len(facts) >= max_items:
+                break
+            facts.append({"kind": "physical_violation", "rule": row["rule"],
+                          "severity": row.get("severity"), "location": [row.get("x"), row.get("y")],
+                          "layer": row.get("layer"), "evidence": row["evidence"]})
+    if focus in {"physical", "connectivity"}:
+        for row in physical.get("nets", []):
+            if len(facts) >= max_items:
+                break
+            facts.append({"kind": "net", "name": row["name"], "fanout": row.get("fanout"),
+                          "wirelength_um": row.get("wirelength_um"), "evidence": row["evidence"]})
+    raw = list(edair.get("raw_artifacts", []))
+    omitted = {
+        "timing_paths": max(0, len(timing) - sum(x["kind"] == "timing_path" for x in facts)),
+        "physical_violations": max(0, len(physical.get("violations", [])) - sum(x["kind"] == "physical_violation" for x in facts)),
+        "physical_nets": max(0, len(physical.get("nets", [])) - sum(x["kind"] == "net" for x in facts)),
+        "raw_artifacts_not_inlined": len(raw),
+    }
+    return {"kind": "edair_evidence_packet", "schema_version": 1, "edair_fingerprint": edair["fingerprint"],
+            "focus": focus, "facts": facts, "loss_manifest": omitted,
+            "artifact_directory": raw,
+            "next_read": "request a bounded, hash-checked excerpt by artifact_id when the loss_manifest indicates missing evidence",
+            "execution_allowed": False}
+
+
 def _ref(value: Mapping[str, Any]) -> dict[str, Any]:
     return artifact_ref(artifact_id=str(value.get("artifact_id") or value.get("source_artifact_id") or "unknown"),
                         sha256=str(value.get("sha256") or value.get("source_sha256") or ""),

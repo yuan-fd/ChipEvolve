@@ -19,10 +19,10 @@ port/cell overview to keep rendering bounded.
 
 Verilog and gate-netlist tabs use a white, line-numbered, wrapped code reader.
 Formatting of minified HDL is display-only; downloads preserve the registered
-artifact. RTLScout is organized as configure → optional provider connection →
-Runtime submission → run dashboard → verified candidate evidence. Its bundled
-offline demo is deliberately limited to the audited `simple_adder` benchmark;
-custom provider execution requires HTTPS and a worker-side secret bridge.
+artifact. RTLScout is organized as configure → platform-managed model status →
+Runtime submission → run dashboard → verified candidate evidence. The v2
+internal-test service has no browser-supplied provider, API key, or secret
+bridge: it uses the server-managed `codex-cli:gpt-5.6-terra` authority.
 Only complementary Craft capabilities are user-facing: TCADCraft, MoMCraft,
 and CktCraft. RTLCraft, EDACode, and ImplCraft adapters remain available for
 compatibility and historical evidence, but are not duplicated in the primary

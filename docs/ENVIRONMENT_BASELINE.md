@@ -22,7 +22,7 @@
 | Python | 3.9.9 |
 | Git | 2.33.0 |
 | GNU Make | 4.3 |
-| Conda | 当前 shell 未发现可执行入口；插件环境建立前重新核验 |
+| Conda | 用户目录环境已存在；服务进程不依赖交互 shell 的 PATH |
 
 核心平台保持 Python 3.9 兼容。要求 Python 3.10 及以上的插件必须使用独立环境，不能升级系统 Python 或污染共享环境。
 
@@ -44,7 +44,7 @@
 
 ## 已知环境差异
 
-1. RTLScout 要求 Python >=3.10，且官方预构建镜像验证为 amd64；ARM 源码安装待 P3 验证。
+1. RTLScout 要求 Python >=3.10；其隔离环境和 Verilator 必须使用固定绝对路径，不能假设登录 shell 已导出 PATH。
 2. AgenticPD 报告环境为 WSL2/x86_64/Python 3.10，与本机不同；需独立环境。
 3. TaiWei 声明的 ORFS-Research/OpenROAD commit 与内部 2D 基线不同；必须配置独立 ToolchainSnapshot，禁止覆盖共享工具链。
 4. PDK 缺少统一独立 revision 字段；P1/P2 必须至少记录 platform 配置哈希及可取得的 PDK 来源信息。
@@ -55,3 +55,12 @@
 - 网络仅用于检查并下载经批准的官方源码，禁止 `curl|sh`、`wget|bash`。
 - API/Web 当前仅适合可信网络或 SSH tunnel；认证与 TLS 不属于 P0。
 - 原始日志和运行产物只读；摘要必须引用原始路径与哈希。
+
+## RTL 验证工具（2026-08-24 复核）
+
+| 组件 | 已核实安装 | 平台使用方式 |
+| --- | --- | --- |
+| Verilator | `/share/home/yuanwenjie/.local/opt/openroad-rtl-tools/bin/verilator`，`5.050` | API 启动时优先采用此绝对路径；不需要 sudo、Docker 或浏览器配置 |
+| RTLScout 专用 Verilator | `.tools/verilator-5.040/bin/verilator`，`5.040` | 仅供已固定版本的 RTLScout 插件使用，避免影响其它任务 |
+
+普通终端中直接输入 `verilator` 可能找不到它，因为该用户目录不在默认 `PATH`；这不是未安装。需要手动检查时请运行上述绝对路径，不要修改系统目录或使用 sudo。

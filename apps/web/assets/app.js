@@ -6,7 +6,7 @@ const state = {
   platform: null, designs: [], examples: [], runs: [], results: [],
   selectedDesign: null, selectedRun: null, designView: "schematic",
   resultFilter: "all", extensions: [], selectedExtension: null,
-  rtlscoutStatus: null, providerProfile: null, selectedRtlscoutRun: null,
+  rtlscoutStatus: null, selectedRtlscoutRun: null,
   requestedExtension: null, rtlscoutPoll: null, runtimePoll: null, healthPoll: null,
   health: null, auth: null, workspaceLoaded: false, locale: "en",
   specSession: null, pendingCampaign: null, developerView: false,
@@ -17,7 +17,7 @@ const ZH = {
   "nav.overview": "平台概览", "nav.frontend": "前端设计", "nav.backend": "后端实现",
   "nav.projects": "项目与结果", "nav.evolution": "自演化", "nav.tutorial": "使用教程",
   "auth.personal": "个人工作区", "auth.title": "登录后开始设计",
-  "auth.help": "账户会将你的设计、任务、报告、学习记录和模型配置与其他用户分开。",
+  "auth.help": "账户会将你的设计、任务、报告和学习记录与其他用户分开。模型由平台统一托管。",
   "auth.username": "用户名", "auth.password": "密码", "auth.login": "登录",
   "auth.register": "创建账户", "auth.note": "本研究预览站开放注册。密码经加盐哈希保存，浏览器会话七天后失效。",
   "overview.eyebrow": "开源智能芯片设计基础设施",
@@ -669,7 +669,10 @@ async function createSpec() {
     const payload = {
       message: prompt,
       provider: "codex-cli",
-      model: state.health?.server_spec_model || "gpt-5.6-sol",
+      // The server is the sole model authority in internal-test mode.  This
+      // explicit value keeps an older cached health response from reviving the
+      // retired Sol/BYOK route in the browser.
+      model: "gpt-5.6-terra",
     };
     if (state.selectedDesign) payload.design_id = state.selectedDesign.id;
     const result = await post("/api/spec/sessions", payload);
@@ -732,11 +735,11 @@ function updateRtlscoutControls() {
   const frozenSpec = state.specSession?.frozenSpec;
   const cost = $("#rtlscoutCost").value;
   const steps = Math.max(1, Math.min(Number($("#rtlscoutSteps").value) || 3, 8));
-  $("#rtlscoutModeNote").textContent = ui("The immutable testbench is the functional oracle; candidate RTL never supplies its own correctness check.", "冻结 testbench 是功能 oracle；候选 RTL 不能自带正确性判定。");
+  $("#rtlscoutModeNote").textContent = ui("By default a separately attributed verification agent creates and freezes the testbench; candidate RTL never supplies its own correctness check.", "默认由独立归属的验证 Agent 自动生成并冻结 testbench；候选 RTL 不能自带正确性判定。");
   $("#rtlscoutLaunchSummary").textContent = frozenSpec
     ? `${frozenSpec.top} · ${ui("minimize", "最小化")} ${cost.replaceAll("_", " ")} · ${steps} ${ui("steps", "步")}`
-    : ui("Freeze SpecIR and testbench first", "先冻结 SpecIR 并填写 testbench");
-  $("#runRtlscout").textContent = ui("Run RTLScout-v2 →", "运行 RTLScout-v2 →");
+    : ui("Freeze SpecIR, then start the automatic dual-agent flow", "先冻结 SpecIR，再启动自动双 Agent 流程");
+  $("#runRtlscout").textContent = ui("Run automatic RTLScout-v2 →", "运行自动 RTLScout-v2 →");
   $("#runRtlscout").disabled = !frozenSpec || state.rtlscoutStatus?.ready === false;
 }
 
@@ -744,16 +747,20 @@ async function submitRtlscout() {
   const spec = state.specSession?.frozenSpec;
   const testbench = $("#rtlscoutTestbench").value.trim();
   if (!spec) return message("#rtlscoutMessage", ui("Freeze a reviewed SpecIR first.", "请先冻结已审查的 SpecIR。"), true);
-  if (!testbench) return message("#rtlscoutMessage", ui("A non-empty independent testbench oracle is required.", "必须提供非空的独立 testbench oracle。"), true);
   const button = $("#runRtlscout"); button.disabled = true;
   try {
-    const result = await post(`/api/rtl/specs/${encodeURIComponent(spec.spec_id)}/rtlscout`, {
-      testbench_source: testbench, cost_metric: $("#rtlscoutCost").value,
-      oracle_origin: $("#rtlscoutOracleOrigin").value, oracle_reviewed_by: $("#rtlscoutOracleReviewer").value.trim(),
-      max_steps: Math.max(1, Math.min(Number($("#rtlscoutSteps").value) || 3, 8)),
-    });
+    const payload = {cost_metric: $("#rtlscoutCost").value,
+      max_steps: Math.max(1, Math.min(Number($("#rtlscoutSteps").value) || 3, 8))};
+    const result = testbench
+      ? await post(`/api/rtl/specs/${encodeURIComponent(spec.spec_id)}/rtlscout`, {
+          ...payload, testbench_source: testbench, oracle_origin: $("#rtlscoutOracleOrigin").value,
+          oracle_reviewed_by: $("#rtlscoutOracleReviewer").value.trim(),
+        })
+      : await post(`/api/rtl/specs/${encodeURIComponent(spec.spec_id)}/auto-rtlscout`, payload);
     state.selectedRtlscoutRun = result.run.run_id;
-    message("#rtlscoutMessage", ui("RTLScout-v2 task submitted. Runtime will register its artifact only after terminal evidence is verified.", "RTLScout-v2 已提交；只有终态验证证据通过后，Runtime 才会登记候选产物。"));
+    message("#rtlscoutMessage", testbench
+      ? ui("Imported verification oracle and RTLScout-v2 task submitted.", "已提交导入验证 oracle 与 RTLScout-v2 任务。")
+      : ui("Verification Agent generated a separate testbench and RTLScout-v2 was submitted. Runtime will record lint, simulation, and mutation evidence.", "验证 Agent 已生成独立 testbench，RTLScout-v2 已提交；Runtime 将记录 lint、仿真与变异测试证据。"));
     await loadRuns(result.run.run_id);
   } catch (error) { message("#rtlscoutMessage", error.message, true); }
   finally { updateRtlscoutControls(); }
@@ -763,12 +770,12 @@ async function draftTestbench() {
   const spec = state.specSession?.frozenSpec;
   if (!spec?.spec_id) return message("#rtlscoutMessage", ui("Freeze a reviewed SpecIR before requesting a testbench draft.", "请先冻结已审核的 SpecIR，再生成 testbench 草稿。"), true);
   const button = $("#draftTestbench"); button.disabled = true;
-  message("#rtlscoutMessage", ui("Generating an unreviewed testbench draft…", "正在生成尚未审核的 testbench 草稿……"));
+  message("#rtlscoutMessage", ui("Previewing the independent verification-agent testbench…", "正在预览独立验证 Agent 生成的 testbench……"));
   try {
     const result = await post(`/api/rtl/specs/${encodeURIComponent(spec.spec_id)}/testbench-draft`, {});
     $("#rtlscoutTestbench").value = result.draft?.testbench_source || "";
     const quality = result.structural_floor_passed
-      ? ui("The draft passed only the structural floor. Review its behavior and acceptance criteria before freezing it.", "草稿仅通过结构最低门；请核查行为与验收条件后再冻结。")
+      ? ui("The draft passed the structural floor. The normal automatic path will generate and freeze its own separately attributed copy.", "草稿已通过结构最低门；正常自动路径会生成并冻结独立归属的副本。")
       : `${ui("The draft did not pass the structural floor", "草稿未通过结构最低门")}: ${result.structural_floor_error || "unknown"}`;
     message("#rtlscoutMessage", quality, !result.structural_floor_passed);
     updateRtlscoutControls();

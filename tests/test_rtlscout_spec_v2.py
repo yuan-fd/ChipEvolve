@@ -102,13 +102,13 @@ def test_production_specir_entry_rejects_user_selected_model_or_secret_profile(t
     state.rtlscout_readiness = {"ready": True, "reason": "production"}
     payload = {"testbench_source": "module tb; generated_top dut(); initial begin if (1'b0) $fatal; $display(\"PASS\"); $finish; end endmodule",
                "oracle_origin": "user_authored", "oracle_reviewed_by": "reviewer"}
-    with pytest.raises(ValueError, match="only the platform-managed codex-cli"):
+    with pytest.raises(ValueError, match="fixed platform Codex model"):
         state.submit_rtlscout_spec(spec.spec_id, {**payload, "model": "fake:fixture"})
     with pytest.raises(ValueError, match="profiles are disabled"):
         state.submit_rtlscout_spec(spec.spec_id, {**payload, "profile_id": "external", "secret_handle": "x"})
 
 
-def test_codex_testbench_draft_is_response_only_and_requires_oracle_review(monkeypatch):
+def test_codex_testbench_draft_is_structured_independent_verifier_input(monkeypatch):
     import json
     import subprocess
     from apps.api.app import _codex_testbench_draft
@@ -117,6 +117,7 @@ def test_codex_testbench_draft_is_response_only_and_requires_oracle_review(monke
         output = Path(command[command.index("--output-last-message") + 1])
         output.write_text(json.dumps({
             "testbench_source": "module tb; logic [1:0] a; wire [1:0] y; generated_top dut(.a(a), .y(y)); initial begin a=0; #1; if (y !== a) $fatal(1, \"bad\"); $display(\"PASS\"); $finish; end endmodule\n",
+            "testbench_top": "tb",
             "assumptions": ["combinational identity"], "coverage_plan": ["input values"], "open_questions": [],
         }))
         return subprocess.CompletedProcess(command, 0, "", "")
@@ -129,7 +130,34 @@ def test_codex_testbench_draft_is_response_only_and_requires_oracle_review(monke
     result = _codex_testbench_draft(spec)
     assert result["structural_floor_passed"] is True
     assert result["execution_allowed"] is False
-    assert "not an oracle" in result["authority"]
+    assert "verification-agent output preview" in result["authority"]
+
+
+def test_automatic_dual_agent_entry_creates_independent_oracle(tmp_path, monkeypatch):
+    """The normal v2 route needs no human TB review field or benchmark input."""
+    from apps.api.app import ApiState
+    source, commit = fake_source(tmp_path)
+    plugin = rtlscout_plugin_manifest(source, sys.executable,
+        verilator_bin=_executable(tmp_path / "bin/verilator"), yosys_bin=_executable(tmp_path / "bin/yosys"),
+        expected_commit=commit)
+    state = ApiState(tmp_path / "platform.db", tmp_path / "uploads", tmp_path / "orfs",
+                     design_root=tmp_path / "designs", legacy_root=tmp_path / "legacy",
+                     yosys_bin=tmp_path / "bin/yosys", runtime_db_path=tmp_path / "runtime.db")
+    state.runtime.registry._manifests[(plugin.plugin_id, plugin.plugin_version)] = plugin
+    state.rtlscout_readiness = {"ready": True, "reason": "fixture"}
+    spec = SpecIR("specir-auto", "auto_design", "generated_top", "identity", "functional",
+                  (PortSpec("a", "input", 2), PortSpec("y", "output", 2)),
+                  acceptance_criteria=("output matches input",))
+    state.rtl_frontend.add_spec(spec)
+    monkeypatch.setattr("apps.api.app._codex_testbench_draft", lambda _spec: {
+        "draft": {"testbench_source": "module tb; logic [1:0] a; wire [1:0] y; generated_top dut(.a(a), .y(y)); initial begin a=0; #1; if (y !== a) $fatal; $display(\"PASS\"); $finish; end endmodule\n", "testbench_top": "tb"},
+        "draft_sha256": "b" * 64, "structural_floor_passed": True,
+    })
+    submitted = state.submit_automated_rtlscout(spec.spec_id, {"model": "fake:simple_adder_pass"})
+    assert submitted["automation"]["human_required"] is False
+    assert submitted["automation"]["verification_agent"] == "verification-agent-v2"
+    receipt = state.verification_oracle_root / f"{submitted['testbench_sha256']}.{spec.spec_id}.approval.json"
+    assert '"origin": "independent_verifier_agent"' in receipt.read_text()
 
 
 def test_codex_rtlscout_bridge_judges_an_absolute_candidate_path(tmp_path, monkeypatch):

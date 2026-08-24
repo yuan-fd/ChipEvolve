@@ -29,3 +29,16 @@ EDAIR 保留原始 Runtime artifact 为权威证据，并提供 Run / Design / T
 ## 5. 尚不可声称的结论
 
 当前仓库的单元/集成测试证明接口、隔离和证据门可用；它们不等于真实论文实验。因此在完成真实 ORFS/RTLScout 多设计运行、收集 protocol 指向的 Runtime evidence 前，不能声称已证明 RTL 泛化、参数优化或自演化迁移效果。
+
+## 6. 本轮新增可复放证据
+
+`scripts/run_v2_frontend_suite.py` 现在会对固定 v2 suite（gcd、fifo、uart_tx、ibex_alu）逐设计、逐重复运行：
+
+- Icarus 编译并执行冻结 Testbench，要求出现 `PASS`；
+- Verilator lint；
+- 输出 golden RTL/Testbench SHA、工具日志、耗时和每次重复的状态；
+- 明确标记这些是平台基线 fixture，不冒充 LLM 生成结果。
+
+本轮实际执行 4 个设计 × 3 次重复，共 12 次，compile、simulation、lint 均通过。该结果只证明固定前端回归题库可复放；RTLScout 生成质量、PPA 优化、自演化迁移仍需按第 4 节 protocol 运行。
+
+`export_netlist_to_circuitops()` 新增低失真数字网表导出：完整保留 CircuitOps 关系表 schema，记录源网表 SHA；没有 library/physical 数据时保留空表而不填假值。它补上了“只有读取外部表、不能从平台产出表”的接口缺口，但 ODB/DEF 的物理属性导出仍需独立 parser。

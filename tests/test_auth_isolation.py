@@ -99,9 +99,12 @@ def test_public_overview_login_and_two_user_design_run_isolation(tmp_path: Path)
             "model": "review-model",
             "api_key": "test-session-key-not-real",
         })
-        assert status == 400 and "disabled in v2 internal mode" in profile["error"]
-        assert request(alice, base, "/api/providers")[1]["profiles"] == []
-        assert request(bob, base, "/api/providers")[1]["profiles"] == []
+        # The old BYOK API is not merely disabled in the browser: it is no
+        # longer routed by the service, so a supplied key cannot become a
+        # provider profile or cross a tenant boundary.
+        assert status == 404
+        assert request(alice, base, "/api/providers")[0] == 404
+        assert request(bob, base, "/api/providers")[0] == 404
 
         spec_id = state.spec_store.create(
             project_id="openroad-platform", design_id=None,

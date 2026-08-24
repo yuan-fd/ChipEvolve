@@ -1,6 +1,6 @@
 import hashlib
 
-from openroad_platform_analysis import agent_evidence_view, build_edair, physical_ir, timing_ir
+from openroad_platform_analysis import agent_evidence_view, build_edair, evidence_packet, physical_ir, timing_ir
 
 
 def _source():
@@ -20,3 +20,7 @@ def test_edair_keeps_normalized_facts_linked_to_raw_artifacts():
     assert edair["raw_artifacts"][0]["sha256"] == source["sha256"]
     assert view["facts"][0]["evidence"]["artifact_id"] == "artifact-report"
     assert view["execution_allowed"] is False
+    packet = evidence_packet(edair, focus="diagnosis", max_items=1)
+    assert packet["facts"][0]["kind"] == "timing_path"
+    assert packet["loss_manifest"]["raw_artifacts_not_inlined"] == 1
+    assert packet["execution_allowed"] is False

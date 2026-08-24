@@ -1,4 +1,6 @@
-# P16 开放知识、BYOK、人控建议与后端中立 FlowPlan
+# P16 历史记录：开放知识、BYOK、人控建议与后端中立 FlowPlan
+
+> **状态（2026-08-24）**：本文记录旧 P16 的 BYOK 试验，不是当前平台能力说明。v2 内测及后续平台托管服务均不接受浏览器 API Key、不保存用户 Provider profile，也不暴露 `/api/providers`；唯一模型入口是平台托管的 `codex-cli:gpt-5.6-terra`。下文的 BYOK 内容仅保留作历史审计，不得作为新功能接入依据。
 
 P16 新增四条平台能力，但没有改变 Runtime 的执行权威。
 

@@ -14,3 +14,26 @@ def test_reflection_requires_controlled_evidence_before_transfer(tmp_path):
     ledger = HypothesisLedger(tmp_path / "hypotheses.db")
     ledger.append(hypothesis); ledger.append({**assessment, "claim": hypothesis["claim"], "mechanism": hypothesis["mechanism"]})
     assert len(ledger.history(hypothesis["hypothesis_id"])) == 2
+
+
+def test_causal_reflection_agent_emits_only_a_bounded_non_executable_study(monkeypatch):
+    import json
+    import subprocess
+    from pathlib import Path
+    from apps.api.app import _codex_causal_reflection
+
+    def fake_run(command, **kwargs):
+        output = Path(command[command.index("--output-last-message") + 1])
+        output.write_text(json.dumps({
+            "claim": "Within this run context, higher utilization may increase congestion.",
+            "mechanism": "less routing whitespace raises local demand.",
+            "proposed_intervention": {"core_utilization_pct": [30, 40], "repetitions": 2},
+            "uncertainty": "Only one design is observed.",
+            "falsifier": "A controlled 2x2 study shows no directional difference.",
+        }))
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr("apps.api.app.shutil.which", lambda _name: "/fake/codex")
+    monkeypatch.setattr("apps.api.app.subprocess.run", fake_run)
+    result = _codex_causal_reflection([{"kind": "edair_evidence_packet", "facts": [], "loss_manifest": {}}])
+    assert result["proposed_intervention"]["repetitions"] == 2

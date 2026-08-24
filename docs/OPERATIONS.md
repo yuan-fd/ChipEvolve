@@ -54,7 +54,7 @@ curl -fsS -X POST http://127.0.0.1:8000/api/campaigns/stage-aware \
 
 Spec session 的 `/turn` 只追加提案；`/execute` 必须提交
 `{"confirmed":true}`。Codex Provider 使用本机登录态做验收，但不得读取、记录或复制
-认证文件。生产服务应配置独立 API Provider 和密钥轮换策略。
+认证文件。内测和正式付费服务均由运营方在平台侧配置模型凭据与轮换；浏览器不接收 API Key，也不提供 BYOK 路径。
 
 仅绑定 `127.0.0.1`；远程浏览使用 SSH tunnel。此内置服务器没有登录和 TLS，不能直接暴露到公网。
 

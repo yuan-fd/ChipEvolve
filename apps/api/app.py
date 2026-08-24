@@ -53,7 +53,7 @@ from openroad_platform_analysis import (  # noqa: E402
     build_run_evidence_ir, evidence_cards_from_run_ir, followup_from_interaction,
     teacher_context_from_holdout,
     replication_report, factorial_interaction_report, validate_holdout_interaction,
-    agent_evidence_view, build_design_ir, build_edair, physical_ir,
+    agent_evidence_view, build_design_ir, build_edair, evidence_packet, physical_ir,
     HypothesisLedger, assess_hypothesis, reflection_hypothesis, promote_after_holdout,
     PaperProtocolStore, preregister_protocol, summarize_arm, compare_arms,
 )
@@ -75,10 +75,9 @@ from openroad_platform_analysis.iterative_agent import (
     AnalysisLayer, DisruptorAgent, IterationLedger, OptimizerAgent,
 )  # noqa: E402
 from openroad_platform_scheduler import (  # noqa: E402
-    ALLOWED_MODELS, CampaignStore, CodexCliSpecProvider, JobStore,
-    InMemorySecretBroker, NaturalLanguageTaskCompiler,
-    OpenAICompatibleSpecProvider, ProviderProfile, ProviderProfileStore,
-    RuleBasedSpecProvider, RuntimeStore,
+    CampaignStore, CodexCliSpecProvider, JobStore,
+    NaturalLanguageTaskCompiler,
+    RuntimeStore,
     SpecConversationManager, SpecConversationStore, StageAwareCampaignManager,
     WorkflowRuntime, OptimizationCampaignBridge, RTLFrontendStore, ExperimentGraphStore,
     FourGateController, PatchRegistry, SpecProposal, EvolutionCampaign, EvolutionCampaignController,
@@ -180,8 +179,9 @@ class ApiState:
         load_taiwei_plugin: bool = True,
     ):
         self.db_path = db_path.expanduser().resolve()
-        self.byok_transport_secure = (True if byok_transport_secure is None
-                                      else bool(byok_transport_secure))
+        # Compatibility argument only.  v2 has no user-provider or API-key
+        # route, irrespective of transport security.
+        self.byok_transport_secure = False
         self.upload_root = upload_root.expanduser().resolve()
         self.orfs_root = orfs_root.expanduser().resolve()
         self.store = JobStore(self.db_path)
@@ -222,16 +222,11 @@ class ApiState:
         self.learning_collector = LearningCollector(self.runtime_store,
                                                     self.tenant_learning_store)
         self.agent_traces = AgentTraceStore(state_root / "agent-traces.db")
-        self.provider_profiles = ProviderProfileStore(state_root / "provider-profiles.db")
         self.auth = AuthStore(auth_db_path or state_root / "web-auth.db")
-        self.secret_broker = InMemorySecretBroker(default_ttl_seconds=8 * 3600)
         self.recommendation_store = RecommendationStore(state_root / "recommendations.db")
-        self._spec_provider_bindings: dict[str, dict[str, str]] = {}
-        self.server_spec_model = os.environ.get(
-            "OPENROAD_PLATFORM_SERVER_SPEC_MODEL", "gpt-5.6-sol"
-        ).strip()
-        if self.server_spec_model not in ALLOWED_MODELS:
-            raise ValueError("OPENROAD_PLATFORM_SERVER_SPEC_MODEL is not allowlisted")
+        # This is an internal/paid-service deployment: model selection is an
+        # operator decision, never a browser or API payload option.
+        self.server_spec_model = "gpt-5.6-terra"
         self.server_spec_model_ready = shutil.which("codex") is not None
         self.server_spec_daily_limit = int(os.environ.get(
             "OPENROAD_PLATFORM_SERVER_SPEC_DAILY_LIMIT", "20"
@@ -252,8 +247,18 @@ class ApiState:
             or ROOT.parent / "bin" / "klayout",
         )
         manifests = [orfs_plugin_manifest(toolchain)]
+        # These user-space tools are provisioned by the supported non-sudo
+        # installer (micromamba + Icarus source build).  A service process
+        # must not depend on an interactive shell PATH to find them.
+        rtl_tools_root = Path(os.environ.get(
+            "OPENROAD_PLATFORM_RTL_TOOLS_ROOT",
+            "/share/home/yuanwenjie/.local/opt/openroad-rtl-tools",
+        )).expanduser()
+        def rtl_tool(name: str, fallback: Path) -> str | None:
+            candidate = rtl_tools_root / "bin" / name
+            return str(candidate) if candidate.is_file() else _find_tool(name, fallback)
         self.rtl_verify_readiness = {"ready": False, "reason": "Verilator or Yosys unavailable"}
-        verifier = _find_tool("verilator", ROOT.parent / "bin" / "verilator")
+        verifier = rtl_tool("verilator", ROOT.parent / "bin" / "verilator")
         if verifier and toolchain.yosys_bin.is_file():
             try:
                 manifests.append(rtl_verify_plugin_manifest(
@@ -263,8 +268,8 @@ class ApiState:
             except (FileNotFoundError, ValueError) as exc:
                 self.rtl_verify_readiness["reason"] = str(exc)
         self.rtl_sim_readiness = {"ready": False, "reason": "Icarus Verilog simulator unavailable"}
-        iverilog, vvp = (_find_tool("iverilog", ROOT.parent / "bin" / "iverilog"),
-                          _find_tool("vvp", ROOT.parent / "bin" / "vvp"))
+        iverilog, vvp = (rtl_tool("iverilog", ROOT.parent / "bin" / "iverilog"),
+                          rtl_tool("vvp", ROOT.parent / "bin" / "vvp"))
         if iverilog and vvp:
             try:
                 manifests.append(rtl_sim_plugin_manifest(iverilog_bin=iverilog, vvp_bin=vvp))
@@ -351,22 +356,8 @@ class ApiState:
         )
 
     def _runtime_environment(self, run) -> dict[str, str]:
-        """Resolve a short-lived BYOK handle only at subprocess launch.
-
-        The opaque handle may be persisted for audit/retry; its secret remains
-        in the in-memory broker and is never included in TaskSpec JSON, logs,
-        artifacts, or adapter request files.
-        """
-        task = run.task_spec
-        handle = task.resources.get("credential_handle")
-        if task.plugin_id != "rtlscout" or not isinstance(handle, str): return {}
-        owner = str(task.labels.get("owner_id") or "")
-        session_id = str(task.labels.get("provider_session_id") or "")
-        provider = str(task.parameters.get("provider") or "")
-        credential_env = {"anthropic": "ANTHROPIC_API_KEY", "deepinfra": "DEEPINFRA_API_KEY", "openrouter": "OPENROUTER_API_KEY"}.get(provider)
-        if not owner or not session_id or not credential_env:
-            raise ValueError("RTLScout BYOK task has invalid credential binding")
-        return {credential_env: self.secret_broker.resolve(handle, owner_id=owner, session_id=session_id)}
+        """No user credential is ever injected into a v2 Runtime task."""
+        return {}
 
     def ensure_taiwei_plugin(self) -> None:
         """Load the expensive optional 3D manifest only when a worker needs it."""
@@ -413,7 +404,7 @@ class ApiState:
             "runtime_worker_status": worker["status"],
             "runtime_worker_active_run": worker.get("active_run"),
             "runtime_worker_last_seen": worker.get("updated_at"),
-            "byok_input_enabled": self.byok_transport_secure,
+            "byok_input_enabled": False,
             "server_spec_model_ready": self.server_spec_model_ready,
             "server_spec_model": self.server_spec_model,
             "taiwei_3d_ready": self.taiwei_readiness["ready"],
@@ -676,7 +667,7 @@ class ApiState:
         codex_available = shutil.which("codex") is not None
         return {
             **self.rtlscout_readiness,
-            "entry": "SpecIR + frozen verification oracle",
+        "entry": "SpecIR + independent verification agent (automatic) or imported frozen oracle",
             "benchmark_submission": "removed",
             "fixed_suite": ["gcd", "fifo", "uart_tx", "ibex_alu"],
             "cost_metrics": ["transistors", "yosys_cells", "yosys_wires"],
@@ -691,13 +682,19 @@ class ApiState:
     def submit_rtlscout(self, payload: dict[str, Any], *, owner_id: str | None = None) -> dict[str, Any]:
         raise RuntimeError(
             "Benchmark-only RTLScout submission was removed in v2; "
-            "freeze a SpecIR and testbench, then use /api/rtl/specs/{spec_id}/rtlscout"
+            "use /api/rtl/specs/{spec_id}/auto-rtlscout for the automatic SpecIR → verification-agent → RTLScout flow"
         )
 
     def submit_rtlscout_spec(self, spec_id: str, payload: dict[str, Any], *,
                              owner_id: str | None = None,
                              include_legacy: bool = False) -> dict[str, Any]:
-        """The sole v2 RTL entry: reviewed SpecIR plus a frozen testbench."""
+        """The sole v2 RTL entry: SpecIR plus an independent frozen oracle.
+
+        The oracle may be made automatically by the platform's verification
+        agent.  "Frozen" means content-addressed and immutable for this run,
+        not "a person must type an approval".  An imported user/project oracle
+        is still supported for regression and bring-up work.
+        """
         if not self.rtlscout_readiness["ready"]:
             raise ValueError(str(self.rtlscout_readiness["reason"]))
         lineage = self.rtl_frontend.lineage(spec_id)
@@ -711,8 +708,12 @@ class ApiState:
         _validate_rtlscout_testbench(testbench, spec.top)
         origin = str(payload.get("oracle_origin") or "")
         reviewed_by = str(payload.get("oracle_reviewed_by") or "").strip()
-        if origin not in {"user_authored", "project_existing", "reference_model", "approved_generated"} or not reviewed_by:
-            raise ValueError("A user-facing oracle requires declared origin and non-empty reviewer approval")
+        allowed_origins = {"user_authored", "project_existing", "reference_model",
+                           "approved_generated", "independent_verifier_agent"}
+        if origin not in allowed_origins or not reviewed_by:
+            raise ValueError("verification oracle requires a declared origin and producer identity")
+        if origin == "independent_verifier_agent" and not reviewed_by.startswith("verification-agent-v2"):
+            raise ValueError("automatic oracle must be attributed to verification-agent-v2")
         digest = _sha256_text(testbench)
         oracle_path = self.verification_oracle_root / f"{digest}.sv"
         if oracle_path.exists() and oracle_path.read_text(encoding="utf-8") != testbench:
@@ -746,10 +747,8 @@ class ApiState:
         fixture_mode = self.rtlscout_readiness.get("reason") == "fixture"
         if any(payload.get(key) for key in ("profile_id", "secret_handle")):
             raise ValueError("User-supplied provider profiles are disabled in v2 internal mode")
-        if requested_model and not requested_model.startswith("codex-cli:") and not fixture_mode:
-            raise ValueError("v2 internal mode uses only the platform-managed codex-cli RTLScout provider")
-        credential_handle = None
-        session_id = ""
+        if requested_model and requested_model != "codex-cli:gpt-5.6-terra" and not fixture_mode:
+            raise ValueError("v2 uses the fixed platform Codex model: codex-cli:gpt-5.6-terra")
         model = requested_model
         if not model and shutil.which("codex"):
             # This is not an API-key fallback.  The adapter starts an isolated
@@ -764,10 +763,10 @@ class ApiState:
             model=model,
             max_steps=max(1, min(int(payload.get("max_steps", 8)), 100)),
             cost_metric=str(payload.get("cost_metric") or "transistors"),
-            labels={**({"owner_id": owner_id} if owner_id else {}),
-                    **({"provider_session_id": session_id} if credential_handle else {})},
-            oracle_provenance={"origin": origin, "reviewed_by": reviewed_by},
-            credential_handle=credential_handle,
+            labels={**({"owner_id": owner_id} if owner_id else {})},
+            oracle_provenance={"origin": origin, "reviewed_by": reviewed_by,
+                               "testbench_top": str(payload.get("testbench_top") or "")},
+            credential_handle=None,
         )
         run = self.runtime.submit(task, capability="agent.rtl.generate")
         return {"run": self.get_runtime_run(run.run_id, owner_id=owner_id,
@@ -775,6 +774,107 @@ class ApiState:
                 "spec_id": spec_id, "verification_id": package.verification_id,
                 "testbench_sha256": digest, "execution_started": False,
                 "authority": "RTLScout-v2 is the sole RTL candidate producer"}
+
+    def submit_automated_rtlscout(self, spec_id: str, payload: dict[str, Any], *,
+                                  owner_id: str | None = None,
+                                  include_legacy: bool = False) -> dict[str, Any]:
+        """Start the normal automated front-end without a human-written TB.
+
+        A separately prompted verification agent writes the self-checking
+        testbench from SpecIR before RTLScout is invoked.  Its artifact is
+        immutable and its identity is retained, so the RTL-producing agent
+        cannot silently judge its own candidate.  This is an automated quality
+        gate, not a mathematical proof of arbitrary natural-language intent.
+        """
+        lineage = self.rtl_frontend.lineage(spec_id)
+        owner = self.auth.owner_of("rtl_spec", spec_id)
+        if owner_id and owner not in {owner_id, None} and not include_legacy:
+            raise KeyError(spec_id)
+        spec = SpecIR.from_dict(lineage["spec"])
+        trace = self.agent_traces.create(f"自动验证包（{spec.top}）", "verification-agent")
+        trace.add("goal", "独立生成可执行的自检 testbench", detail="不由 RTL 生成 Agent 提供判题脚本")
+        step = trace.start_tool("codex-cli", "verification-agent 根据 SpecIR 生成 testbench")
+        started = time.time()
+        try:
+            generated = _codex_testbench_draft(spec)
+            if not generated["structural_floor_passed"]:
+                raise ValueError(generated.get("structural_floor_error") or "verification-agent structural gate failed")
+            trace.finish_tool(step, ok=True, metrics={"structural_floor": True},
+                              detail="独立 Testbench 已生成并通过 DUT/self-check/PASS 结构检查")
+            trace.add("evaluate", "冻结验证包", status="ok",
+                      detail="内容哈希固定；后续 RTL 候选只能接受这个验证包")
+            trace.status = "done"
+            trace.result = {"oracle_sha256": generated["draft_sha256"],
+                            "producer": "verification-agent-v2"}
+            self.agent_traces.save(trace)
+        except Exception as exc:
+            step.duration_ms = int((time.time() - started) * 1000)
+            trace.finish_tool(step, ok=False, detail=str(exc)[:400])
+            trace.status = "failed"; trace.result = {"error": str(exc)[:400]}
+            self.agent_traces.save(trace)
+            raise
+        automated = {**payload, "testbench_source": generated["draft"]["testbench_source"],
+                     "testbench_top": generated["draft"]["testbench_top"],
+                     "oracle_origin": "independent_verifier_agent",
+                     "oracle_reviewed_by": "verification-agent-v2/codex-cli",
+                     "verification_agent_trace_id": trace.trace_id}
+        result = self.submit_rtlscout_spec(spec_id, automated, owner_id=owner_id,
+                                           include_legacy=include_legacy)
+        result["automation"] = {
+            "verification_agent": "verification-agent-v2",
+            "verification_trace_id": trace.trace_id,
+            "testbench_sha256": generated["draft_sha256"],
+            "next_gates": ["RTLScout candidate", "lint", "simulation", "mutation quality"],
+            "human_required": False,
+        }
+        return result
+
+    def auto_reflect_hypothesis(self, payload: dict[str, Any], *, owner_id: str | None = None,
+                                include_legacy: bool = False) -> dict[str, Any]:
+        """Use a reflection agent to turn *measured* runs into a testable claim.
+
+        The model receives EDAIR packets, never a shell or action surface.  Its
+        output is persisted as a draft hypothesis only; a controlled run and a
+        held-out design are still required before it can influence planning.
+        """
+        run_ids = payload.get("run_ids")
+        if not isinstance(run_ids, list) or not 1 <= len(run_ids) <= 8 or not all(isinstance(x, str) for x in run_ids):
+            raise ValueError("run_ids must contain one to eight Runtime run identifiers")
+        packets, refs = [], []
+        for run_id in run_ids:
+            result = self.runtime_edair(run_id, owner_id=owner_id,
+                                        include_legacy=include_legacy, focus="diagnosis")
+            packet = result["evidence_packet"]
+            packets.append(packet)
+            refs.append({"ref": f"edair:{run_id}", "sha256": packet["edair_fingerprint"]})
+        trace = self.agent_traces.create("因果反思", "causal-reflection-agent")
+        trace.add("goal", "从可追溯 EDA 证据提出可证伪假设", detail="假设不是结论，不能直接执行")
+        step = trace.start_tool("codex-cli", "从 EDAIR 取证包提取机制、反例与受限干预")
+        started = time.time()
+        try:
+            reflection = _codex_causal_reflection(packets)
+            record = reflection_hypothesis(
+                claim=reflection["claim"], mechanism=reflection["mechanism"],
+                context={"run_ids": run_ids, "edair_fingerprints": [x["edair_fingerprint"] for x in packets],
+                         "uncertainty": reflection["uncertainty"]}, evidence_refs=refs,
+                producer="causal-reflection-agent-v2/codex-cli",
+                proposed_intervention=reflection["proposed_intervention"],
+            )
+            event_id = self.hypothesis_ledger.append(record)
+            step.duration_ms = int((time.time() - started) * 1000)
+            trace.finish_tool(step, ok=True, detail="已产生可证伪草案；尚无跨设计结论")
+            trace.add("evaluate", "因果边界", status="ok",
+                      detail="只能通过预注册局部干预与留出设计复验升级")
+            trace.status = "done"; trace.result = {"hypothesis_id": record["hypothesis_id"], "event_id": event_id}
+            self.agent_traces.save(trace)
+            return {"hypothesis": record, "event_id": event_id, "agent_trace_id": trace.trace_id,
+                    "next": "run a pre-registered controlled intervention; do not execute a repair from this draft",
+                    "execution_allowed": False}
+        except Exception as exc:
+            step.duration_ms = int((time.time() - started) * 1000)
+            trace.finish_tool(step, ok=False, detail=str(exc)[:400])
+            trace.status = "failed"; trace.result = {"error": str(exc)[:400]}; self.agent_traces.save(trace)
+            raise
 
     def list_runs(self, limit: int = 50, *, owner_id: str | None = None,
                   include_legacy: bool = False) -> list[dict[str, Any]]:
@@ -1309,7 +1409,7 @@ class ApiState:
                 "authority": "RuntimeStore projection; cards are factual and non-executable"}
 
     def runtime_edair(self, run_id: str, *, owner_id: str | None = None,
-                      include_legacy: bool = False) -> dict[str, Any]:
+                      include_legacy: bool = False, focus: str | None = None) -> dict[str, Any]:
         """Expose provenance-first EDAIR without discarding raw Runtime artifacts."""
         view = self.get_runtime_run(run_id, owner_id=owner_id, include_legacy=include_legacy)
         run_ir = build_run_evidence_ir(view)
@@ -1346,6 +1446,7 @@ class ApiState:
                 truncated=len(rows) > 256)
         edair = build_edair(design=design_ir, run=run_ir, physical=physical, raw_artifacts=refs)
         return {"edair": edair, "agent_view": agent_evidence_view(edair),
+                **({"evidence_packet": evidence_packet(edair, focus=focus)} if focus else {}),
                 "authority": "raw Runtime artifacts remain authoritative; EDAIR is a versioned projection"}
 
     def _wait_summary(self, run_id: str) -> dict[str, Any]:
@@ -1574,62 +1675,6 @@ class ApiState:
                 "results": results, "knowledge_origin": "external_public",
                 "local_observation": False}
 
-    def save_provider_profile(self, payload: dict[str, Any]) -> dict[str, Any]:
-        # v2.0 is an internal evaluation deployment.  Accepting a browser
-        # supplied provider credential here would create a second, unreviewed
-        # authority path beside the platform-managed Codex service.
-        raise ValueError(
-            "User-supplied provider credentials are disabled in v2 internal mode; "
-            "the platform-managed Codex service is used instead"
-        )
-
-    def _save_provider_profile_legacy(self, payload: dict[str, Any]) -> dict[str, Any]:
-        owner_id = str(payload.get("owner_id") or "local-user")
-        session_id = str(payload.get("session_id") or "local-session")
-        api_key = payload.get("api_key")
-        if not isinstance(api_key, str) or not api_key:
-            raise ValueError("api_key is required and is held in memory only")
-        profile = ProviderProfile(
-            profile_id=str(payload.get("profile_id") or f"provider-{uuid.uuid4().hex}"),
-            owner_id=owner_id, provider_type="openai-compatible-byok",
-            base_url=str(payload.get("base_url") or ""), model=str(payload.get("model") or ""),
-            timeout_seconds=int(payload.get("timeout_seconds", 60)),
-            max_response_bytes=int(payload.get("max_response_bytes", 1_048_576)),
-            max_calls=int(payload.get("max_calls", 8)),
-            allow_private_endpoint=payload.get("allow_private_endpoint") is True,
-        )
-        if not self._byok_transport_available():
-            raise ValueError("BYOK key input is disabled until the external service uses HTTPS")
-        provider_host = urlparse(profile.base_url).hostname or ""
-        allowed_hosts = {
-            "api.openai.com", "api.anthropic.com", "api.deepinfra.com", "openrouter.ai",
-            "localhost", "127.0.0.1", "::1",
-        }
-        allowed_hosts.update(item.strip().lower() for item in os.environ.get(
-            "OPENROAD_PLATFORM_PROVIDER_ALLOW_HOSTS", "").split(",") if item.strip())
-        if provider_host.lower() not in allowed_hosts:
-            raise ValueError("Provider host is not in the administrator egress allowlist")
-        profile_id = self.provider_profiles.save(profile)
-        handle = self.secret_broker.put(api_key, owner_id=owner_id, session_id=session_id)
-        return {"profile_id": profile_id, "owner_id": owner_id, "session_id": session_id,
-                "model": profile.model, "base_url": profile.base_url,
-                "secret": self.secret_broker.describe(handle, owner_id=owner_id,
-                                                        session_id=session_id),
-                "persistence": "profile-only; API key is memory-only",
-                "api_key": None}
-
-    def list_provider_profiles(self, owner_id: str) -> dict[str, Any]:
-        return {"profiles": self.provider_profiles.list(owner_id=owner_id),
-                "secret_persistence": "memory-only", "default_ttl_seconds": 8 * 3600}
-
-    def revoke_provider_secret(self, payload: dict[str, Any]) -> dict[str, Any]:
-        revoked = self.secret_broker.revoke(
-            str(payload.get("secret_handle") or ""),
-            owner_id=str(payload.get("owner_id") or ""),
-            session_id=str(payload.get("session_id") or ""),
-        )
-        return {"revoked": revoked}
-
     def _learning_context_for_run(self, run, *, metric_parser_version=None):
         """Build the learning context for a run (shared by manual + auto paths)."""
         rtl = run.task_spec.inputs.get("rtl")
@@ -1725,7 +1770,8 @@ class ApiState:
             rtl_artifact_ref=f"artifact:rtl-candidate:{rtl['sha256']}",
             generator="rtlscout-v2", provenance={"runtime_run_id": run_id,
                 "rtl_sha256": rtl["sha256"], "specir_input": True,
-                "oracle_provenance": run.task_spec.inputs.get("oracle_provenance", {})},
+                "oracle_provenance": run.task_spec.inputs.get("oracle_provenance", {}),
+                "testbench_top": str((run.task_spec.inputs.get("oracle_provenance") or {}).get("testbench_top") or "")},
         )
         try:
             self.rtl_frontend.add_candidate(candidate)
@@ -2007,9 +2053,6 @@ class ApiState:
                 "design_id": item["id"],
             })
         return examples
-
-    def _byok_transport_available(self) -> bool:
-        return self.byok_transport_secure
 
     def run_optimizer_iteration(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Stage 1.1: one OptimizerAgent loop pass over the study observations.
@@ -2460,11 +2503,6 @@ class ApiState:
         result = {**result, "agent_trace_id": trace.trace_id}
         if owner_id:
             self.auth.bind_resource("spec_session", result["session_id"], owner_id)
-        if provider.provider_name == "openai-compatible-byok":
-            self._spec_provider_bindings[result["session_id"]] = {
-                key: str(payload[key]) for key in
-                ("owner_id", "session_id", "profile_id", "secret_handle")
-            }
         return result
 
     def get_spec_session(self, session_id: str, *, owner_id: str | None = None,
@@ -2921,12 +2959,14 @@ class ApiState:
             raise ValueError(
                 "v2 internal mode uses only the platform-managed codex-cli provider"
             )
-        return self._spec_provider(name, model)
+        if model is not None and model != "gpt-5.6-terra":
+            raise ValueError("v2 uses the fixed platform Codex model: gpt-5.6-terra")
+        return self._spec_provider(name, "gpt-5.6-terra")
 
     def _spec_provider_for_session(self, session_id: str, session: dict[str, Any]):
         if session["provider"] != "codex-cli":
             raise ValueError("This legacy Spec session must be recreated under v2 Codex-only mode")
-        return self._spec_provider("codex-cli", session["model"])
+        return self._spec_provider("codex-cli", "gpt-5.6-terra")
 
     def _server_spec_call(self, owner_id: str | None, operation: Any) -> Any:
         if not self.server_spec_model_ready:
@@ -2949,14 +2989,11 @@ class ApiState:
 
     @staticmethod
     def _spec_provider(name: str, model: str | None):
-        if name == "deterministic":
-            return RuleBasedSpecProvider()
         if name in {"codex", "codex-cli"}:
-            selected = model or "gpt-5.6-terra"
-            if selected not in ALLOWED_MODELS:
-                raise ValueError(f"model must be one of: {', '.join(sorted(ALLOWED_MODELS))}")
-            return CodexCliSpecProvider(model=selected)
-        raise ValueError("provider must be deterministic, codex-cli or openai-compatible-byok")
+            if model not in {None, "gpt-5.6-terra"}:
+                raise ValueError("only gpt-5.6-terra is enabled")
+            return CodexCliSpecProvider(model="gpt-5.6-terra")
+        raise ValueError("only the platform-managed codex-cli provider is enabled")
 
     def cancel_campaign(self, campaign_id: str, *, owner_id: str | None = None,
                         include_legacy: bool = False) -> dict[str, Any]:
@@ -3115,20 +3152,21 @@ def _validate_rtlscout_testbench(source: str, top: str) -> None:
 
 
 def _codex_testbench_draft(spec: SpecIR) -> dict[str, Any]:
-    """Create an explicitly non-authoritative TB draft with the local Codex CLI.
+    """Run the isolated verification-agent prompt against a frozen SpecIR.
 
-    The result stays in the HTTP response only.  It is deliberately not an
-    oracle artifact and cannot be passed to RTLScout until a user reviews it
-    through the separate frozen-oracle submission path.
+    This helper only creates bytes and a structural result.  The automatic
+    route content-addresses those bytes under the verification-agent identity;
+    the preview route deliberately returns them without freezing anything.
     """
     executable = shutil.which("codex")
     if not executable:
         raise ValueError("Codex CLI is unavailable; provide an existing or reviewed generated oracle instead")
     schema = {
         "type": "object", "additionalProperties": False,
-        "required": ["testbench_source", "assumptions", "coverage_plan", "open_questions"],
+        "required": ["testbench_source", "testbench_top", "assumptions", "coverage_plan", "open_questions"],
         "properties": {
             "testbench_source": {"type": "string", "maxLength": 200000},
+            "testbench_top": {"type": "string", "maxLength": 256},
             "assumptions": {"type": "array", "items": {"type": "string"}, "maxItems": 20},
             "coverage_plan": {"type": "array", "items": {"type": "string"}, "maxItems": 40},
             "open_questions": {"type": "array", "items": {"type": "string"}, "maxItems": 20},
@@ -3136,10 +3174,11 @@ def _codex_testbench_draft(spec: SpecIR) -> dict[str, Any]:
     }
     prompt = (
         "Generate a SystemVerilog TESTBENCH DRAFT, not RTL, from the approved SpecIR below. "
-        "It must instantiate the exact top module as instance dut, contain stimulus and self-checking "
+        "It must declare and return its exact testbench_top module name, instantiate the exact DUT top module as instance dut, contain stimulus and self-checking "
         "failure paths ($fatal/error/assertion), print PASS only after checks, and finish. "
         "Never modify the DUT contract, never claim completeness, and list ambiguous behavior in open_questions. "
-        "This draft will require independent human review before it becomes a verification oracle. "
+        "You are the independent verification agent, not the RTL author. "
+        "Return assumptions and open questions honestly; never claim formal completeness. "
         "Return only JSON matching the supplied schema. Do not invoke tools.\n\n"
         f"SPECIR={json.dumps(spec.to_dict(), ensure_ascii=False, sort_keys=True)}"
     )
@@ -3172,14 +3211,72 @@ def _codex_testbench_draft(spec: SpecIR) -> dict[str, Any]:
         _validate_rtlscout_testbench(source, spec.top)
     except ValueError as exc:
         structural_error = str(exc)
+    testbench_top = draft.get("testbench_top")
+    if not isinstance(testbench_top, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$]*", testbench_top):
+        raise RuntimeError("Codex testbench draft has no valid testbench_top")
+    if not re.search(rf"\bmodule\s+{re.escape(testbench_top)}\b", source):
+        raise RuntimeError("Codex testbench_top does not match a declared module")
     return {
-        "draft": {key: draft.get(key, []) for key in ("testbench_source", "assumptions", "coverage_plan", "open_questions")},
+        "draft": {key: draft.get(key, []) for key in ("testbench_source", "testbench_top", "assumptions", "coverage_plan", "open_questions")},
         "draft_sha256": _sha256_text(source),
         "structural_floor_passed": structural_error is None,
         "structural_floor_error": structural_error,
-        "authority": "unreviewed AI testbench draft; not an oracle and cannot start RTLScout",
+        "authority": "verification-agent output preview; only the automatic dual-agent route may freeze it as an oracle",
         "execution_allowed": False,
     }
+
+
+def _codex_causal_reflection(packets: list[dict[str, Any]]) -> dict[str, Any]:
+    """Obtain a bounded causal *proposal* from provenance-bearing EDAIR packets."""
+    executable = shutil.which("codex")
+    if not executable:
+        raise ValueError("Codex CLI is unavailable for causal reflection")
+    schema = {
+        "type": "object", "additionalProperties": False,
+        "required": ["claim", "mechanism", "proposed_intervention", "uncertainty", "falsifier"],
+        "properties": {
+            "claim": {"type": "string", "maxLength": 1600},
+            "mechanism": {"type": "string", "maxLength": 1600},
+            "proposed_intervention": {"type": "object", "maxProperties": 12},
+            "uncertainty": {"type": "string", "maxLength": 1600},
+            "falsifier": {"type": "string", "maxLength": 1600},
+        },
+    }
+    prompt = (
+        "You are the causal-reflection agent in an EDA experiment system. The supplied EDAIR packets are "
+        "evidence summaries with explicit loss manifests. Propose ONE narrow, falsifiable hypothesis. "
+        "Do not claim that correlation is cause. Do not invent missing measurements. The intervention must be "
+        "a data-only bounded parameter experiment, never a shell command or source edit. State uncertainty and "
+        "a concrete falsifier. Return only JSON matching the schema.\n\n"
+        f"EDAIR_PACKETS={json.dumps(packets, ensure_ascii=False, sort_keys=True)}"
+    )
+    with tempfile.TemporaryDirectory(prefix="openroad-causal-reflection-") as raw:
+        root = Path(raw); schema_path, output_path = root / "schema.json", root / "reflection.json"
+        schema_path.write_text(json.dumps(schema), encoding="utf-8")
+        env = {key: os.environ[key] for key in ("HOME", "USER", "LOGNAME", "PATH", "LANG", "LC_ALL", "TZ", "CODEX_HOME") if key in os.environ}
+        completed = subprocess.run(
+            [executable, "exec", "--ephemeral", "--ignore-rules", "--skip-git-repo-check",
+             "--sandbox", "read-only", "--model", "gpt-5.6-terra", "--output-schema", str(schema_path),
+             "--output-last-message", str(output_path), "--color", "never", "-"],
+            input=prompt, cwd=root, env=env, text=True, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, timeout=180, check=False,
+        )
+        if completed.returncode != 0 or not output_path.is_file():
+            detail = "\n".join((completed.stderr or completed.stdout).splitlines()[-10:])
+            raise RuntimeError(detail or "Codex returned no causal reflection")
+        try:
+            result = json.loads(output_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("Codex returned invalid causal-reflection JSON") from exc
+    if not all(isinstance(result.get(key), str) and result[key].strip() for key in ("claim", "mechanism", "uncertainty", "falsifier")):
+        raise RuntimeError("causal reflection omitted a required textual field")
+    intervention = result.get("proposed_intervention")
+    if not isinstance(intervention, dict) or not intervention:
+        raise RuntimeError("causal reflection omitted a bounded intervention")
+    forbidden = {"command", "shell", "script", "path", "credential", "api_key"}
+    if forbidden & set(intervention):
+        raise RuntimeError("causal reflection proposed an unsafe intervention")
+    return result
 
 
 def _sha256_text(value: str) -> str:
@@ -3484,7 +3581,8 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                 elif re.fullmatch(r"/api/runtime/runs/[^/]+/edair", path):
                     self._json(state.runtime_edair(
                         unquote(path.split("/")[4]), owner_id=direct_owner,
-                        include_legacy=session.legacy_access))
+                        include_legacy=session.legacy_access,
+                        focus=(query.get("focus") or [None])[0]))
                 elif (match := re.fullmatch(r"/api/runtime/runs/([^/]+)/learning-evidence", path)):
                     query = str(parse_qs(parsed.query).get("query", [""])[0])
                     limit = int(parse_qs(parsed.query).get("limit", ["8"])[0])
@@ -3512,8 +3610,6 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                     self._json(state.get_four_gate_graph(
                         unquote(path.split("/")[-1]), owner_id=direct_owner,
                         include_legacy=session.legacy_access))
-                elif path == "/api/providers":
-                    self._json(state.list_provider_profiles(session.user_id))
                 elif path == "/api/recommendations":
                     self._json(state.list_recommendations(session.user_id))
                 elif path == "/api/export/si2":
@@ -3615,12 +3711,6 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                     return
                 if path == "/api/spec/sessions":
                     self._json(state.create_spec_session(scoped(self._read_json())), HTTPStatus.CREATED)
-                    return
-                if path == "/api/providers":
-                    self._json(state.save_provider_profile(scoped(self._read_json())), HTTPStatus.CREATED)
-                    return
-                if path == "/api/providers/secrets/revoke":
-                    self._json(state.revoke_provider_secret(scoped(self._read_json())))
                     return
                 if path == "/api/craft/plans":
                     self._json(state.craft_plan(scoped(self._read_json())), HTTPStatus.CREATED)
@@ -3728,6 +3818,12 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                         unquote(match.group(1)), scoped(self._read_json()), owner_id=session.user_id,
                         include_legacy=session.legacy_access), HTTPStatus.CREATED)
                     return
+                match = re.fullmatch(r"/api/rtl/specs/([^/]+)/auto-rtlscout", path)
+                if match:
+                    self._json(state.submit_automated_rtlscout(
+                        unquote(match.group(1)), scoped(self._read_json()), owner_id=session.user_id,
+                        include_legacy=session.legacy_access), HTTPStatus.CREATED)
+                    return
                 match = re.fullmatch(r"/api/rtl/specs/([^/]+)/testbench-draft", path)
                 if match:
                     self._read_json()
@@ -3768,6 +3864,11 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                 if match:
                     self._json(state.promote_verified_rtl_to_orfs(
                         unquote(match.group(1)), owner_id=session.user_id,
+                        include_legacy=session.legacy_access), HTTPStatus.CREATED)
+                    return
+                if path == "/api/evolution/auto-reflect":
+                    self._json(state.auto_reflect_hypothesis(
+                        scoped(self._read_json()), owner_id=session.user_id,
                         include_legacy=session.legacy_access), HTTPStatus.CREATED)
                     return
                 if path == "/api/optimization/auto":
@@ -3884,6 +3985,12 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                         description=_optional_string(payload.get("description")),
                         owner_id=session.user_id,
                     ), HTTPStatus.CREATED)
+                    return
+                match = re.fullmatch(r"/api/designs/([^/]+)/circuitops-export", path)
+                if match:
+                    self._json(state.designs.circuitops_export(
+                        unquote(match.group(1)), owner_id=session.user_id,
+                        include_legacy=session.legacy_access), HTTPStatus.CREATED)
                     return
                 match = re.fullmatch(r"/api/runs/([^/]+)/cancel", path)
                 if match:
@@ -4071,13 +4178,6 @@ def main(argv: list[str] | None = None) -> int:
         default=Path(os.environ.get("ORFS_ROOT", ROOT.parent / "OpenROAD-flow-scripts")),
     )
     args = parser.parse_args(argv)
-    external_url = os.environ.get("OPENROAD_PLATFORM_EXTERNAL_URL", "").strip()
-    external_parsed = urlparse(external_url) if external_url else None
-    loopback_bind = args.host in {"localhost", "127.0.0.1", "::1"}
-    byok_transport_secure = loopback_bind or bool(external_parsed and (
-        external_parsed.scheme == "https"
-        or external_parsed.hostname in {"localhost", "127.0.0.1", "::1"}
-    ))
     state = ApiState(
         args.db,
         args.upload_root,
@@ -4088,7 +4188,6 @@ def main(argv: list[str] | None = None) -> int:
         campaign_db_path=args.campaign_db,
         optimization_db_path=args.optimization_db,
         auth_db_path=args.auth_db,
-        byok_transport_secure=byok_transport_secure,
     )
     server = build_server(args.host, args.port, state)
     print(f"OpenROAD Platform: http://{args.host}:{server.server_port}")
