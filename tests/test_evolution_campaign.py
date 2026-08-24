@@ -65,3 +65,21 @@ def test_redirect_rejects_an_undeclared_or_primary_parameter(tmp_path):
     with pytest.raises(ValueError, match="declared"):
         EvolutionCampaign("unknown", base, "knob", (2.0,), 1, 1, 1, "messages",
                           redirect_parameter="not_allowed", redirect_values=(3.0,)).validate()
+
+
+def test_run_to_boundary_drives_loop_without_client_polling(tmp_path):
+    plugin = PluginManifest("echo", "1.0.0", (sys.executable, str(FIXTURE)), ("test.echo",),
+                            ("x86_64", "aarch64"), {}, {},
+                            artifact_rules=({"kind": "report", "required": True},))
+    runtime = WorkflowRuntime(RuntimeStore(tmp_path / "runtime.db"), PluginRegistry([plugin]),
+                              workspace_root=tmp_path / "runs")
+    controller = EvolutionCampaignController(EvolutionCampaignStore(tmp_path / "evolution.db"), runtime)
+    base = TaskSpec("base", "p", "d", plugin_id="echo", inputs={"message": "x"},
+                    parameters={"knob": 1.0})
+    controller.start(EvolutionCampaign("campaign-auto", base, "knob", (2.0,),
+                                       repetitions=2, max_rounds=1, stall_window=1,
+                                       objective_metric="messages"))
+    result = controller.run_to_boundary("campaign-auto")
+    assert result["state"]["status"] == "diagnosis_required"
+    assert result["run_to_boundary"]["stopped_at"] == "diagnosis_required"
+    assert result["run_to_boundary"]["transitions"] <= 128

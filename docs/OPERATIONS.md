@@ -52,6 +52,17 @@ curl -fsS -X POST http://127.0.0.1:8000/api/campaigns/stage-aware \
   -d '{"design_id":"...","parameter_grid":{"core_utilization_pct":[20,30]},"max_parallel":2}'
 ```
 
+参数演化也支持一次性跑到安全边界，不需要客户端手动反复调用
+`advance`：
+
+```bash
+curl -fsS -X POST http://127.0.0.1:8000/api/evolution/campaigns/<id>/run-to-boundary \
+  -H 'Content-Type: application/json' -d '{"execute":true,"max_transitions":128}'
+```
+
+该接口会自动执行 baseline、重复实验、停滞检测和预先声明的第二参数换向；
+遇到 `diagnosis_required` 就停止并返回完整历史，不会自动修改 RTL 或调用未批准的修复工具。
+
 Spec session 的 `/turn` 只追加提案；`/execute` 必须提交
 `{"confirmed":true}`。Codex Provider 使用本机登录态做验收，但不得读取、记录或复制
 认证文件。内测和正式付费服务均由运营方在平台侧配置模型凭据与轮换；浏览器不接收 API Key，也不提供 BYOK 路径。

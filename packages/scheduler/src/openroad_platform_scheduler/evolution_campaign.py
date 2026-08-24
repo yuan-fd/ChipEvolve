@@ -159,6 +159,37 @@ class EvolutionCampaignController:
             state["status"]="round_running"; self.store.save(campaign_id,state)
         return self.describe(campaign_id)
 
+    def run_to_boundary(self, campaign_id: str, *, max_transitions: int = 128,
+                        execute: bool = True) -> dict[str, Any]:
+        """Drive a campaign until it completes or reaches diagnosis.
+
+        The old API exposed only ``advance``; callers had to remember to poll
+        and invoke it repeatedly, which made the advertised baseline -> search
+        -> stall redirect loop effectively manual.  This bounded driver keeps
+        the same state machine and audit records, but continues transitions in
+        one request.  It deliberately stops at ``diagnosis_required`` rather
+        than inventing a source-code repair or an unapproved action.
+        """
+        if not isinstance(max_transitions, int) or not 1 <= max_transitions <= 512:
+            raise ValueError("max_transitions must be between 1 and 512")
+        history = []
+        for _ in range(max_transitions):
+            result = self.advance(campaign_id, execute=execute)
+            state = result["state"]
+            history.append({"status": state["status"], "round": state.get("round", 0),
+                            "stalled_rounds": state.get("stalled_rounds", 0)})
+            if state["status"] in {"completed", "diagnosis_required"}:
+                result["run_to_boundary"] = {"transitions": len(history),
+                                              "stopped_at": state["status"],
+                                              "history": history,
+                                              "bounded": True}
+                return result
+        result = self.describe(campaign_id)
+        result["run_to_boundary"] = {"transitions": len(history),
+                                      "stopped_at": "transition_budget_exhausted",
+                                      "history": history, "bounded": True}
+        return result
+
     def describe(self,campaign_id:str)->dict[str,Any]:
         campaign,state=self.store.get(campaign_id); return {"campaign":_config(campaign),"state":state,"runtime_authority":True,"automatic_scope":"declared parameter only; diagnosis redirect requires review"}
 

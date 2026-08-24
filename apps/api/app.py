@@ -1157,6 +1157,25 @@ class ApiState:
         self._project_evolution_campaign(result, owner_id=owner_id)
         return result
 
+    def run_evolution_campaign_to_boundary(self, campaign_id: str, payload: dict[str, Any], *,
+                                            owner_id: str | None = None,
+                                            include_legacy: bool = False) -> dict[str, Any]:
+        """Run the declared campaign loop without requiring client polling.
+
+        The controller remains the authority: only declared parameter changes
+        are submitted.  A stalled campaign returns ``diagnosis_required`` and
+        cannot silently escalate into code edits or repair tools.
+        """
+        owner = self.auth.owner_of("evolution_campaign", campaign_id)
+        if owner_id and owner not in {owner_id, None} and not include_legacy:
+            raise KeyError(campaign_id)
+        budget = payload.get("max_transitions", 128)
+        result = self.evolution_campaigns.run_to_boundary(
+            campaign_id, max_transitions=int(budget), execute=payload.get("execute", True) is True,
+        )
+        self._project_evolution_campaign(result, owner_id=owner_id)
+        return result
+
     def _project_evolution_campaign(self, result: dict[str, Any], *, owner_id: str | None) -> None:
         """Project an automatic parameter-only campaign into the audit graph/RAG.
 
@@ -3914,6 +3933,12 @@ def make_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                 match = re.fullmatch(r"/api/evolution/campaigns/([^/]+)/advance", path)
                 if match:
                     self._json(state.advance_evolution_campaign(
+                        unquote(match.group(1)), scoped(self._read_json()), owner_id=session.user_id,
+                        include_legacy=session.legacy_access))
+                    return
+                match = re.fullmatch(r"/api/evolution/campaigns/([^/]+)/run-to-boundary", path)
+                if match:
+                    self._json(state.run_evolution_campaign_to_boundary(
                         unquote(match.group(1)), scoped(self._read_json()), owner_id=session.user_id,
                         include_legacy=session.legacy_access))
                     return
