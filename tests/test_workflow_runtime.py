@@ -57,6 +57,22 @@ def test_runtime_executes_full_contract_attempt_evidence_chain(tmp_path):
     ]
 
 
+def test_runtime_injects_ephemeral_credential_without_persisting_value(tmp_path):
+    secret = "test-secret-must-not-persist"
+    manifest = PluginManifest("echo", "1.0.0", (sys.executable, str(FIXTURES / "credential_probe_adapter.py")),
+                              ("test.echo",), (platform.machine(),), {"type":"object"}, {"type":"object"},
+                              artifact_rules=({"kind":"report","required":True},))
+    runtime = WorkflowRuntime(RuntimeStore(tmp_path / "runtime.db"), PluginRegistry([manifest]),
+                              workspace_root=tmp_path / "workspaces",
+                              environment_resolver=lambda run: {"OPENROUTER_API_KEY": secret})
+    run = runtime.submit(task()); assert secret not in str(run.task_spec.to_dict())
+    assert runtime.execute_once(run.run_id).status is RuntimeStatus.SUCCEEDED
+    workspace = Path(runtime.describe(run.run_id)["stages"][0]["attempts"][0]["workspace"])
+    assert runtime.store.metrics(runtime.store.list_attempts(runtime.store.list_stages(run.run_id)[0].stage_run_id)[0].attempt_id)[0]["value"] == 1
+    assert secret not in (workspace / "adapter_request.json").read_text()
+    assert secret not in (workspace / "adapter.log").read_text()
+
+
 def test_runtime_rejects_plugin_success_when_artifact_escapes_workspace(tmp_path):
     store = RuntimeStore(tmp_path / "runtime.db")
     runtime = WorkflowRuntime(

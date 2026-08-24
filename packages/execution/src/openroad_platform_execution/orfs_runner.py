@@ -5,6 +5,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
@@ -399,7 +400,20 @@ class ORFSRunner:
         try:
             from openroad_platform_analysis.pipeline import analyze_run
         except ImportError:
-            return
+            # The native CLI is a first-class platform path, not a reduced
+            # demo mode.  In a source checkout make the sibling analysis
+            # package discoverable; installed deployments should carry it as
+            # a dependency.  Never silently drop the structured report.
+            local_analysis = Path(__file__).resolve().parents[4] / "packages" / "analysis" / "src"
+            if local_analysis.is_dir() and str(local_analysis) not in sys.path:
+                sys.path.insert(0, str(local_analysis))
+            try:
+                from openroad_platform_analysis.pipeline import analyze_run
+            except ImportError as exc:
+                path = Path(plan.workdir) / "analysis" / "analysis_error.log"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(f"analysis dependency unavailable: {exc}\n", encoding="utf-8")
+                return
         runtime = sum(item.seconds for item in stages)
         try:
             analyze_run(
@@ -418,7 +432,13 @@ class ORFSRunner:
         try:
             from openroad_platform_analysis.parsers.stage_json import extract_metrics
         except ImportError:
-            return []
+            # The native CLI is also a supported platform entrypoint.  Do not
+            # silently turn a complete physical-design run into metric-less
+            # evidence merely because the optional reporting package was not
+            # installed in that process.  The finish JSON is ORFS's own
+            # authoritative output, so a minimal dependency-free extraction
+            # still preserves the ranking-critical terminal facts.
+            return self._collect_finish_metrics_fallback(plan)
         payload = extract_metrics(
             Path(plan.workdir), plan.request.platform, plan.design,
             expected_stage=plan.request.target_stage.value,
@@ -428,6 +448,44 @@ class ORFSRunner:
         for key, value in summary.items():
             if isinstance(value, (str, int, float)) or value is None:
                 metrics.append(Metric(name=key, value=value, source="ORFS stage JSON"))
+        # Candidate ranking must consume the same terminal QoR facts a human
+        # sees in the ORFS report.  Previously Runtime only exposed the
+        # pass/fail summary above, even though the parser had already found
+        # area, WNS and power under ``stages.finish``.  That made a real ORFS
+        # campaign unable to honour its declared objective profile.
+        finish = ((payload.get("stages") or {}).get("finish") or {}).get("metrics") or {}
+        terminal_qor = {
+            "finish__design__instance__area": finish.get("instance_area_um2"),
+            "finish__timing__setup__ws": finish.get("setup_wns_ns"),
+            "finish__power__total": finish.get("power_W"),
+        }
+        for name, value in terminal_qor.items():
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                metrics.append(Metric(name=name, value=value,
+                                      source="ORFS finish-stage parsed metric"))
+        return metrics
+
+    @staticmethod
+    def _collect_finish_metrics_fallback(plan: ExecutionPlan) -> list[Metric]:
+        finish = (Path(plan.workdir) / "logs" / plan.request.platform / plan.design
+                  / "base" / "6_report.json")
+        try:
+            payload = json.loads(finish.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return []
+        names = (
+            "finish__design__instance__area",
+            "finish__timing__setup__ws",
+            "finish__power__total",
+            "finish__route__drc_errors",
+            "finish__detailedroute__route__drc_errors",
+        )
+        metrics = []
+        for name in names:
+            value = payload.get(name)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                metrics.append(Metric(name=name, value=value,
+                                      source="ORFS finish JSON fallback"))
         return metrics
 
     @staticmethod

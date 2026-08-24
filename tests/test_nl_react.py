@@ -22,14 +22,12 @@ def test_chinese_orfs_intent_compiles_to_validated_task(tmp_path):
     assert task.inputs["rtl"]["path"] == str(rtl.resolve())
 
 
-def test_rtlscout_intent_uses_allowlisted_offline_model():
-    task = NaturalLanguageTaskCompiler().compile(
-        "用 RTLScout 离线 fake 在 simple_adder 上最多 3 步",
-        project_id="p7", design_id="adder",
-    )
-    assert task.plugin_id == "rtlscout"
-    assert task.parameters["model"] == "fake:simple_adder_pass"
-    assert task.parameters["max_steps"] == 3
+def test_rtlscout_intent_requires_specir_and_frozen_oracle():
+    with pytest.raises(ValueError, match="SpecIR-only"):
+        NaturalLanguageTaskCompiler().compile(
+            "用 RTLScout 离线 fake 在 simple_adder 上最多 3 步",
+            project_id="p7", design_id="adder",
+        )
 
 
 @pytest.mark.parametrize("intent", [

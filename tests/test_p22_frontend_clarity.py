@@ -22,7 +22,8 @@ def test_frontend_exposes_readable_code_and_evidence_dashboard() -> None:
     assert "CktCraft" in javascript  # craft extensions render dynamically via /api/platform
     assert "RTLCraft" not in html and "EDACode" not in html
     assert ".code-viewer" in css and "background: #fff" in css
-    assert ".provider-connect" in css and "background: #111827" in css
+    assert "Platform model" in html and "no user API key is accepted" in html
+    assert "saveProvider" not in javascript and "providerKey" not in javascript
     assert "formatCodeForDisplay" in javascript
     assert "result.all_evals" in javascript
     assert 'route("backend")' in javascript
@@ -44,7 +45,7 @@ def test_frontend_and_backend_follow_the_reference_task_sequence() -> None:
     assert 'id="backendDesignChips"' in html
     assert ".task-panel .stage" in css and "grid-template-columns: 18px 95px 1fr 55px" in css
     assert "attempt.metrics" in javascript
-    assert "parameter_grid" in javascript
+    assert "2^3" in javascript and "max_total_runs: 8" in javascript
     assert "state.designs[0]" not in javascript
     assert "physicalRuns[0]" not in javascript
     assert "Design\", \"设计" in javascript and "Run\", \"任务" in javascript
@@ -73,7 +74,7 @@ def test_language_switch_has_persisted_real_translations() -> None:
     assert html_keys <= translated_keys
 
 
-def test_rtlscout_web_task_is_bounded_and_contains_no_credential(tmp_path: Path) -> None:
+def test_rtlscout_web_rejects_removed_benchmark_only_entry(tmp_path: Path) -> None:
     state = ApiState(
         tmp_path / "platform.db", tmp_path / "uploads", tmp_path / "orfs",
         design_root=tmp_path / "designs", legacy_root=tmp_path / "legacy",
@@ -81,39 +82,12 @@ def test_rtlscout_web_task_is_bounded_and_contains_no_credential(tmp_path: Path)
         runtime_db_path=tmp_path / "runtime.db",
         campaign_db_path=tmp_path / "campaign.db",
     )
-    status = state.rtlscout_status()
-    assert status["ready"] is True
-    benchmarks = status["offline_demo"]["benchmarks"]
-    assert "simple_adder" in benchmarks
-    assert benchmarks
-    assert all(not name.endswith("_spirehdl") for name in benchmarks)
-    assert status["offline_demo"]["api_key_required"] is False
-
-    submitted = state.submit_rtlscout({
+    with pytest.raises(RuntimeError, match="removed in v2"):
+        state.submit_rtlscout({
         "mode": "offline_demo", "benchmark": "simple_adder",
         "cost_metric": "yosys_cells", "max_steps": 3,
         "api_key": "must-not-enter-task",
-    })
-    task = submitted["run"]["run"]["task_spec"]
-    assert task["parameters"]["model"] == "fake:simple_adder_pass"
-    assert task["parameters"]["max_steps"] == 3
-    assert task["parameters"]["cost_metric"] == "yosys_cells"
-    assert "must-not-enter-task" not in str(task)
-
-    with pytest.raises(ValueError, match="secure worker secret bridge"):
-        state.submit_rtlscout({"mode": "byok"})
-    with pytest.raises(ValueError, match="available RTLScout benchmarks"):
-        state.submit_rtlscout({"benchmark": "unbounded-benchmark"})
-    with pytest.raises(ValueError, match="available RTLScout benchmarks"):
-        state.submit_rtlscout({"benchmark": "turbo_rtl_spirehdl"})
-
-    if "alu8" in benchmarks:
-        submitted_alu8 = state.submit_rtlscout({
-            "mode": "offline_demo", "benchmark": "alu8",
-            "cost_metric": "yosys_cells", "max_steps": 3,
         })
-        task_alu8 = submitted_alu8["run"]["run"]["task_spec"]
-        assert task_alu8["inputs"]["benchmark"] == "alu8"
 
 
 def test_backend_modes_keep_single_run_and_campaign_semantics_distinct(tmp_path: Path) -> None:
@@ -130,13 +104,16 @@ def test_backend_modes_keep_single_run_and_campaign_semantics_distinct(tmp_path:
     )
     detail = state.submit_runtime_design_run({
         "design_id": design["id"], "objective": "timing", "flow_mode": "baseline",
+        "platform": "sky130hd",
     })
     labels = detail["run"]["task_spec"]["labels"]
     assert labels["objective"] == "timing"
     assert labels["flow_mode"] == "baseline"
+    assert detail["run"]["task_spec"]["parameters"]["platform"] == "sky130hd"
 
     campaign = state.create_stage_campaign({
         "design_id": design["id"], "objective": "area", "flow_mode": "agent",
+        "platform": "sky130hs",
         "parameter_grid": {"core_utilization_pct": [25, 30, 35]},
         "max_repairs": 2,
     })
@@ -145,3 +122,4 @@ def test_backend_modes_keep_single_run_and_campaign_semantics_distinct(tmp_path:
     member = state.campaign_store.members(campaign["campaign_id"])[0]
     assert member.task_spec.labels["objective"] == "area"
     assert member.task_spec.labels["flow_mode"] == "agent"
+    assert member.task_spec.parameters["platform"] == "sky130hs"

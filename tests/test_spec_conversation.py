@@ -15,30 +15,23 @@ from openroad_platform_scheduler import (
 
 
 def test_registered_design_reaches_confirmed_deterministic_task(tmp_path):
-    rtl = tmp_path / "top.v"
-    rtl.write_text("module top(input clk, input a, output y); assign y = a; endmodule\n")
     store = SpecConversationStore(tmp_path / "spec.db")
     manager = SpecConversationManager(store, RuleBasedSpecProvider())
 
     session = manager.create(
         message="把这个设计用 OpenROAD 跑到 route，时钟 clk，周期 5ns，利用率 30%",
-        design_id="design-1", design_context={"module": "top"},
+        design_id="design-1", design_context={"module": "top", "analysis": {
+            "inputs": ["clk", "a"], "outputs": ["y"],
+        }},
     )
 
     assert session["status"] == "ready"
     assert session["state"]["ready_for_execution"] is True
     assert [turn["role"] for turn in session["turns"]] == ["user", "assistant"]
-    with pytest.raises(ValueError, match="confirmation"):
-        manager.compile(session["session_id"], rtl_path=rtl,
-                        design_id="design-1", confirmed=False)
-    task = manager.compile(session["session_id"], rtl_path=rtl,
-                           design_id="design-1", confirmed=True)
-    assert task.plugin_id == "orfs"
-    assert task.parameters["target_stage"] == "route"
-    assert task.parameters["clock_period_ns"] == 5.0
-    assert task.parameters["core_utilization_pct"] == 30.0
-    assert task.inputs["clock"] == "clk"
-    assert task.labels["spec_session_id"] == session["session_id"]
+    assert [port.name for port in SpecProposal.from_mapping(session["state"]).ports] == ["clk", "a", "y"]
+    with pytest.raises(RuntimeError, match="removed in v2"):
+        manager.compile(session["session_id"], rtl_path=tmp_path / "top.v",
+                        design_id="design-1", confirmed=True)
 
 
 def test_missing_design_forces_clarification_and_budgets_are_enforced(tmp_path):
@@ -47,9 +40,19 @@ def test_missing_design_forces_clarification_and_budgets_are_enforced(tmp_path):
     )
     session = manager.create(message="做一个芯片并生成 GDS", budgets={"max_turns": 1})
     assert session["status"] == "clarification_required"
-    assert "rtl_or_design" in session["state"]["missing_fields"]
+    assert set(session["state"]["missing_fields"]) == {"top", "ports"}
     with pytest.raises(ValueError, match="turn budget"):
         manager.turn(session["session_id"], "顶层是 top")
+
+
+def test_spec_ir_preserves_supported_orfs_process_request(tmp_path):
+    manager = SpecConversationManager(SpecConversationStore(tmp_path / "spec.db"),
+                                      RuleBasedSpecProvider())
+    session = manager.create(
+        message="顶层为 divider，使用 sky130hd 跑完整 GDS，端口 clk 输入和 tick 输出",
+    )
+    assert session["state"]["target_platform"] == "sky130hd"
+    assert "sky130hd" in session["state"]["assumptions"][0]
 
 
 def test_codex_provider_is_ephemeral_read_only_and_schema_validated(tmp_path, monkeypatch):
@@ -59,7 +62,9 @@ def test_codex_provider_is_ephemeral_read_only_and_schema_validated(tmp_path, mo
         "target_platform": "nangate45", "target_stage": "finish",
         "clock_period_ns": 10.0, "core_utilization_pct": 10.0,
         "place_density": 0.45,
-        "rtl_source": "module and2(input a,input b,output y); assign y=a&b; endmodule",
+        "ports": [{"name": "a", "direction": "input", "width": 1},
+                  {"name": "b", "direction": "input", "width": 1},
+                  {"name": "y", "direction": "output", "width": 1}],
         "missing_fields": [], "assumptions": ["combinational"],
         "clarification_questions": [], "ready_for_execution": True,
     }
@@ -84,8 +89,8 @@ def test_codex_provider_is_ephemeral_read_only_and_schema_validated(tmp_path, mo
     assert captured["command"][captured["command"].index("--model") + 1] == "gpt-5.6-sol"
 
 
-def test_provider_rejects_unsafe_generated_rtl():
-    with pytest.raises(ValueError, match="forbidden"):
+def test_provider_rejects_legacy_generated_rtl():
+    with pytest.raises(ValueError, match="cannot include RTL"):
         SpecProposal.from_mapping({
             "objective": "bad", "functionality": "bad", "top": "top",
             "target_platform": "nangate45", "target_stage": "finish",
@@ -95,3 +100,12 @@ def test_provider_rejects_unsafe_generated_rtl():
             "missing_fields": [], "assumptions": [],
             "clarification_questions": [], "ready_for_execution": True,
         })
+
+
+def test_spec_provider_contract_never_requests_rtl_source():
+    """Spec parsing is not a second hidden RTL-generation entrance."""
+    from openroad_platform_scheduler.model_provider import OpenAICompatibleSpecProvider
+    import inspect
+    source = inspect.getsource(OpenAICompatibleSpecProvider.propose)
+    assert '"rtl_source (string' not in source
+    assert "Never generate RTL source" in source

@@ -22,6 +22,39 @@ class RTLToORFSResult:
     failure: str | None = None
 
 
+def execute_verified_rtl_to_orfs(
+    runtime: WorkflowRuntime,
+    verification_task: TaskSpec,
+    *,
+    top: str,
+    orfs_options: dict[str, Any] | None = None,
+) -> RTLToORFSResult:
+    """Only a Runtime-succeeded RTL verification artifact may enter ORFS."""
+    if verification_task.plugin_id != "rtl-verify":
+        raise ValueError("verification_task must target rtl-verify")
+    verify_run = _drain(runtime, runtime.submit(
+        verification_task, capability="eda.rtl.verify").run_id)
+    if verify_run.status is not RuntimeStatus.SUCCEEDED:
+        return RTLToORFSResult(verify_run.run_id, None, verify_run.status, None,
+                               verify_run.terminal_reason)
+    view = runtime.describe(verify_run.run_id)
+    artifact, attempt = _artifact_and_attempt(view, "rtl")
+    rtl_path = Path(attempt["workspace"]) / artifact["store_key"]
+    actual = _sha256(rtl_path)
+    if actual != artifact["sha256"]:
+        raise RuntimeError("verified RTL artifact changed before ORFS submission")
+    task = build_orfs_task(
+        rtl_path, project_id=verification_task.project_id,
+        design_id=verification_task.design_id,
+        task_id=f"orfs-after-{verification_task.task_id}", top=top,
+        labels={"source_run_id": verify_run.run_id, "source_plugin": "rtl-verify"},
+        **dict(orfs_options or {}),
+    )
+    orfs_run = _drain(runtime, runtime.submit(task, capability="eda.rtl_to_gds").run_id)
+    return RTLToORFSResult(verify_run.run_id, orfs_run.run_id, orfs_run.status, actual,
+                           orfs_run.terminal_reason)
+
+
 def execute_rtl_to_orfs(
     runtime: WorkflowRuntime,
     rtl_task: TaskSpec,
@@ -46,24 +79,7 @@ def execute_rtl_to_orfs(
             rtl_artifact_sha256=None, failure=rtl_run.terminal_reason,
         )
     view = runtime.describe(rtl_run.run_id)
-    rtl_artifact = next(
-        (
-            artifact
-            for stage in view["stages"]
-            for attempt in stage["attempts"]
-            for artifact in attempt["artifacts"]
-            if artifact["kind"] == "rtl"
-        ),
-        None,
-    )
-    if rtl_artifact is None:
-        raise RuntimeError("succeeded RTLScout run has no registered RTL artifact")
-    successful = next(
-        attempt
-        for stage in view["stages"]
-        for attempt in stage["attempts"]
-        if attempt["status"] == "succeeded"
-    )
+    rtl_artifact, successful = _artifact_and_attempt(view, "rtl")
     rtl_path = Path(successful["workspace"]) / rtl_artifact["store_key"]
     actual = _sha256(rtl_path)
     if actual != rtl_artifact["sha256"]:
@@ -106,3 +122,14 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _artifact_and_attempt(view: dict[str, Any], kind: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    for stage in view["stages"]:
+        for attempt in stage["attempts"]:
+            if attempt["status"] != "succeeded":
+                continue
+            for artifact in attempt["artifacts"]:
+                if artifact["kind"] == kind:
+                    return artifact, attempt
+    raise RuntimeError(f"succeeded run has no registered {kind} artifact")

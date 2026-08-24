@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 from openroad_platform_contracts import RepairAction, TaskSpec
-from openroad_platform_execution import build_orfs_task, build_rtlscout_task
+from openroad_platform_execution import build_orfs_task
 
 
 UNSAFE_TEXT = re.compile(r"[;&|`$<>]|\b(?:rm|curl|wget|bash|sh|sudo)\b", re.I)
@@ -32,24 +32,7 @@ class NaturalLanguageTaskCompiler:
         if "asap" in lowered or "sky130" in lowered:
             raise ValueError("Only the allowlisted nangate45 platform is available")
         if "rtlscout" in lowered:
-            benchmark = "simple_adder" if "simple_adder" in lowered else None
-            if benchmark is None:
-                raise ValueError("RTLScout benchmark is not allowlisted")
-            model_match = re.search(
-                r"\b(fake|anthropic|deepinfra|openrouter):([A-Za-z0-9_.-]+)", intent,
-                re.I,
-            )
-            if model_match:
-                model = f"{model_match.group(1).lower()}:{model_match.group(2)}"
-            elif "fake" in lowered or "offline" in lowered or "离线" in intent:
-                model = "fake:simple_adder_pass"
-            else:
-                raise ValueError("RTLScout intent requires an explicit allowlisted model")
-            steps = self._integer(intent, r"(?:steps?|步)", default=20, minimum=1, maximum=100)
-            return build_rtlscout_task(
-                project_id=project_id, design_id=design_id, benchmark=benchmark,
-                model=model, max_steps=steps,
-            )
+            raise ValueError("RTLScout is SpecIR-only in v2; create a specification and frozen oracle first")
         if not any(token in lowered for token in ("orfs", "gds", "openroad")) and not any(
             token in intent for token in ("芯片", "布线", "综合")
         ):

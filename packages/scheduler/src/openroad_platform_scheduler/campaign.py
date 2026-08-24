@@ -332,6 +332,8 @@ class StageAwareCampaignManager(CampaignManager):
         max_parallel: int = 1, stage_budgets: Mapping[str, float] | None = None,
         objective_metric: str | None = None, direction: str = "min", top_k: int = 3,
         max_repairs: int = 2, max_total_runs: int = 64,
+        objectives: Sequence[Mapping[str, Any]] = (),
+        hard_constraints: Sequence[Mapping[str, Any]] = (),
     ) -> str:
         base_task.validate()
         unknown = sorted(set(parameter_grid) - set(GRID_PARAMETERS))
@@ -372,12 +374,26 @@ class StageAwareCampaignManager(CampaignManager):
         if any(stage not in TOOL_STAGES or seconds <= 0 or seconds > 86_400
                for stage, seconds in budgets.items()):
             raise ValueError("Invalid per-stage wall-clock budget")
+        normalized_objectives = [dict(item) for item in objectives]
+        if any(set(item) != {"metric", "direction", "weight"}
+               or item["direction"] not in {"min", "max"}
+               or not isinstance(item["weight"], (int, float)) or item["weight"] <= 0
+               for item in normalized_objectives):
+            raise ValueError("Invalid multi-objective policy")
+        normalized_constraints = [dict(item) for item in hard_constraints]
+        if any(set(item) != {"metric", "operator", "threshold"}
+               or item["operator"] not in {">=", "<=", "=="}
+               or not isinstance(item["metric"], str) or not item["metric"]
+               for item in normalized_constraints):
+            raise ValueError("Invalid hard-constraint policy")
         campaign_id = self.store.create(name, tasks, max_parallel=max_parallel)
         self.store.set_stage_policy(campaign_id, {
             "schema_version": 1, "stage_budgets": budgets,
             "objective_metric": objective_metric, "direction": direction, "top_k": top_k,
             "max_repairs": max_repairs, "max_total_runs": max_total_runs,
             "pruning_policy": "stage_wall_clock_v1",
+            "objectives": normalized_objectives,
+            "hard_constraints": normalized_constraints,
         })
         return campaign_id
 
@@ -514,6 +530,28 @@ class StageAwareCampaignManager(CampaignManager):
 
     def _ranking(self, campaign_id: str) -> list[dict[str, Any]]:
         policy = self.store.stage_policy(campaign_id)
+        objectives = policy.get("objectives") or []
+        constraints = policy.get("hard_constraints") or []
+        if objectives:
+            ranked=[]
+            for member in self.store.members(campaign_id):
+                if not member.run_id or self.runtime.store.get_run(member.run_id).status is not RuntimeStatus.SUCCEEDED: continue
+                attempt=self._last_attempt(member.run_id)
+                values={item["name"]:item["value"] for item in self.runtime.store.metrics(attempt.attempt_id)} if attempt else {}
+                if (all(isinstance(values.get(item["metric"]),(int,float)) for item in objectives)
+                        and _passes_hard_constraints(values, constraints)):
+                    ranked.append({"run_id":member.run_id,"member_id":member.member_id,"parameters":member.task_spec.parameters,"values":values})
+            if not ranked: return []
+            total=sum(float(item["weight"]) for item in objectives)
+            for row in ranked:
+                utility=0.0
+                for item in objectives:
+                    values=[float(candidate["values"][item["metric"]]) for candidate in ranked]; lo,hi=min(values),max(values); value=float(row["values"][item["metric"]])
+                    normalized=.5 if lo==hi else ((value-lo)/(hi-lo) if item["direction"]=="max" else (hi-value)/(hi-lo))
+                    utility += float(item["weight"])/total*normalized
+                row["utility"]=round(utility,8); row["objectives"]=objectives
+            ranked.sort(key=lambda item:item["utility"],reverse=True)
+            return ranked[:int(policy.get("top_k",3))]
         metric_name = policy.get("objective_metric")
         if not metric_name:
             return []
@@ -529,7 +567,10 @@ class StageAwareCampaignManager(CampaignManager):
                 continue
             metric = next((item for item in self.runtime.store.metrics(attempt.attempt_id)
                            if item["name"] == metric_name), None)
-            if metric is None or not isinstance(metric["value"], (int, float)):
+            values = {item["name"]: item["value"]
+                      for item in self.runtime.store.metrics(attempt.attempt_id)}
+            if (metric is None or not isinstance(metric["value"], (int, float))
+                    or not _passes_hard_constraints(values, constraints)):
                 continue
             ranked.append({"run_id": run.run_id, "member_id": member.member_id,
                            "metric": metric_name, "value": metric["value"],
@@ -542,9 +583,28 @@ class StageAwareCampaignManager(CampaignManager):
                       policy: Mapping[str, Any]) -> None:
         self.store.record_decision(
             campaign_id, decision_key=f"top-k:{campaign_id}", run_id=None, kind="top_k",
-            payload={"objective_metric": policy.get("objective_metric"),
+            payload={"objective_metric": policy.get("objective_metric"), "objectives": policy.get("objectives", []),
+                     "hard_constraints": policy.get("hard_constraints", []),
                      "direction": policy.get("direction"), "ranking": ranking},
         )
+
+
+def _passes_hard_constraints(values: Mapping[str, Any], constraints: Sequence[Mapping[str, Any]]) -> bool:
+    """Fail closed: an absent terminal fact cannot be accepted as QoR-valid."""
+    for item in constraints:
+        value = values.get(item["metric"])
+        operator, threshold = item["operator"], item["threshold"]
+        if operator == "==":
+            if value != threshold:
+                return False
+        elif (not isinstance(value, (int, float)) or isinstance(value, bool)
+              or not isinstance(threshold, (int, float)) or isinstance(threshold, bool)):
+            return False
+        elif operator == ">=" and value < threshold:
+            return False
+        elif operator == "<=" and value > threshold:
+            return False
+    return True
 
 
 def _repair_category(failure: Mapping[str, Any]) -> str:

@@ -19,8 +19,14 @@ from openroad_platform_contracts import EvidencePointer, LearningContext
 
 
 WORD = re.compile(r"[A-Za-z0-9_.:-]+|[\u4e00-\u9fff]")
+# Evidence taxonomy deliberately mirrors the useful part of DPLEvolve's
+# Teacher knowledge contract.  In particular, a paper or external repository
+# is a *reference donor*, never a local observation or an executable rule.
 AUTO_KNOWLEDGE_TYPES = {"observed_fact", "validated_rule"}
-KNOWLEDGE_TYPES = AUTO_KNOWLEDGE_TYPES | {"hypothesis", "failed_attempt"}
+KNOWLEDGE_TYPES = AUTO_KNOWLEDGE_TYPES | {
+    "hypothesis", "failed_attempt", "negative_evidence",
+    "reference_donor", "contract", "deprecated_context",
+}
 
 
 def _tokens(text: str) -> list[str]:

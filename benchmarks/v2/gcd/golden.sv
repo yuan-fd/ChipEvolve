@@ -1,0 +1,1 @@
+module gcd(input clk,input rst_n,input start,input [7:0] a,b,output reg done,output reg [7:0] gcd_out); reg [7:0] x,y; always @(posedge clk) if(!rst_n) begin x<=0;y<=0;done<=0;gcd_out<=0;end else begin done<=0;if(start) begin x<=a;y<=b;end else if(y==0 && x!=0) begin gcd_out<=x;done<=1;x<=0;end else if(y!=0) begin x<=y;y<=x%y;end end endmodule

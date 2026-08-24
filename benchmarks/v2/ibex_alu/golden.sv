@@ -1,0 +1,1 @@
+module ibex_alu(input[31:0]a,b,input[2:0]op,output reg[31:0]y,output zero);always@*case(op)0:y=a+b;1:y=a-b;2:y=a&b;3:y=a|b;4:y=a^b;5:y={31'b0,($signed(a)<$signed(b))};default:y=0;endcase assign zero=y==0;endmodule

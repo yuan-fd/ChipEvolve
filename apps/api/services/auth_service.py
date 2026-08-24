@@ -238,6 +238,16 @@ class AuthStore:
             ).fetchone()
         return (row is not None and row[0] == user_id) or (row is None and include_legacy)
 
+    def owner_of(self, resource_type: str, resource_id: str) -> str | None:
+        """Return the bound owner, if any, without granting access to it."""
+        with self._connect() as connection:
+            row = connection.execute(
+                """SELECT user_id FROM web_resource_owners_v1
+                   WHERE resource_type = ? AND resource_id = ?""",
+                (resource_type, resource_id),
+            ).fetchone()
+        return str(row[0]) if row is not None else None
+
     def has_user(self, user_id: str) -> bool:
         with self._connect() as connection:
             row = connection.execute(

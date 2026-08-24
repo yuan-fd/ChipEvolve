@@ -1,0 +1,1 @@
+{"name":"fifo","top":"fifo","tier":"smoke","description":"Synchronous 4-entry FIFO with full/empty safety","spec":"spec.md","testbench":"tb.sv","golden_rtl":"golden.sv","oracle_origin":"platform_authored_fixture","oracle_status":"benchmark_only_not_user_spec_oracle"}

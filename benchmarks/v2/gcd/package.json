@@ -1,0 +1,1 @@
+{"name":"gcd","top":"gcd","tier":"smoke","description":"Euclidean GCD request/response datapath","spec":"spec.md","testbench":"tb.sv","golden_rtl":"golden.sv","oracle_origin":"platform_authored_fixture","oracle_status":"benchmark_only_not_user_spec_oracle"}

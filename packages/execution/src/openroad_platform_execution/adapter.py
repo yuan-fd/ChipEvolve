@@ -45,6 +45,7 @@ class ProcessAdapter:
         workspace: str | Path,
         cancel_requested: Callable[[], bool] | None = None,
         on_line: Callable[[str], None] | None = None,
+        environment: dict[str, str] | None = None,
     ) -> AdapterExecution:
         manifest.validate()
         task.validate()
@@ -74,7 +75,7 @@ class ProcessAdapter:
         outcome = self.guardian.run(
             command,
             cwd=root,
-            env=self._environment(manifest),
+            env={**self._environment(manifest), **dict(environment or {})},
             log_path=log_path,
             timeout_seconds=min(task.timeout_seconds, manifest.default_timeout_seconds),
             cancel_requested=cancel_requested,

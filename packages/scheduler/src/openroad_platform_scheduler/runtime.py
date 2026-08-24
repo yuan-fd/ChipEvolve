@@ -26,6 +26,7 @@ class WorkflowRuntime:
         adapter: ProcessAdapter | None = None,
         worker_id: str | None = None,
         lease_seconds: int = 30,
+        environment_resolver: Callable[[RuntimeRun], dict[str, str]] | None = None,
     ):
         if lease_seconds <= 0:
             raise ValueError("lease_seconds must be positive")
@@ -36,6 +37,7 @@ class WorkflowRuntime:
         self.adapter = adapter or ProcessAdapter()
         self.worker_id = worker_id or f"{socket.gethostname()}-{uuid.uuid4().hex[:8]}"
         self.lease_seconds = lease_seconds
+        self.environment_resolver = environment_resolver
 
     def submit(
         self,
@@ -97,12 +99,14 @@ class WorkflowRuntime:
             downstream=on_line,
         )
         try:
+            environment = self.environment_resolver(run) if self.environment_resolver else None
             execution = self.adapter.execute(
                 manifest,
                 run.task_spec,
                 workspace=workspace,
                 cancel_requested=pulse,
                 on_line=line_observer,
+                environment=environment,
             )
             if execution.result.status is RuntimeStatus.SUCCEEDED:
                 self.store.register_artifacts(attempt.attempt_id, execution.artifacts)

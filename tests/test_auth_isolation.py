@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from apps.api.app import ApiState, build_server
+from openroad_platform_contracts import PortSpec
 from openroad_platform_scheduler import SpecProposal
 
 
@@ -98,33 +99,31 @@ def test_public_overview_login_and_two_user_design_run_isolation(tmp_path: Path)
             "model": "review-model",
             "api_key": "test-session-key-not-real",
         })
-        assert status == 201 and profile["api_key"] is None
-        assert len(request(alice, base, "/api/providers")[1]["profiles"]) == 1
+        assert status == 400 and "disabled in v2 internal mode" in profile["error"]
+        assert request(alice, base, "/api/providers")[1]["profiles"] == []
         assert request(bob, base, "/api/providers")[1]["profiles"] == []
 
         spec_id = state.spec_store.create(
             project_id="openroad-platform", design_id=None,
             provider="test-provider", model="test-model",
         )
-        state.spec_store.append_exchange(spec_id, "Generate an inverter", SpecProposal(
-            objective="Generate inverter RTL", functionality="y is the inverse of a",
+        state.spec_store.append_exchange(spec_id, "Specify an inverter", SpecProposal(
+            objective="Specify inverter RTL", functionality="y is the inverse of a",
             top="generated_top", clock=None, reset=None,
             target_platform="nangate45", target_stage="finish",
             clock_period_ns=10.0, core_utilization_pct=20.0,
             place_density=0.5,
-            rtl_source=("module generated_top(input a, output y); "
-                        "assign y = ~a; endmodule\n"),
+            ports=(PortSpec("a", "input", 1), PortSpec("y", "output", 1)),
             missing_fields=(), assumptions=(), clarification_questions=(),
             ready_for_execution=True,
         ), provider="test-provider", model="test-model")
         state.auth.bind_resource("spec_session", spec_id, alice_session["user"]["id"])
         status, registered = request(
-            alice, base, f"/api/spec/sessions/{spec_id}/register-rtl",
+            alice, base, f"/api/spec/sessions/{spec_id}/materialize-spec",
             method="POST", body={"confirmed": True},
         )
-        assert status == 201 and registered["design"]["module"] == "generated_top"
-        assert registered["session"]["status"] == "design_registered"
-        assert request(bob, base, f"/api/designs/{registered['design']['id']}")[0] == 404
+        assert status == 201 and registered["spec"]["top"] == "generated_top"
+        assert request(bob, base, f"/api/rtl/specs/{registered['spec']['spec_id']}/lineage")[0] == 404
 
         status, campaign = request(
             alice, base, "/api/campaigns/stage-aware", method="POST", body={

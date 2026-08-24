@@ -9,11 +9,12 @@ import pytest
 
 from apps.api.app import ApiState
 from openroad_platform_contracts import (
-    ObjectiveSpec,
+    ActionKind, ActionSpec, ObjectiveSpec,
     OptimizationStudy,
     ParameterSpec,
     TaskSpec,
 )
+from openroad_platform_scheduler.runtime_store import RuntimeStatus
 
 
 def make_state(tmp_path: Path) -> ApiState:
@@ -65,6 +66,7 @@ def test_health_distinguishes_web_and_execution_readiness(tmp_path):
     assert health["execution_ready"] is False
     assert health["runtime_worker_ready"] is False
     assert health["byok_input_enabled"] is True
+    assert state.patch_registry.path.is_file()
 
 
 def test_health_reports_only_a_fresh_live_runtime_worker(tmp_path):
@@ -80,35 +82,84 @@ def test_health_reports_only_a_fresh_live_runtime_worker(tmp_path):
     assert health["runtime_worker_status"] == "idle"
 
 
-def test_api_byok_is_memory_only_revocable_and_disabled_without_secure_transport(tmp_path):
+def test_four_gate_writes_are_scoped_to_the_baseline_owner(tmp_path):
+    """An experiment identifier must not become a cross-tenant write capability."""
+    state = make_state(tmp_path)
+    baseline = TaskSpec(
+        "owned-baseline", "project", "design", plugin_id="orfs",
+        parameters={"core_utilization_pct": 10.0}, labels={"owner_id": "alice"},
+    )
+    experiment_id, run_id = state.four_gate.begin_baseline(baseline, producer="alice")
+    with pytest.raises(KeyError):
+        state.observe_four_gate_run(experiment_id, run_id, owner_id="bob")
+    with pytest.raises(KeyError):
+        state.propose_four_gate_action(
+            experiment_id, {"observation_node_id": "missing", "proposal": {}}, owner_id="bob"
+        )
+
+
+def test_four_gate_decision_indexes_runtime_facts_but_not_reviewer_claims(tmp_path):
+    state = make_state(tmp_path)
+    task = TaskSpec(
+        "learning-baseline", "project", "gcd", plugin_id="orfs",
+        inputs={"rtl": {"sha256": "a" * 64}},
+        parameters={"platform": "nangate45", "target_stage": "finish",
+                    "core_utilization_pct": 10.0},
+        labels={"owner_id": "alice"},
+    )
+    experiment_id, baseline_run = state.four_gate.begin_baseline(task, producer="alice")
+
+    def finish(run_id: str) -> None:
+        stage = state.runtime_store.list_stages(run_id)[0]
+        attempt = state.runtime_store.start_attempt(
+            stage.stage_run_id, worker_id="test", workspace=str(tmp_path / run_id), lease_seconds=30,
+        )
+        state.runtime_store.finish_attempt(attempt.attempt_id, RuntimeStatus.SUCCEEDED, exit_code=0)
+
+    finish(baseline_run)
+    observed = state.observe_four_gate_run(experiment_id, baseline_run, owner_id="alice")["observation_node_id"]
+    proposal = state.propose_four_gate_action(experiment_id, {
+        "observation_node_id": observed, "proposal": {"source": "test"},
+        "evidence_refs": [f"run:{baseline_run}"],
+    }, owner_id="alice")["proposal_node_id"]
+    action = ActionSpec(
+        "learning-action", experiment_id, proposal, ActionKind.PARAMETER,
+        "test the declared parameter", "collect a measured result", "one run", "revert parameter",
+        {"values": {"core_utilization_pct": 12.0}}, (f"run:{baseline_run}",), "alice",
+    )
+    submitted = state.review_four_gate_action({"action": action.to_dict()}, owner_id="alice")
+    candidate_run = submitted["run"]["run"]["run_id"]
+    finish(candidate_run)
+    measurement = state.measure_four_gate_attempt(
+        experiment_id, submitted["attempt_node_id"], owner_id="alice",
+    )["measurement_node_id"]
+    decided = state.decide_four_gate_measurement(experiment_id, measurement, {
+        "outcome": "no_improvement", "rationale": "The measured run did not improve the objective.",
+        "memory_kind": "episodic", "evidence_refs": [f"run:{candidate_run}"],
+    }, owner_id="alice")
+
+    assert decided["learning"]["indexed"] is True
+    fact_result = state.retrieve_runtime_learning(candidate_run, "Runtime terminal", owner_id="alice")
+    decision_result = state.retrieve_runtime_learning(candidate_run, "measured objective", owner_id="alice")
+    assert fact_result["bundle"]["records"][0]["knowledge_type"] == "observed_fact"
+    assert fact_result["bundle"]["records"][0]["eligible_for_proposal"] is True
+    assert decision_result["bundle"]["records"][0]["knowledge_type"] == "failed_attempt"
+    assert decision_result["bundle"]["records"][0]["eligible_for_proposal"] is False
+    assert fact_result["execution_allowed"] is False
+    with pytest.raises(KeyError):
+        state.retrieve_runtime_learning(candidate_run, "measured objective", owner_id="bob")
+
+
+def test_api_disables_browser_supplied_provider_credentials_in_internal_mode(tmp_path):
     state = make_state(tmp_path)
     canary = "api-state-p16-canary"
-    created = state.save_provider_profile({
-        "owner_id": "alice", "session_id": "browser", "profile_id": "local-fake",
-        "base_url": "http://127.0.0.1:12345/v1", "model": "fake",
-        "api_key": canary, "allow_private_endpoint": True,
-    })
-    assert created["api_key"] is None
-    assert created["secret"]["secret_present"] is True
-    assert canary.encode() not in state.provider_profiles.path.read_bytes()
-    assert state.revoke_provider_secret({
-        "owner_id": "alice", "session_id": "browser",
-        "secret_handle": created["secret"]["handle"],
-    }) == {"revoked": True}
-
-    blocked = ApiState(
-        tmp_path / "blocked-platform.db", tmp_path / "blocked-uploads",
-        tmp_path / "blocked-orfs", design_root=tmp_path / "blocked-designs",
-        legacy_root=tmp_path / "blocked-legacy", yosys_bin=Path("/missing/yosys"),
-        runtime_db_path=tmp_path / "blocked-runtime.db",
-        campaign_db_path=tmp_path / "blocked-campaign.db",
-        byok_transport_secure=False,
-    )
-    with pytest.raises(ValueError, match="HTTPS"):
-        blocked.save_provider_profile({
-            "base_url": "https://api.openai.com/v1", "model": "fake",
-            "api_key": canary,
+    with pytest.raises(ValueError, match="disabled in v2 internal mode"):
+        state.save_provider_profile({
+            "owner_id": "alice", "session_id": "browser", "profile_id": "local-fake",
+            "base_url": "http://127.0.0.1:12345/v1", "model": "fake",
+            "api_key": canary, "allow_private_endpoint": True,
         })
+    assert canary.encode() not in state.provider_profiles.path.read_bytes()
 
 
 def test_runtime_and_campaign_queries_use_authoritative_store(tmp_path):
@@ -262,21 +313,19 @@ def test_natural_language_api_returns_preview_without_submitting(tmp_path):
     assert preview["task_spec"]["parameters"]["core_utilization_pct"] == 30.0
     assert state.runtime_store.list_runs() == []
 
-    session = state.create_spec_session({
-        "design_id": design["id"], "provider": "deterministic",
-        "message": "用 OpenROAD 跑到 GDS，顶层 nl_top，利用率 25%",
-    })
-    assert session["status"] == "ready"
-    submitted = state.execute_spec_session(session["session_id"], {"confirmed": True})
-    assert submitted["status"] == "executing"
-    assert submitted["runtime"]["run"]["status"] == "queued"
-    assert submitted["runtime"]["run"]["task_spec"]["labels"]["spec_session_id"] == session["session_id"]
-    repeated = state.execute_spec_session(session["session_id"], {"confirmed": True})
-    assert repeated["run_id"] == submitted["run_id"]
-    assert len(state.runtime_store.list_runs()) == 1
+    # v2 internal testing has one server-managed model authority.  The old
+    # browser-selectable deterministic provider must not silently survive as a
+    # second public RTL/spec path merely to support an offline test.
+    with pytest.raises(ValueError, match="platform-managed codex-cli"):
+        state.create_spec_session({
+            "design_id": design["id"], "provider": "deterministic",
+            "message": "用 OpenROAD 跑到 GDS，顶层 nl_top，利用率 25%",
+        })
+    assert state.runtime_store.list_runs() == []
 
     campaign = state.create_stage_campaign({
         "design_id": design["id"], "name": "api-grid",
+        "platform": "sky130hd",
         "parameter_grid": {"core_utilization_pct": [20, 30]},
         "max_parallel": 2, "stage_budgets": {"place": 120},
         "objective_metric": "finish__timing__setup__ws",
@@ -284,6 +333,7 @@ def test_natural_language_api_returns_preview_without_submitting(tmp_path):
     assert len(campaign["members"]) == 2
     assert campaign["stage_policy"]["stage_budgets"] == {"place": 120.0}
     assert campaign["members"][0]["parameters"]["core_utilization_pct"] == 20
+    assert campaign["members"][0]["parameters"]["platform"] == "sky130hd"
     started = state.submit_campaign(campaign["campaign_id"])
     assert started["execution_started"] is True
     assert len(started["run_ids"]) == 2

@@ -69,7 +69,7 @@ const ZH = {
   "frontend.examples.title": "选择经过审计的 RTL 示例", "frontend.examples.subtitle": "包含基础逻辑、ALU、控制器、UART 和教学用 RISC-V。",
   "frontend.examples.selected": "当前示例", "frontend.examples.action": "综合该示例",
   "frontend.results.title": "综合结果", "frontend.results.subtitle": "查看门级统计、电路图、Verilog 源码和综合网表。",
-  "common.design": "已登记设计", "frontend.view.schematic": "电路图", "frontend.view.rtl": "Verilog 源码",
+  "common.design": "已登记设计", "frontend.view.schematic": "门级电路图", "frontend.view.module": "模块接口", "frontend.view.rtl": "Verilog 源码",
   "frontend.view.netlist": "门级网表", "frontend.download.rtl": "下载 RTL", "frontend.download.netlist": "下载网表",
   "frontend.empty.title": "综合后的电路将在这里显示。", "frontend.empty.help": "从上方选择设计以读取真实登记结果。",
   "common.optional": "可选", "rtlscout.subtitle": "在正确性硬门槛下优化 benchmark RTL。",
@@ -381,18 +381,17 @@ async function loadRtlscoutStatus() {
   try {
     const status = await api("/api/extensions/rtlscout");
     state.rtlscoutStatus = status;
-    const scanned = status.offline_demo?.benchmarks || [];
-    const benchmarks = scanned.length ? scanned : ["simple_adder"];
-    $("#rtlscoutBenchmark").innerHTML = benchmarks.map(name => `<option value="${esc(name)}">${esc(name)}</option>`).join("");
     $("#runRtlscout").disabled = !status.ready;
-    if (!status.byok?.input_enabled) {
-      $("#providerState").textContent = ui("Secure HTTPS connection required", "需要安全 HTTPS 连接");
-      $("#providerHint").textContent = ui("The offline demo needs no API key. Custom-provider profiles are accepted only through HTTPS; keys remain memory-only and never enter the project database.", "离线演示不需要 API Key。自定义 Provider 仅通过 HTTPS 接收，密钥只保存在内存中，不写入项目数据库。");
-    }
+    $("#providerState").textContent = status.codex_cli?.available
+      ? ui(`Ready · ${status.codex_cli.model}`, `已就绪 · ${status.codex_cli.model}`)
+      : ui("Platform model unavailable", "平台模型暂不可用");
+    $("#providerHint").textContent = ui(
+      "Internal test mode uses the platform-managed Codex session. No browser API key or third-party provider profile is used.",
+      "内测阶段统一使用平台托管的 Codex 会话；浏览器不提交 API Key，也不使用第三方 Provider 配置。"
+    );
     if (!status.ready) message("#rtlscoutMessage", `${ui("RTLScout is unavailable", "RTLScout 当前不可用")}: ${status.reason}`, true);
     updateRtlscoutControls();
   } catch (error) {
-    $("#rtlscoutBenchmark").innerHTML = '<option value="simple_adder">simple_adder</option>';
     $("#runRtlscout").disabled = true;
     message("#rtlscoutMessage", `${ui("RTLScout status unavailable", "无法读取 RTLScout 状态")}: ${error.message}`, true);
   }
@@ -535,9 +534,10 @@ async function renderDesignView() {
   if (!design) return;
   const canvas = $("#frontendCanvas");
   $$('[data-design-view]').forEach(button => button.classList.toggle("active", button.dataset.designView === state.designView));
-  if (state.designView === "schematic") {
-    const schematic = `/api/designs/${encodeURIComponent(design.id)}/schematic.svg`;
-    canvas.innerHTML = `<div class="schematic-toolbar"><span>${ui("Click the schematic to inspect it at full resolution.", "点击电路图可按原始分辨率查看。")}</span><div><a href="${schematic}" target="_blank" rel="noopener">${ui("Open full size", "放大查看")}</a><a href="${schematic}" download="${esc(design.module)}-schematic.svg">${ui("Download SVG", "下载 SVG")}</a></div></div><a class="schematic-zoom" href="${schematic}" target="_blank" rel="noopener"><img src="${schematic}" alt="Synthesized circuit schematic"></a>`;
+  if (state.designView === "schematic" || state.designView === "module") {
+    const schematic = `/api/designs/${encodeURIComponent(design.id)}/${state.designView === "module" ? "module" : "schematic"}.svg`;
+    const scope = state.designView === "module" ? ui("Module interface derived from synthesized DesignIR.", "由综合网表 DesignIR 推导的模块接口。") : ui("Gate-level connectivity projected from the synthesized netlist.", "由综合网表投影的门级连线。 ");
+    canvas.innerHTML = `<div class="schematic-toolbar"><span>${scope}</span><div><a href="${schematic}" target="_blank" rel="noopener">${ui("Open full size", "放大查看")}</a><a href="${schematic}" download="${esc(design.module)}-${state.designView}.svg">${ui("Download SVG", "下载 SVG")}</a></div></div><a class="schematic-zoom" href="${schematic}" target="_blank" rel="noopener"><img src="${schematic}" alt="${state.designView === "module" ? "Module interface" : "Gate schematic"}"></a>`;
   } else {
     const text = await api(`/api/designs/${encodeURIComponent(design.id)}/source?kind=${state.designView}`);
     const lines = formatCodeForDisplay(text);
@@ -668,21 +668,15 @@ async function createSpec() {
   try {
     const payload = {
       message: prompt,
-      provider: state.health?.server_spec_model_ready ? "codex-cli" : "deterministic",
+      provider: "codex-cli",
       model: state.health?.server_spec_model || "gpt-5.6-sol",
     };
-    if (state.providerProfile?.secret?.handle) {
-      payload.provider = "openai-compatible-byok";
-      payload.profile_id = state.providerProfile.profile_id;
-      payload.secret_handle = state.providerProfile.secret.handle;
-      payload.model = state.providerProfile.model;
-    }
     if (state.selectedDesign) payload.design_id = state.selectedDesign.id;
     const result = await post("/api/spec/sessions", payload);
     state.specSession = result;
     renderSpecReview(result);
     if (result.agent_trace_id) await loadAgentTrace(result.agent_trace_id, "#agentTraceSpec");
-    message("#specMessage", ui("Specification draft created by the shared server model. Review the structured RTL below.", "服务器共享模型已生成规格草案，请在下方审查结构化 RTL。"));
+    message("#specMessage", ui("Specification draft created. Review its structured intent and ports; RTL will be generated only by RTLScout-v2.", "规格草案已生成。请审查结构化意图和端口；RTL 只会由 RTLScout-v2 生成。"));
   } catch (error) {
     message("#specMessage", error.message, true);
   } finally {
@@ -697,11 +691,11 @@ function renderSpecReview(session) {
   const questions = proposal.clarification_questions || [];
   const assumptions = proposal.assumptions || [];
   $("#specReviewSummary").innerHTML = `<b>${esc(proposal.top || ui("Top module pending", "顶层模块待确认"))}</b><br>${esc(proposal.functionality || proposal.objective || "")}<br>${assumptions.length ? `${ui("Assumptions", "假设")}: ${esc(assumptions.join("; "))}` : ""}${questions.length ? `<br>${ui("Questions", "待确认问题")}: ${esc(questions.join("; "))}` : ""}`;
-  $("#specRtlPreview").textContent = proposal.rtl_source || "";
+  $("#specRtlPreview").textContent = (proposal.ports || []).map(p => `${p.direction} ${p.width || "?"} ${p.name}`).join("\n");
   const needsClarification = session.status === "clarification_required";
   $("#specClarificationLabel").hidden = !needsClarification;
   $("#continueSpec").hidden = !needsClarification;
-  $("#approveSpecRtl").hidden = !(proposal.ready_for_execution && proposal.rtl_source && !session.design_id);
+  $("#approveSpecRtl").hidden = !proposal.ready_for_execution;
 }
 
 async function continueSpec() {
@@ -724,72 +718,62 @@ async function approveSpecRtl() {
   const button = $("#approveSpecRtl");
   button.disabled = true;
   try {
-    const result = await post(`/api/spec/sessions/${encodeURIComponent(state.specSession.session_id)}/register-rtl`, {confirmed: true});
+    const result = await post(`/api/spec/sessions/${encodeURIComponent(state.specSession.session_id)}/materialize-spec`, {confirmed: true});
     state.specSession = result.session;
+    state.specSession.frozenSpec = result.spec;
     renderSpecReview(result.session);
-    message("#specMessage", ui(`${result.design.module} is registered and synthesized. Continue in Backend Design when ready.`, `${result.design.module} 已登记并完成综合；准备好后可进入后端设计。`));
-    await loadDesigns(result.design.id);
+    updateRtlscoutControls();
+    message("#specMessage", ui(`SpecIR ${result.spec.top} is frozen. Attach its verification oracle and run RTLScout-v2.`, `SpecIR ${result.spec.top} 已冻结。请附加验证 oracle 后运行 RTLScout-v2。`));
   } catch (error) { message("#specMessage", error.message, true); }
   finally { button.disabled = false; }
 }
 
-async function saveProvider() {
-  const key = $("#providerKey").value;
-  if (!key) return message("#rtlscoutMessage", "Enter an API key before connecting the provider.", true);
-  try {
-    const result = await post("/api/providers", {profile_id: `web-provider-${Date.now()}`, base_url: $("#providerUrl").value, model: $("#providerModel").value, api_key: key});
-    $("#providerKey").value = "";
-    state.providerProfile = result;
-    $("#providerState").textContent = `${ui("Connected", "已连接")} · ${result.model || $("#providerModel").value || ui("custom model", "自定义模型")}`;
-    message("#rtlscoutMessage", ui("Provider connected for this server session. Connecting does not start an optimization run.", "Provider 已连接到当前服务会话；连接操作不会启动优化。"));
-  } catch (error) {
-    $("#providerState").textContent = "Connection failed";
-    message("#rtlscoutMessage", error.message, true);
-  }
-}
-
 function updateRtlscoutControls() {
-  const mode = $("#rtlscoutMode").value;
-  const benchmark = $("#rtlscoutBenchmark").value || "simple_adder";
+  const frozenSpec = state.specSession?.frozenSpec;
   const cost = $("#rtlscoutCost").value;
   const steps = Math.max(1, Math.min(Number($("#rtlscoutSteps").value) || 3, 8));
-  const byok = mode === "byok";
-  if (!state.providerProfile) {
-    $("#providerState").textContent = byok
-      ? (state.rtlscoutStatus?.byok?.input_enabled ? ui("Not connected", "尚未连接") : ui("Secure HTTPS connection required", "需要安全 HTTPS 连接"))
-      : ui("Not required for offline demo", "离线演示无需 Provider");
-  }
-  $("#rtlscoutModeNote").textContent = byok
-    ? ui("Custom-provider execution is not enabled in this preview. HTTPS accepts a session-only key, while full agent execution still requires the secure model bridge.", "当前预览站尚未启用自定义 Provider 的完整执行。HTTPS 可接收仅限会话的密钥，完整 Agent 执行仍需安全模型桥接。")
-    : ui("The offline demo uses the official deterministic model while real Verilator and Yosys verify and score every generated candidate.", "离线演示使用官方确定性模型，真实 Verilator 与 Yosys 负责验证和评分。") ;
-  $("#rtlscoutLaunchSummary").textContent = state.locale === "zh" ? `${byok ? "自定义 Provider" : "离线验证演示"} · ${benchmark} · 最小化 ${cost.replaceAll("_", " ")} · ${steps} 步` : `${byok ? "Custom provider" : "Offline verified demo"} · ${benchmark} · minimize ${cost.replaceAll("_", " ")} · ${steps} steps`;
-  $("#runRtlscout").textContent = byok ? ui("Unavailable in Preview", "预览站暂不可用") : ui("Run Offline Demo →", "运行离线演示 →");
-  $("#runRtlscout").disabled = byok || state.rtlscoutStatus?.ready === false;
+  $("#rtlscoutModeNote").textContent = ui("The immutable testbench is the functional oracle; candidate RTL never supplies its own correctness check.", "冻结 testbench 是功能 oracle；候选 RTL 不能自带正确性判定。");
+  $("#rtlscoutLaunchSummary").textContent = frozenSpec
+    ? `${frozenSpec.top} · ${ui("minimize", "最小化")} ${cost.replaceAll("_", " ")} · ${steps} ${ui("steps", "步")}`
+    : ui("Freeze SpecIR and testbench first", "先冻结 SpecIR 并填写 testbench");
+  $("#runRtlscout").textContent = ui("Run RTLScout-v2 →", "运行 RTLScout-v2 →");
+  $("#runRtlscout").disabled = !frozenSpec || state.rtlscoutStatus?.ready === false;
 }
 
 async function submitRtlscout() {
-  const mode = $("#rtlscoutMode").value;
-  if (mode === "byok") return message("#rtlscoutMessage", ui("Full BYOK exploration is not enabled in this preview. Use the verified offline demo.", "当前预览站尚未启用完整 BYOK 探索，请使用可验证的离线演示。"), true);
-  const button = $("#runRtlscout");
-  button.disabled = true;
-  message("#rtlscoutMessage", ui("Saving the verified RTLScout experiment…", "正在保存可验证的 RTLScout 实验……"));
+  const spec = state.specSession?.frozenSpec;
+  const testbench = $("#rtlscoutTestbench").value.trim();
+  if (!spec) return message("#rtlscoutMessage", ui("Freeze a reviewed SpecIR first.", "请先冻结已审查的 SpecIR。"), true);
+  if (!testbench) return message("#rtlscoutMessage", ui("A non-empty independent testbench oracle is required.", "必须提供非空的独立 testbench oracle。"), true);
+  const button = $("#runRtlscout"); button.disabled = true;
   try {
-    const result = await post("/api/extensions/rtlscout/runs", {
-      mode,
-      benchmark: $("#rtlscoutBenchmark").value,
-      cost_metric: $("#rtlscoutCost").value,
-      max_steps: Number($("#rtlscoutSteps").value),
+    const result = await post(`/api/rtl/specs/${encodeURIComponent(spec.spec_id)}/rtlscout`, {
+      testbench_source: testbench, cost_metric: $("#rtlscoutCost").value,
+      oracle_origin: $("#rtlscoutOracleOrigin").value, oracle_reviewed_by: $("#rtlscoutOracleReviewer").value.trim(),
+      max_steps: Math.max(1, Math.min(Number($("#rtlscoutSteps").value) || 3, 8)),
     });
-    const runId = result.run?.run?.run_id;
-    state.selectedRtlscoutRun = runId || null;
-    message("#rtlscoutMessage", ui("The RTLScout task is saved. Its live status appears below.", "RTLScout 任务已保存，实时状态显示在下方。"));
-    await loadRuns(runId);
-    $("#rtlscoutDashboard").scrollIntoView({behavior: "smooth", block: "start"});
-  } catch (error) {
-    message("#rtlscoutMessage", error.message, true);
-  } finally {
+    state.selectedRtlscoutRun = result.run.run_id;
+    message("#rtlscoutMessage", ui("RTLScout-v2 task submitted. Runtime will register its artifact only after terminal evidence is verified.", "RTLScout-v2 已提交；只有终态验证证据通过后，Runtime 才会登记候选产物。"));
+    await loadRuns(result.run.run_id);
+  } catch (error) { message("#rtlscoutMessage", error.message, true); }
+  finally { updateRtlscoutControls(); }
+}
+
+async function draftTestbench() {
+  const spec = state.specSession?.frozenSpec;
+  if (!spec?.spec_id) return message("#rtlscoutMessage", ui("Freeze a reviewed SpecIR before requesting a testbench draft.", "请先冻结已审核的 SpecIR，再生成 testbench 草稿。"), true);
+  const button = $("#draftTestbench"); button.disabled = true;
+  message("#rtlscoutMessage", ui("Generating an unreviewed testbench draft…", "正在生成尚未审核的 testbench 草稿……"));
+  try {
+    const result = await post(`/api/rtl/specs/${encodeURIComponent(spec.spec_id)}/testbench-draft`, {});
+    $("#rtlscoutTestbench").value = result.draft?.testbench_source || "";
+    const quality = result.structural_floor_passed
+      ? ui("The draft passed only the structural floor. Review its behavior and acceptance criteria before freezing it.", "草稿仅通过结构最低门；请核查行为与验收条件后再冻结。")
+      : `${ui("The draft did not pass the structural floor", "草稿未通过结构最低门")}: ${result.structural_floor_error || "unknown"}`;
+    message("#rtlscoutMessage", quality, !result.structural_floor_passed);
     updateRtlscoutControls();
-  }
+  } catch (error) { message("#rtlscoutMessage", error.message, true); }
+  finally { button.disabled = false; }
 }
 
 async function loadRuns(preferred = null) {
@@ -1115,22 +1099,15 @@ async function submitFlow() {
   const objective = $('input[name="flowObjective"]:checked')?.value || "balanced";
   message("#flowMessage", mode === "baseline" ? ui("Saving the design task…", "正在保存设计任务……") : ui("Creating a bounded experiment plan for review…", "正在创建有界实验计划，等待审查……"));
   try {
-    const base = {design_id: id, clock: $("#flowClock").value.trim() || null, clock_period_ns: Number($("#flowPeriod").value), core_utilization_pct: Number($("#flowUtil").value), place_density: Number($("#flowDensity").value), target_stage: $("#flowTarget").value, objective, flow_mode: mode};
+    const base = {design_id: id, clock: $("#flowClock").value.trim() || null, platform: $("#flowPdk").value, clock_period_ns: Number($("#flowPeriod").value), core_utilization_pct: Number($("#flowUtil").value), place_density: Number($("#flowDensity").value), target_stage: $("#flowTarget").value, objective, flow_mode: mode};
     if (mode === "baseline") {
       const detail = await post("/api/runtime/runs/from-design", base);
       message("#flowMessage", ui("The design task is saved. Its position, estimated wait, and live stage status appear below.", "设计任务已保存；下方会显示前面人数、预计等待时间和实时阶段状态。"));
       await loadRuns(detail.run.run_id);
     } else {
-      const util = Number($("#flowUtil").value);
-      const density = Number($("#flowDensity").value);
-      const period = Number($("#flowPeriod").value);
-      const objectiveMetric = {timing: "finish__timing__setup__ws", area: "finish__design__instance__area", power: "finish__power__total", balanced: "finish__design__instance__area"}[objective];
-      const parameterGrid = objective === "timing"
-        ? {clock_period_ns: [Math.max(.01, period * .9), period, period * 1.1]}
-        : objective === "area" ? {core_utilization_pct: [Math.max(1, util - 5), util, Math.min(99, util + 5)]}
-          : objective === "power" ? {place_density: [Math.max(.01, density - .05), density, Math.min(1, density + .05)]}
-            : {core_utilization_pct: [Math.max(1, util - 5), util, Math.min(99, util + 5)]};
-      const campaign = await post("/api/campaigns/stage-aware", {...base, name: `${mode}-${objective}-${id}`, parameter_grid: parameterGrid, max_parallel: 1, objective_metric: objectiveMetric, direction: objective === "timing" ? "max" : "min", top_k: 2, max_repairs: mode === "agent" ? 2 : 0, max_total_runs: 6});
+      // The server expands the selected preference into a published 2^3
+      // interaction design and persists its objective weights with the run.
+      const campaign = await post("/api/campaigns/stage-aware", {...base, name: `${mode}-${objective}-${id}`, max_parallel: 1, top_k: 2, max_repairs: mode === "agent" ? 2 : 0, max_total_runs: 8});
       state.pendingCampaign = campaign;
       renderBatchPlan(campaign);
       message("#flowMessage", ui(`Batch experiment plan created with ${campaign.members.length} candidates. It has not been submitted for execution.`, `批量实验计划已创建，共 ${campaign.members.length} 个候选；尚未提交执行。`));
@@ -1184,7 +1161,7 @@ function updateFlowMode() {
       ? ui("Create Agent Plan", "生成 Agent 智能方案")
       : ui("Create Batch Plan", "创建批量实验计划");
   $("#flowModeNote").textContent = baseline
-    ? ui("Baseline starts one design task using the values above.", "基线模式会按照上方参数启动一个设计任务。")
+    ? ui("Baseline measures one fixed design. QoR preference does not alter an ORFS command here; choose Batch or Agent to compare candidates under the selected preference.", "基线模式只测量一个固定设计；这里的 QoR 偏好不会暗中改变 ORFS 命令。请选择批量或 Agent，才能按该偏好比较候选。")
     : mode === "agent"
       ? ui("Agent mode reads the knowledge base, proposes parameters with reasons; you review before execution.", "Agent 模式会读取经验库，带理由给出参数建议；执行前由你审核。")
       : ui("Batch mode creates bounded neighbor candidates for review; they do not execute automatically.", "批量模式会创建相邻参数候选供审查，不会自动执行。");
@@ -1690,12 +1667,12 @@ $("#importRtl").addEventListener("click", importRtl);
 $("#createSpec").addEventListener("click", createSpec);
 $("#continueSpec").addEventListener("click", continueSpec);
 $("#approveSpecRtl").addEventListener("click", approveSpecRtl);
-$("#saveProvider").addEventListener("click", saveProvider);
 $("#rtlscoutMode").addEventListener("change", updateRtlscoutControls);
-$("#rtlscoutBenchmark").addEventListener("change", updateRtlscoutControls);
+$("#rtlscoutTestbench").addEventListener("input", updateRtlscoutControls);
 $("#rtlscoutCost").addEventListener("change", updateRtlscoutControls);
 $("#rtlscoutSteps").addEventListener("input", updateRtlscoutControls);
 $("#runRtlscout").addEventListener("click", submitRtlscout);
+$("#draftTestbench").addEventListener("click", draftTestbench);
 $("#runSelect").addEventListener("change", event => selectRun(event.target.value));
 $("#submitFlow").addEventListener("click", submitFlow);
 $("#approveBatchPlan").addEventListener("click", approveBatchPlan);

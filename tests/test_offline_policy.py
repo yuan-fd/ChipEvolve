@@ -6,6 +6,7 @@ import pytest
 
 from openroad_platform_analysis import (
     BehaviorCloningShadowPolicy,
+    OfflineInteractionQShadowPolicy,
     OfflineLinearQShadowPolicy,
     build_trajectory,
     split_by_design,
@@ -15,8 +16,10 @@ from openroad_platform_contracts import (
     LearningContext,
     LearningObservation,
     ObjectiveSpec,
+    OptimizationStudy,
     ParameterSpec,
     ShadowPolicyProposal,
+    TrajectoryStep,
 )
 
 
@@ -115,3 +118,59 @@ def test_design_level_split_has_no_leakage():
     train, held_out = split_by_design(gcd_steps + aes_steps, {"aes"})
     assert {step.design_id for step in train} == {"gcd"}
     assert {step.design_id for step in held_out} == {"aes"}
+
+
+def test_interaction_shadow_policy_can_rank_a_compound_parameter_condition():
+    """A-only and B-only have no reward; A+B is useful.
+
+    This is the minimum regression for the prior single/linear-parameter blind
+    spot.  The proposal remains a non-executable shadow recommendation.
+    """
+    evidence = (EvidencePointer(ref="artifact:interaction-study", sha256="f" * 64),)
+    rows = ((0, 0, 0.0), (0, 1, 0.0), (1, 0, 0.0), (1, 1, 10.0))
+    steps = tuple(TrajectoryStep(
+        trajectory_id="interaction-study", step_index=index, design_id="gcd",
+        context_fingerprint=_context().fingerprint, state={"congestion": 0.0},
+        action={"core_utilization_pct": float(util), "place_density": float(density)},
+        next_state={"congestion": 0.0}, reward_components={"observed": reward},
+        reward=reward, terminal=index == len(rows) - 1,
+        run_id=f"interaction-run-{index}", attempt_id=f"interaction-attempt-{index}", evidence=evidence,
+    ) for index, (util, density, reward) in enumerate(rows))
+    policy = OfflineInteractionQShadowPolicy().fit(steps)
+    proposal = policy.propose(
+        design_id="gcd", context_fingerprint=_context().fingerprint,
+        state={"congestion": 0.0}, evidence=evidence,
+        candidate_actions=(
+            {"core_utilization_pct": 1.0, "place_density": 0.0},
+            {"core_utilization_pct": 0.0, "place_density": 1.0},
+            {"core_utilization_pct": 1.0, "place_density": 1.0},
+        ),
+    )
+    assert proposal.action == {"core_utilization_pct": 1.0, "place_density": 1.0}
+    assert proposal.expected_return > 9.9
+    assert proposal.execution_allowed is False
+
+
+def test_api_interaction_shadow_exposes_a_review_only_combination_proposal(tmp_path):
+    from apps.api.app import ApiState
+    state = ApiState(tmp_path / "platform.db", tmp_path / "uploads", tmp_path / "orfs",
+                     design_root=tmp_path / "designs", legacy_root=tmp_path / "legacy",
+                     yosys_bin=tmp_path / "missing-yosys", runtime_db_path=tmp_path / "runtime.db")
+    study = OptimizationStudy(
+        study_id="study-combination", design_id="gcd", context_fingerprint=_context().fingerprint,
+        parameter_space=(ParameterSpec("core_utilization_pct", 0, 1),
+                         ParameterSpec("place_density", 0, 1)),
+        objectives=(ObjectiveSpec("area_um2", "min"),), max_runs=16, seed=1,
+    )
+    state.optimization_store.create(study)
+    for index, (util, density, area) in enumerate(((0, 0, 100), (0, 1, 100), (1, 0, 100), (1, 1, 80), (1, 1, 80))):
+        state.optimization_store.add_observation(
+            study.study_id, _observation(index, util, density, area, 0.0),
+        )
+    result = state.interaction_shadow_proposal(study.study_id, {"candidate_actions": [
+        {"core_utilization_pct": 1, "place_density": 0},
+        {"core_utilization_pct": 1, "place_density": 1},
+    ]})
+    assert result["proposal"]["execution_allowed"] is False
+    assert result["promotion_gate"].startswith("repeated factorial")
+    assert ["core_utilization_pct", "place_density"] in result["interaction_terms"]

@@ -12,6 +12,7 @@ from openroad_platform_scheduler import (
     StageAwareCampaignManager,
     WorkflowRuntime,
 )
+from openroad_platform_scheduler.objective_profiles import objective_profile, profile_hard_constraints
 
 
 ADAPTER = r'''import argparse, json, signal, sys, time
@@ -35,7 +36,7 @@ else:
     print("[orfs-stage] synth succeeded 0.010s", flush=True)
     result={"schema_version":1,"status":"succeeded","exit_code":0,"started_at":started,
       "ended_at":datetime.now(timezone.utc).isoformat(),
-      "metrics":[{"name":"score","value":util}],"artifacts":[],"provenance":{}}
+      "metrics":[{"name":"score","value":util},{"name":"finish__design__instance__area","value":util},{"name":"finish__timing__setup__ws","value":util},{"name":"finish__power__total","value":100-util},{"name":"has_drc_errors","value":False}],"artifacts":[],"provenance":{}}
     code=0
 a.result.write_text(json.dumps(result)); sys.exit(code)
 '''
@@ -114,3 +115,48 @@ def test_stage_wall_clock_policy_prunes_slow_run(tmp_path):
     assert view["members"][0]["status"] == RuntimeStatus.CANCELLED.value
     decision = next(item for item in view["decisions"] if item["kind"] == "prune")
     assert decision["payload"]["tool_stage"] == "synth"
+
+
+def test_declared_qor_preference_changes_candidate_selection(tmp_path):
+    """These are real policy inputs, not labels: same executions, new winner."""
+    manager = _manager(tmp_path)
+    area = manager.create_grid("area", _task(), {"core_utilization_pct": [20, 40]},
+        objectives=({"metric": "finish__design__instance__area", "direction": "min", "weight": 1.0},))
+    timing = manager.create_grid("timing", _task(), {"core_utilization_pct": [20, 40]},
+        objectives=({"metric": "finish__timing__setup__ws", "direction": "max", "weight": 1.0},))
+    assert manager.run_until_terminal(area, timeout_seconds=10)["ranking"][0]["parameters"]["core_utilization_pct"] == 20
+    assert manager.run_until_terminal(timing, timeout_seconds=10)["ranking"][0]["parameters"]["core_utilization_pct"] == 40
+
+
+def test_all_web_profiles_change_the_same_real_candidate_ranking_policy(tmp_path):
+    """The radio choices are persisted objective weights, not display labels."""
+    manager = _manager(tmp_path)
+    winners = {}
+    for profile in ("area", "timing", "power", "balanced"):
+        campaign = manager.create_grid(
+            profile, _task(), {"core_utilization_pct": [20, 40]},
+            objectives=objective_profile(profile), hard_constraints=profile_hard_constraints(profile),
+        )
+        winners[profile] = manager.run_until_terminal(campaign, timeout_seconds=10)["ranking"][0]["parameters"]["core_utilization_pct"]
+    assert winners == {"area": 20.0, "timing": 40.0, "power": 40.0, "balanced": 40.0}
+
+
+def test_hard_qor_constraint_excludes_an_invalid_but_smaller_candidate(tmp_path):
+    manager = _manager(tmp_path)
+    campaign_id = manager.create_grid(
+        "gated", _task(), {"core_utilization_pct": [20, 40]},
+        objectives=({"metric": "finish__design__instance__area", "direction": "min", "weight": 1.0},),
+        hard_constraints=({"metric": "finish__timing__setup__ws", "operator": ">=", "threshold": 30.0},),
+    )
+    view = manager.run_until_terminal(campaign_id, timeout_seconds=10)
+    assert [item["parameters"]["core_utilization_pct"] for item in view["ranking"]] == [40]
+    assert view["stage_policy"]["hard_constraints"][0]["metric"] == "finish__timing__setup__ws"
+
+
+def test_all_web_qor_profiles_share_legality_and_timing_hard_gates():
+    for preference in ("balanced", "area", "timing", "power"):
+        gates = profile_hard_constraints(preference)
+        assert gates == (
+            {"metric": "finish__timing__setup__ws", "operator": ">=", "threshold": 0.0},
+            {"metric": "has_drc_errors", "operator": "==", "threshold": False},
+        )

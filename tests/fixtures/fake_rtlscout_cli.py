@@ -15,14 +15,19 @@ parser.add_argument("--runs-dir", type=Path, required=True)
 parser.add_argument("--max-steps")
 parser.add_argument("--cost-metric", required=True)
 parser.add_argument("--dont-save-workspaces", action="store_true")
+parser.add_argument("--benchmarks-root", nargs="+")
 args = parser.parse_args()
 
 root = args.runs_dir / args.benchmark / args.model.replace(":", "_") / "session"
 (root / "best_design").mkdir(parents=True)
 passed = "fail" not in args.model
+module_name = "generated_top"
+if args.benchmarks_root:
+    metadata = json.loads((Path(args.benchmarks_root[0]) / args.benchmark / "metadata.json").read_text())
+    module_name = metadata["module_name"]
 if passed:
     (root / "best_design" / "design.sv").write_text(
-        "module generated_top(input [1:0] a, output [1:0] y); assign y = a; endmodule\n",
+        f"module {module_name}(input [1:0] a, output [1:0] y); assign y = a; endmodule\n",
         encoding="utf-8",
     )
 (root / "summary.txt").write_text(

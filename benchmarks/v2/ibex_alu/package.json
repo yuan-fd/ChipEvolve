@@ -1,0 +1,1 @@
+{"name":"ibex_alu","top":"ibex_alu","tier":"integration","description":"Fixed, small Ibex-inspired ALU configuration; not a full Ibex core","spec":"spec.md","testbench":"tb.sv","golden_rtl":"golden.sv","oracle_origin":"platform_authored_fixture","oracle_status":"benchmark_only_not_user_spec_oracle"}

@@ -69,3 +69,18 @@ def test_timeout_kills_descendant_that_created_a_new_session(tmp_path):
             break
         time.sleep(0.02)
     assert not _process_is_running(child_pid)
+
+
+def test_timeout_is_not_starved_by_a_high_volume_output_stream(tmp_path):
+    guardian = ProcessGuardian(poll_interval=0.01, terminate_grace=0.1)
+    started = time.monotonic()
+    outcome = guardian.run(
+        ["python", "-u", "-c", "import time\nwhile True:\n print('very-noisy-eda-log-line')\n time.sleep(.0005)"],
+        log_path=tmp_path / "noisy.log", timeout_seconds=0.25,
+    )
+    assert outcome.timed_out is True
+    # Process-tree cleanup may need to scan a busy host's /proc table.  The
+    # important regression boundary is that a never-empty output queue cannot
+    # defer a 250 ms deadline indefinitely (the old implementation could).
+    assert time.monotonic() - started < 15
+    assert (tmp_path / "noisy.log").stat().st_size > 0

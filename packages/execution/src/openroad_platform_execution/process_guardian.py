@@ -69,7 +69,11 @@ class ProcessGuardian:
             reader.start()
 
             while proc.poll() is None:
-                self._drain(lines, log, on_line)
+                # A noisy EDA process can produce lines faster than Python can
+                # write them.  Drain only one bounded batch here so that a
+                # permanently non-empty queue cannot starve timeout/cancel
+                # enforcement.
+                self._drain(lines, log, on_line, max_lines=32)
                 elapsed = time.monotonic() - started
                 if cancel_requested is not None and cancel_requested():
                     cancelled = True
@@ -88,7 +92,11 @@ class ProcessGuardian:
                 proc.wait()
 
             reader.join(timeout=1.0)
-            self._drain(lines, log, on_line)
+            # A killed noisy child can leave an arbitrarily large pipe backlog.
+            # Preserve a bounded tail, then explicitly mark truncation instead
+            # of turning a 250 ms timeout into minutes of log copying.
+            if self._drain(lines, log, on_line, max_lines=128) == 128:
+                log.write("\n[guardian] output truncated after process termination\n")
             if timed_out:
                 log.write(f"\n[guardian] wall-clock timeout after {timeout_seconds:.3f}s\n")
             if cancelled:
@@ -119,17 +127,29 @@ class ProcessGuardian:
         lines: queue.Queue[str | None],
         log: TextIO,
         on_line: Callable[[str], None] | None,
-    ) -> None:
-        while True:
+        *,
+        max_lines: int | None = None,
+    ) -> int:
+        """Write up to ``max_lines`` queued output lines and return that count."""
+        count = 0
+        batch: list[str] = []
+        while max_lines is None or count < max_lines:
             try:
                 line = lines.get_nowait()
             except queue.Empty:
-                return
+                break
             if line is None:
                 continue
-            log.write(line)
+            batch.append(line)
+            count += 1
+        # One large write avoids allowing an NFS/overlay filesystem's per-write
+        # overhead to become another way that a chatty tool defeats a deadline.
+        if batch:
+            log.write("".join(batch))
             if on_line is not None:
-                on_line(line)
+                for line in batch:
+                    on_line(line)
+        return count
 
     def _terminate_tree(self, proc: subprocess.Popen[str]) -> None:
         if proc.poll() is not None:

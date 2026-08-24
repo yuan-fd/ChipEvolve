@@ -28,6 +28,7 @@ from .feedback_loop import FeedbackLoop, FeedbackOutcome
 from .offline_policy import (
     BehaviorCloningShadowPolicy,
     OfflineLinearQShadowPolicy,
+    OfflineInteractionQShadowPolicy,
     build_trajectory,
     split_by_design,
 )
@@ -44,6 +45,17 @@ from .research_methods import RESEARCH_METHODS, ResearchMethod, research_method_
 from .calibration import (
     CalibrationReport, OODAssessment, assess_ood, bounded_benchmark_points, calibrate_gp,
 )
+from .design_ir import build_design_ir, design_ir_json, evidence_cards_from_design_ir
+from .runtime_ir import build_run_evidence_ir, evidence_cards_from_run_ir
+from .design_suite import list_design_packages, load_design_package
+from .replication import compare_replication_reports, replication_report
+from .causal_evidence import factorial_interaction_report, validate_holdout_interaction
+from .causal_learning import followup_from_interaction, teacher_context_from_holdout
+from .native_orfs_evidence import native_orfs_run_view
+from .verification_evidence import generate_mutants, mutation_report, independent_verification_gate
+from .edair import agent_evidence_view, artifact_ref, build_edair, physical_ir, timing_ir
+from .hypothesis_ledger import HypothesisLedger, assess_hypothesis, promote_after_holdout, reflection_hypothesis
+from .paper_harness import PaperProtocolStore, compare_arms, preregister_protocol, summarize_arm
 
 __all__ = [
     "analyze_run", "build_llm_prompt", "build_report", "diagnose",
@@ -53,7 +65,7 @@ __all__ = [
     "LearningDatasetStore", "RuntimeEvidenceExporter",
     "GaussianProcessRegressorLite", "MultiObjectiveBayesianOptimizer",
     "OptimizationStudyStore", "pareto_front", "proposal_to_experiment_plan",
-    "BehaviorCloningShadowPolicy", "OfflineLinearQShadowPolicy",
+    "BehaviorCloningShadowPolicy", "OfflineLinearQShadowPolicy", "OfflineInteractionQShadowPolicy",
     "build_trajectory", "split_by_design",
     "BenchmarkDefinition", "CorpusSnapshot", "DocumentClaim", "KnowledgeSource",
     "PublicKnowledgeRegistry", "load_public_manifest",
@@ -64,4 +76,14 @@ __all__ = [
     "RESEARCH_METHODS", "ResearchMethod", "research_method_catalog",
     "CalibrationReport", "OODAssessment", "assess_ood",
     "bounded_benchmark_points", "calibrate_gp",
+    "build_design_ir", "design_ir_json", "evidence_cards_from_design_ir",
+    "build_run_evidence_ir", "evidence_cards_from_run_ir",
+    "list_design_packages", "load_design_package",
+    "replication_report", "compare_replication_reports",
+    "factorial_interaction_report", "validate_holdout_interaction",
+    "followup_from_interaction", "teacher_context_from_holdout", "native_orfs_run_view",
+    "generate_mutants", "mutation_report", "independent_verification_gate",
+    "artifact_ref", "timing_ir", "physical_ir", "build_edair", "agent_evidence_view",
+    "HypothesisLedger", "reflection_hypothesis", "assess_hypothesis", "promote_after_holdout",
+    "PaperProtocolStore", "preregister_protocol", "summarize_arm", "compare_arms",
 ]

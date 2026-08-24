@@ -206,3 +206,81 @@ class OfflineLinearQShadowPolicy:
         )
         proposal.validate()
         return proposal
+
+
+class OfflineInteractionQShadowPolicy:
+    """Offline Q baseline with explicit pairwise action interactions.
+
+    A linear action model cannot represent the common EDA condition "parameter
+    A helps only together with parameter B".  This deliberately small
+    polynomial model adds only pairwise products of *declared actions*; it is
+    still an offline, evidence-backed advisor and is never allowed to submit a
+    Runtime task.  A held-out design test remains required before a fitted
+    interaction is promoted to a reusable skill.
+    """
+
+    policy_id = "offline-interaction-q-ridge-v1"
+
+    def __init__(self, *, ridge: float = 1e-6, max_action_parameters: int = 16):
+        if ridge <= 0 or not 2 <= max_action_parameters <= 16:
+            raise ValueError("Invalid interaction Q configuration")
+        self.ridge = float(ridge)
+        self.max_action_parameters = int(max_action_parameters)
+        self.state_names: tuple[str, ...] = ()
+        self.action_names: tuple[str, ...] = ()
+        self.interaction_names: tuple[tuple[str, str], ...] = ()
+        self.coefficients: np.ndarray | None = None
+
+    def _features(self, state: Mapping[str, float], action: Mapping[str, float]) -> list[float]:
+        values = [float(action.get(name, 0.0)) for name in self.action_names]
+        pairs = [values[self.action_names.index(first)] * values[self.action_names.index(second)]
+                 for first, second in self.interaction_names]
+        return [1.0] + [float(state.get(name, 0.0)) for name in self.state_names] + values + pairs
+
+    def fit(self, steps: Sequence[TrajectoryStep]) -> "OfflineInteractionQShadowPolicy":
+        if len(steps) < 4:
+            raise ValueError("Interaction Q fitting requires at least four trajectory steps")
+        for step in steps:
+            step.validate()
+        self.state_names = tuple(sorted({name for step in steps for name in step.state}))
+        self.action_names = tuple(sorted({name for step in steps for name in step.action}))
+        if len(self.action_names) < 2:
+            raise ValueError("Interaction Q requires at least two action parameters")
+        if len(self.action_names) > self.max_action_parameters:
+            raise ValueError("Interaction Q action space exceeds configured safety bound")
+        self.interaction_names = tuple(
+            (first, second) for index, first in enumerate(self.action_names)
+            for second in self.action_names[index + 1:]
+        )
+        x = np.array([self._features(step.state, step.action) for step in steps], dtype=float)
+        y = np.array([step.reward for step in steps], dtype=float)
+        regularizer = self.ridge * np.eye(x.shape[1])
+        regularizer[0, 0] = 0.0
+        self.coefficients = np.linalg.solve(x.T @ x + regularizer, x.T @ y)
+        return self
+
+    def propose(self, *, design_id: str, context_fingerprint: str,
+                state: Mapping[str, float], candidate_actions: Sequence[Mapping[str, float]],
+                evidence: Sequence[EvidencePointer]) -> ShadowPolicyProposal:
+        if self.coefficients is None:
+            raise ValueError("Interaction Q policy must be fitted")
+        if not candidate_actions or len(candidate_actions) > 4096:
+            raise ValueError("Interaction Q requires 1-4096 bounded candidate actions")
+        scored = []
+        for action in candidate_actions:
+            if set(action) - set(self.action_names):
+                raise ValueError("Candidate action contains an unseen parameter")
+            normalized = {name: float(value) for name, value in action.items()}
+            scored.append((float(np.array(self._features(state, normalized)) @ self.coefficients), normalized))
+        expected_return, action = max(scored, key=lambda item: (item[0], sorted(item[1].items())))
+        proposal_seed = _digest({"policy": self.policy_id, "design": design_id,
+                                 "context": context_fingerprint, "state": dict(state),
+                                 "action": action, "interactions": self.interaction_names})[:20]
+        proposal = ShadowPolicyProposal(
+            proposal_id=f"shadow-{proposal_seed}", policy_id=self.policy_id,
+            design_id=design_id, context_fingerprint=context_fingerprint,
+            state={key: float(value) for key, value in state.items()}, action=action,
+            expected_return=expected_return, evidence=tuple(evidence),
+        )
+        proposal.validate()
+        return proposal

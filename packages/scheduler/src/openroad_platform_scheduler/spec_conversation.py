@@ -20,16 +20,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Protocol, Sequence
 
-from openroad_platform_contracts import TaskSpec
-
-from .nl_control import NaturalLanguageTaskCompiler
+from openroad_platform_contracts import PortSpec, TaskSpec
 
 
 ALLOWED_MODELS = {"gpt-5.6-terra", "gpt-5.6-sol"}
 ALLOWED_STAGES = {"synth", "floorplan", "place", "cts", "route", "finish"}
-ALLOWED_PLATFORMS = {"nangate45"}
+# These are the normal 2D ORFS platforms available to v2.  TaiWei 3D remains
+# a separately pinned, explicit flow and is intentionally not guessed from
+# natural language here.
+ALLOWED_PLATFORMS = {"nangate45", "sky130hd", "sky130hs", "asap7", "gf180"}
 SPEC_SCHEMA_VERSION = 1
-UNSAFE_RTL = re.compile(r"`\s*(?:include|define|ifdef)|\$system|\$fopen", re.I)
 
 
 @dataclass(frozen=True)
@@ -44,7 +44,7 @@ class SpecProposal:
     clock_period_ns: float
     core_utilization_pct: float
     place_density: float
-    rtl_source: str | None
+    ports: tuple[PortSpec, ...]
     missing_fields: tuple[str, ...]
     assumptions: tuple[str, ...]
     clarification_questions: tuple[str, ...]
@@ -52,6 +52,8 @@ class SpecProposal:
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "SpecProposal":
+        if "rtl_source" in value:
+            raise ValueError("Spec proposals cannot include RTL source; use RTLScout-v2")
         platform = str(value.get("target_platform") or "nangate45").lower()
         stage = str(value.get("target_stage") or "finish").lower()
         if platform not in ALLOWED_PLATFORMS:
@@ -64,9 +66,7 @@ class SpecProposal:
                                      "core_utilization_pct")
         density = _bounded_float(value.get("place_density", 0.45), 0.01, 1.0,
                                  "place_density")
-        rtl_source = _optional(value.get("rtl_source"), maximum=200_000)
-        if rtl_source and UNSAFE_RTL.search(rtl_source):
-            raise ValueError("Proposed RTL contains forbidden compiler directives or system I/O")
+        ports = _ports(value.get("ports"))
         missing = _strings(value.get("missing_fields"), maximum=20)
         questions = _strings(value.get("clarification_questions"), maximum=10)
         ready = bool(value.get("ready_for_execution")) and not missing and not questions
@@ -81,16 +81,14 @@ class SpecProposal:
             clock_period_ns=period,
             core_utilization_pct=utilization,
             place_density=density,
-            rtl_source=rtl_source,
+            ports=ports,
             missing_fields=missing,
             assumptions=_strings(value.get("assumptions"), maximum=20),
             clarification_questions=questions,
             ready_for_execution=ready,
         )
-        if result.rtl_source and result.top:
-            declared = re.search(r"\bmodule\s+([A-Za-z_]\w*)", result.rtl_source)
-            if not declared or declared.group(1) != result.top:
-                raise ValueError("Proposed RTL top module does not match the structured top field")
+        if result.ready_for_execution and (not result.top or not result.ports):
+            raise ValueError("A ready SpecIR proposal requires top and declared ports")
         return result
 
     def to_dict(self) -> dict[str, Any]:
@@ -100,7 +98,8 @@ class SpecProposal:
             "target_platform": self.target_platform, "target_stage": self.target_stage,
             "clock_period_ns": self.clock_period_ns,
             "core_utilization_pct": self.core_utilization_pct,
-            "place_density": self.place_density, "rtl_source": self.rtl_source,
+            "place_density": self.place_density,
+            "ports": [item.to_dict() for item in self.ports],
             "missing_fields": list(self.missing_fields),
             "assumptions": list(self.assumptions),
             "clarification_questions": list(self.clarification_questions),
@@ -131,6 +130,14 @@ class RuleBasedSpecProvider:
         state["functionality"] = _text(state.get("functionality") or text, maximum=8000)
         if design_context:
             state["top"] = design_context.get("module") or state.get("top")
+            analysis = design_context.get("analysis") or {}
+            if not state.get("ports"):
+                state["ports"] = (
+                    [{"name": name, "direction": "input"}
+                     for name in analysis.get("inputs", ())]
+                    + [{"name": name, "direction": "output"}
+                       for name in analysis.get("outputs", ())]
+                )
         top_match = re.search(r"(?:top|顶层(?:模块)?)\s*(?:是|为|=|:)?\s*([A-Za-z_]\w*)", text, re.I)
         if top_match:
             state["top"] = top_match.group(1)
@@ -143,7 +150,12 @@ class RuleBasedSpecProvider:
         state["clock_period_ns"] = float(period_match.group(1)) if period_match else state.get("clock_period_ns", 10.0)
         state["core_utilization_pct"] = float(util_match.group(1)) if util_match else state.get("core_utilization_pct", 10.0)
         state["place_density"] = float(density_match.group(1)) if density_match else state.get("place_density", 0.45)
-        state["target_platform"] = "nangate45"
+        platform_aliases = (("sky130hs", "sky130hs"), ("sky130hd", "sky130hd"),
+                            ("sky130", "sky130hd"), ("asap7", "asap7"),
+                            ("gf180", "gf180"), ("nangate45", "nangate45"))
+        state["target_platform"] = next((platform for token, platform in platform_aliases
+                                         if token in lowered),
+                                        state.get("target_platform", "nangate45"))
         stage = next((item for item in ("synth", "floorplan", "place", "cts", "route")
                       if item in lowered), "finish")
         if "gds" in lowered:
@@ -152,13 +164,13 @@ class RuleBasedSpecProvider:
         missing = []
         if not state.get("top"):
             missing.append("top")
-        if not design_context and not state.get("rtl_source"):
-            missing.append("rtl_or_design")
+        if not state.get("ports"):
+            missing.append("ports")
         state["missing_fields"] = missing
-        state["assumptions"] = ["使用已准入的 Nangate45 ORFS 工具链"]
+        state["assumptions"] = [f"使用已准入的 {state['target_platform']} ORFS 工具链"]
         state["clarification_questions"] = [
-            "请提供已登记 design_id，或使用 Codex Provider 生成可验证 RTL。"
-        ] if "rtl_or_design" in missing else (["请确认顶层模块名。"] if "top" in missing else [])
+            "请提供模块端口、方向和位宽；RTL 将由 RTLScout-v2 在验证包约束下生成。"
+        ] if "ports" in missing else (["请确认顶层模块名。"] if "top" in missing else [])
         state["ready_for_execution"] = not missing
         return SpecProposal.from_mapping(state)
 
@@ -185,9 +197,9 @@ class CodexCliSpecProvider:
         prompt = (
             "You are a constrained ASIC specification compiler. Return only the JSON object "
             "required by the supplied schema. Merge the conversation into a conservative draft. "
-            "Only target Nangate45 and one of synth/floorplan/place/cts/route/finish. If there is "
-            "no registered design context and requirements are complete, propose small synthesizable "
-            "SystemVerilog with no includes, file I/O, DPI, delays, or system tasks. Never invoke tools. "
+            f"Only target one of {sorted(ALLOWED_PLATFORMS)} and one of synth/floorplan/place/cts/route/finish. "
+            "Never generate RTL source: your output is SpecIR only. Extract every module port with direction "
+            "and width when stated; otherwise ask a clarification question. Never invoke tools. "
             "Ask concise clarification questions for ambiguous functional behavior. Defaults may be "
             "10ns, 10% core utilization, 0.45 placement density and must be listed as assumptions.\n\n"
             f"CURRENT={json.dumps(dict(current), ensure_ascii=False)}\n"
@@ -422,32 +434,15 @@ class SpecConversationManager:
 
     def compile(self, session_id: str, *, rtl_path: str | Path, design_id: str,
                 confirmed: bool) -> TaskSpec:
-        if not confirmed:
-            raise ValueError("Explicit confirmation is required before Runtime submission")
-        session = self.store.get(session_id)
-        proposal = SpecProposal.from_mapping(session["state"])
-        if not proposal.ready_for_execution:
-            raise ValueError("Specification still requires clarification")
-        intent = (
-            f"OpenROAD {proposal.target_stage} {proposal.clock_period_ns}ns "
-            f"{proposal.core_utilization_pct}%"
+        """Removed v1 path: Spec sessions cannot submit direct RTL-to-GDS jobs.
+
+        The method is retained only as an explicit migration failure for callers
+        compiled against v1.0.  RTLScout-v2 is the sole RTL candidate producer.
+        """
+        raise RuntimeError(
+            "Direct SpecConversation-to-ORFS compilation was removed in v2; "
+            "materialize SpecIR and submit it through RTLScout-v2 instead"
         )
-        task = NaturalLanguageTaskCompiler().compile(
-            intent, project_id=session["project_id"], design_id=design_id,
-            rtl_path=rtl_path, top=proposal.top,
-        )
-        # The deterministic compiler remains authoritative; add only validated density/clock data.
-        parameters = dict(task.parameters)
-        parameters["place_density"] = proposal.place_density
-        inputs = dict(task.inputs)
-        inputs["clock"] = proposal.clock
-        task = TaskSpec.from_dict({**task.to_dict(), "parameters": parameters,
-                                   "inputs": inputs,
-                                   "task_id": f"spec-run-{session_id.removeprefix('spec-')}",
-                                   "labels": {**task.labels, "spec_session_id": session_id,
-                                              "spec_provider": session["provider"],
-                                              "spec_model": session["model"]}})
-        return task
 
 
 def _proposal_schema() -> dict[str, Any]:
@@ -455,11 +450,15 @@ def _proposal_schema() -> dict[str, Any]:
     properties = {
         "objective": {"type": "string"}, "functionality": {"type": "string"},
         "top": nullable_string, "clock": nullable_string, "reset": nullable_string,
-        "target_platform": {"type": "string", "enum": ["nangate45"]},
+        "target_platform": {"type": "string", "enum": sorted(ALLOWED_PLATFORMS)},
         "target_stage": {"type": "string", "enum": sorted(ALLOWED_STAGES)},
         "clock_period_ns": {"type": "number"},
         "core_utilization_pct": {"type": "number"},
-        "place_density": {"type": "number"}, "rtl_source": nullable_string,
+        "place_density": {"type": "number"},
+        "ports": {"type": "array", "items": {"type": "object", "properties": {
+            "name": {"type": "string"}, "direction": {"type": "string", "enum": ["input", "output", "inout"]},
+            "width": {"type": ["integer", "null"]},
+        }, "required": ["name", "direction", "width"], "additionalProperties": False}},
         "missing_fields": {"type": "array", "items": {"type": "string"}},
         "assumptions": {"type": "array", "items": {"type": "string"}},
         "clarification_questions": {"type": "array", "items": {"type": "string"}},
@@ -506,6 +505,24 @@ def _strings(value: Any, *, maximum: int) -> tuple[str, ...]:
     if not isinstance(value, (list, tuple)) or len(value) > maximum:
         raise ValueError("Expected a bounded string list")
     return tuple(_text(item, maximum=1000) for item in value if _text(item, maximum=1000))
+
+
+def _ports(value: Any) -> tuple[PortSpec, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, (list, tuple)) or len(value) > 256:
+        raise ValueError("ports must be a list of at most 256 entries")
+    if not all(isinstance(item, Mapping) for item in value):
+        raise ValueError("Each port must be an object")
+    result = tuple(PortSpec(
+        name=str(item.get("name") or ""), direction=str(item.get("direction") or ""),
+        width=item.get("width"),
+    ) for item in value)
+    for item in result:
+        item.validate()
+    if len({item.name for item in result}) != len(result):
+        raise ValueError("ports must have unique names")
+    return result
 
 
 def _now() -> str:

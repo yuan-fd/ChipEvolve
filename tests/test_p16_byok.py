@@ -19,7 +19,7 @@ PROPOSAL = {
     "clock": "clk", "reset": "rst_n", "target_platform": "nangate45",
     "target_stage": "finish", "clock_period_ns": 10,
     "core_utilization_pct": 10, "place_density": 0.45,
-    "rtl_source": "module counter(input clk); endmodule", "missing_fields": [],
+    "ports": [{"name": "clk", "direction": "input", "width": 1}], "missing_fields": [],
     "assumptions": [], "clarification_questions": [], "ready_for_execution": True,
 }
 

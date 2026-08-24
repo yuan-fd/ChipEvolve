@@ -15,6 +15,7 @@ CLI:
 from __future__ import annotations
 
 import argparse
+import html
 import math
 import re
 import sys
@@ -451,6 +452,33 @@ def generate_schematic_svg(text: str, highlight_path: list | None = None) -> str
 
     svg_bytes = dot.pipe(format="svg")
     return svg_bytes.decode("utf-8") if isinstance(svg_bytes, bytes) else svg_bytes
+
+
+def generate_module_svg(design_ir: dict) -> str:
+    """Render a module-level interface view from DesignIR, never guessed RTL."""
+    module = html.escape(str(design_ir.get("module") or "unknown"))
+    ports = list(design_ir.get("ports") or [])
+    inputs = [item for item in ports if item.get("direction") in {"input", "inout"}]
+    outputs = [item for item in ports if item.get("direction") == "output"]
+    rows = max(4, len(inputs), len(outputs)); height = 96 + rows * 30
+    body_height = max(210, 84 + rows * 30)
+    def label(item):
+        width = item.get("width")
+        suffix = f"[{width - 1}:0]" if isinstance(width, int) and width > 1 else ("[?]" if width is None else "")
+        return html.escape(f"{item.get('name', '?')} {suffix}")
+    lines = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 {height}" role="img">',
+             f'<rect width="820" height="{height}" fill="#f8f9fa" rx="8"/>',
+             f'<text x="410" y="30" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="700">{module} · module interface</text>',
+             f'<rect x="250" y="54" width="320" height="{body_height}" rx="7" fill="#fff" stroke="#2952a3" stroke-width="1.5"/>',
+             f'<text x="410" y="84" text-anchor="middle" font-family="monospace" font-size="14" fill="#2952a3">{module}</text>',
+             '<text x="410" y="108" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#5c6b7a">Elaborated module boundary · widths marked [?] are unavailable</text>']
+    for index, item in enumerate(inputs):
+        y = 132 + index * 30; lines += [f'<line x1="78" y1="{y}" x2="250" y2="{y}" stroke="#0969da"/>',
+            f'<circle cx="250" cy="{y}" r="3" fill="#0969da"/>', f'<text x="72" y="{y + 4}" text-anchor="end" font-family="monospace" font-size="12" fill="#0969da">{label(item)}</text>']
+    for index, item in enumerate(outputs):
+        y = 132 + index * 30; lines += [f'<line x1="570" y1="{y}" x2="742" y2="{y}" stroke="#bf8700"/>',
+            f'<circle cx="570" cy="{y}" r="3" fill="#bf8700"/>', f'<text x="748" y="{y + 4}" font-family="monospace" font-size="12" fill="#bf8700">{label(item)}</text>']
+    lines.append('</svg>'); return "\n".join(lines)
 
 
 def main(argv=None):

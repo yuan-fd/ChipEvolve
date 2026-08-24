@@ -19,24 +19,32 @@ def make_state(tmp_path: Path) -> ApiState:
     )
 
 
-def test_web_has_five_clear_bilingual_primary_tabs():
+def test_web_has_clear_bilingual_primary_tabs_and_tutorial():
     html = (ROOT / "apps" / "web" / "index.html").read_text(encoding="utf-8")
     tabs = re.findall(
         r'<button class="tab(?: active)?" data-route="[^"]+"[^>]*>([^<]+)</button>', html
     )
     assert tabs == [
         "Overview", "Frontend Design", "Backend Design",
-        "Projects &amp; Results", "Self-Evolution",
+        "Projects &amp; Results", "Self-Evolution", "Tutorial",
     ]
     assert '<html lang="en">' in html
     assert 'id="langZh"' in html and 'id="langEn"' in html
     assert "IC Craft" not in html
 
 
+def test_frontend_has_distinct_module_and_gate_schematic_views():
+    html = (ROOT / "apps" / "web" / "index.html").read_text(encoding="utf-8")
+    script = (ROOT / "apps" / "web" / "assets" / "app.js").read_text(encoding="utf-8")
+    assert 'data-design-view="module"' in html
+    assert '"frontend.view.module"' in script
+    assert '"module" : "schematic"' in script
+
+
 def test_web_uses_a_restrained_minimal_visual_system():
     css = (ROOT / "apps" / "web" / "assets" / "app.css").read_text(encoding="utf-8")
-    assert "--accent: #4d6bfe" in css
-    assert "--radius: 8px" in css
+    assert "--accent: #2952a3" in css
+    assert "--radius: 4px" in css
     assert "Georgia" not in css
     assert ".embedded-extension-detail:not(:empty)" in css
     assert "box-shadow: 0 18px" not in css

@@ -11,7 +11,7 @@ import pytest
 from openroad_platform_contracts import RuntimeStatus
 from openroad_platform_execution import (
     PluginRegistry, TaiWeiToolchainProfile, build_taiwei_task,
-    taiwei_plugin_manifest,
+    taiwei_plugin_manifest, taiwei_technology_profiles,
 )
 from openroad_platform_scheduler import RuntimeStore, WorkflowRuntime
 
@@ -111,6 +111,13 @@ def test_taiwei_task_defaults_and_generalised_cases():
     )
     assert linked.design_id == "design-07-deadbeef"
     assert linked.inputs["case"] == "gcd"
+
+
+def test_taiwei_technology_matrix_is_explicitly_bounded_to_pinned_profiles():
+    profiles = taiwei_technology_profiles()
+    assert set(profiles) == {"asap7_3D", "nangate45_3D", "asap7_nangate45_3D"}
+    assert "arbitrary_pdk" in profiles["asap7_3D"]["not_claimed"]
+    assert "thermal_signoff" in profiles["asap7_3D"]["not_claimed"]
 
 
 def test_taiwei_task_parameters_are_allowlisted_and_typed():

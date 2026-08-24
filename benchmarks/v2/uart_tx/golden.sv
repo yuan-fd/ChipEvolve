@@ -1,0 +1,1 @@
+module uart_tx(input clk,input rst_n,input tx_start,input[7:0] tx_data,output reg tx,output reg tx_busy);reg[3:0] n;reg[7:0] sh;always@(posedge clk)if(!rst_n)begin tx<=1;tx_busy<=0;n<=0;sh<=0;end else if(!tx_busy&&tx_start)begin tx_busy<=1;tx<=0;n<=0;sh<=tx_data;end else if(tx_busy)begin if(n<8)begin tx<=sh[0];sh<=sh>>1;n<=n+1;end else begin tx<=1;tx_busy<=0;end end endmodule

@@ -73,6 +73,12 @@ def test_rtlscout_task_rejects_secret_and_invalid_provider():
     serialized = json.dumps(task.to_dict())
     assert "API_KEY" not in serialized
     assert task.resources["credential_env"] is None
+    codex = build_rtlscout_task(
+        project_id="p4", design_id="adder", benchmark="simple_adder",
+        model="codex-cli:gpt-5.6-terra", max_steps=3,
+    )
+    assert codex.parameters["provider"] == "codex-cli"
+    assert codex.resources["credential_env"] is None
     with pytest.raises(ValueError, match="Unsupported"):
         build_rtlscout_task(
             project_id="p4", design_id="adder", benchmark="simple_adder",

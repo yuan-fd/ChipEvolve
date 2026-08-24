@@ -35,6 +35,28 @@ TAIWEI_3D_PLATFORMS = ("asap7_3D", "nangate45_3D", "asap7_nangate45_3D")
 CASE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
+def taiwei_technology_profiles() -> dict[str, dict[str, object]]:
+    """The complete supported 3D technology surface, not a generic PDK claim.
+
+    A profile declares what the pinned TaiWei flow can exercise.  It does not
+    assert signoff completeness, arbitrary-PDK compatibility, thermal analysis
+    or IR-drop analysis; callers must display those boundaries before submit.
+    """
+    common = {
+        "flow": "ord", "capabilities": ("rtl_to_3d_gds", "pin3d", "tier_def", "tier_odb"),
+        "required_inputs": ("tech_lef", "lef", "liberty", "rcx_rules", "3d_stack_rules"),
+        "validation_ladder": ("static_profile_lint", "2d_smoke", "tier_via_streamout", "benchmark_matrix"),
+        "not_claimed": ("arbitrary_pdk", "signoff_drc", "signoff_sta", "thermal_signoff", "ir_drop_signoff"),
+        "toolchain_anchor": {"orfs_commit": TAIWEI_ORFS_COMMIT,
+                             "openroad_commit": TAIWEI_OPENROAD_COMMIT},
+    }
+    return {
+        platform_name: {"technology_id": platform_name, "supported": True,
+                        "official": True, **common}
+        for platform_name in TAIWEI_3D_PLATFORMS
+    }
+
+
 @dataclass(frozen=True)
 class TaiWeiToolchainProfile:
     orfs_root: Path

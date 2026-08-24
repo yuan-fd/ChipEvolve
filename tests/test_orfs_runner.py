@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 
 from openroad_platform_contracts import RunRequest, RunStage, RunStatus
 from openroad_platform_execution import ORFSRunner
@@ -128,3 +129,38 @@ def test_explicit_minimum_die_area_excludes_utilization_floorplan_mode(tmp_path)
     assert "DIE_AREA = 0 0 20 20" in config
     assert "CORE_AREA = 2 2 18 18" in config
     assert "CORE_UTILIZATION" not in config
+
+
+def test_default_non_nangate_floorplan_has_a_complete_initialization_policy(tmp_path):
+    """Regression: DIE_AREA alone leaves ORFS floorplan undefined."""
+    orfs, bin_dir = _fake_runtime(tmp_path)
+    rtl = tmp_path / "tiny.v"
+    rtl.write_text("module tiny(input a, output y); assign y=~a; endmodule\n")
+    runner = ORFSRunner(
+        orfs_root=orfs, work_root=tmp_path / "runs",
+        openroad_bin=bin_dir / "openroad", yosys_bin=bin_dir / "yosys",
+    )
+    plan = runner.prepare(RunRequest(
+        rtl_path=str(rtl), top="tiny", platform="sky130hd",
+        core_utilization_pct=37, target_stage=RunStage.SYNTH,
+    ))
+    config = Path(plan.config_path).read_text()
+    assert "CORE_UTILIZATION = 37" in config
+    assert "DIE_AREA" not in config
+
+
+def test_finish_json_fallback_preserves_terminal_qor_without_analysis_package(tmp_path):
+    orfs, bin_dir = _fake_runtime(tmp_path)
+    rtl = tmp_path / "top.v"; rtl.write_text("module top; endmodule\n")
+    runner = ORFSRunner(orfs_root=orfs, work_root=tmp_path / "runs",
+                        openroad_bin=bin_dir / "openroad", yosys_bin=bin_dir / "yosys")
+    plan = runner.prepare(RunRequest(rtl_path=str(rtl), top="top"))
+    report = Path(plan.workdir) / "logs/nangate45/top/base/6_report.json"
+    report.parent.mkdir(parents=True)
+    report.write_text(json.dumps({"finish__design__instance__area": 12.5,
+                                  "finish__timing__setup__ws": 0.2,
+                                  "finish__power__total": 0.004}), encoding="utf-8")
+    values = {metric.name: metric.value for metric in runner._collect_finish_metrics_fallback(plan)}
+    assert values == {"finish__design__instance__area": 12.5,
+                      "finish__timing__setup__ws": 0.2,
+                      "finish__power__total": 0.004}

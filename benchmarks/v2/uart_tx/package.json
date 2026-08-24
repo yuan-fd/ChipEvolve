@@ -1,0 +1,1 @@
+{"name":"uart_tx","top":"uart_tx","tier":"controller","description":"8N1 UART transmitter at one bit per clock enable","spec":"spec.md","testbench":"tb.sv","golden_rtl":"golden.sv","oracle_origin":"platform_authored_fixture","oracle_status":"benchmark_only_not_user_spec_oracle"}

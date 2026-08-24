@@ -37,6 +37,14 @@ from .learning import (
     ShadowPolicyProposal,
     TrajectoryStep,
 )
+from .experiment_graph import (
+    ActionKind,
+    ActionSpec,
+    ExperimentEdge,
+    ExperimentNode,
+    ExperimentNodeKind,
+)
+from .rtl_frontend import PortSpec, RTLCandidate, SpecIR, VerificationPackage
 
 __all__ = [
     "Artifact",
@@ -70,4 +78,13 @@ __all__ = [
     "Prediction",
     "ShadowPolicyProposal",
     "TrajectoryStep",
+    "ActionKind",
+    "ActionSpec",
+    "ExperimentEdge",
+    "ExperimentNode",
+    "ExperimentNodeKind",
+    "PortSpec",
+    "RTLCandidate",
+    "SpecIR",
+    "VerificationPackage",
 ]

@@ -85,3 +85,16 @@ def test_tampered_bundle_and_wrong_context_are_rejected(tmp_path):
                                                          for item in bundle.records))
     with pytest.raises(ValueError, match="tampered"):
         rag.replay(tampered, _context())
+
+
+def test_external_reference_donor_is_searchable_but_never_action_eligible(tmp_path):
+    rag = EvidenceRAG(tmp_path / "rag.db")
+    donor = _record(
+        "DPLEvolve teacher route card suggests a detailed-placement hypothesis",
+        kind="reference_donor", verified=False, scope="platform_general", suffix="e",
+    )
+    rag.add(donor)
+    bundle = rag.retrieve("teacher placement hypothesis", _context())
+    assert [item["record_id"] for item in bundle.records] == [donor.record_id]
+    assert bundle.records[0]["eligible_for_proposal"] is False
+    assert rag.retrieve("teacher placement hypothesis", _context(), action_eligible_only=True).records == ()

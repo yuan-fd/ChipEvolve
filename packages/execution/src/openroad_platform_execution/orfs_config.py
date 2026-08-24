@@ -99,8 +99,24 @@ def write_design_files(
         else:
             lines.append(f"export CORE_UTILIZATION = {core_utilization_pct:g}")
     else:
-        minimum_die = {"sky130hd": 60, "asap7": 30, "gf180": 80}.get(platform, 50)
-        lines.append(f"export DIE_AREA = 0 0 {minimum_die} {minimum_die}")
+        # ORFS needs one complete floorplan-initialisation policy.  A DIE_AREA
+        # on its own deliberately disables its automatic utilisation-based
+        # sizing, but still leaves no CORE_AREA for ``initialize_floorplan``.
+        # That used to make every generated sky130/asap7/gf180 task stop at
+        # floorplan with "No floorplan initialization method specified".
+        #
+        # Use the requested utilization for the normal, scalable case.  When
+        # a caller explicitly asks for a minimum die size, provide both die and
+        # core rectangles so that this remains a complete, valid alternative.
+        if minimum_die_size_um is None:
+            lines.append(f"export CORE_UTILIZATION = {core_utilization_pct:g}")
+        else:
+            size = float(minimum_die_size_um)
+            margin = max(1.0, min(10.0, size * 0.1))
+            lines.extend((
+                f"export DIE_AREA = 0 0 {size:g} {size:g}",
+                f"export CORE_AREA = {margin:g} {margin:g} {size-margin:g} {size-margin:g}",
+            ))
 
     config_path = config_dir / "config.mk"
     config_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
