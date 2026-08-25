@@ -67,6 +67,10 @@ def _args(tmp_path):
                 "per_design_secondary": {"gcd": {
                     "mean_paired_difference": .5, "raw_p_value": .1,
                     "holm_adjusted_p_value": .4, "reject_at_0_05": False}}},
+            "design_cluster_sensitivity": {
+                "mean_accuracy_difference": .5,
+                "bootstrap_mean_95_ci": {"lower": .3, "upper": .7},
+                "sign_flip": {"p_value": .125}},
             "question_rows": [{"question_id": "q01", "label": "finish WNS",
                                "kpi_only": {"accuracy": .5},
                                "typed_edair": {"accuracy": 1.0},

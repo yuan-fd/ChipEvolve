@@ -144,6 +144,8 @@ def build(args: argparse.Namespace) -> tuple[str, list[dict], dict]:
                                       pct(ratio(false_answers, answers))))
     edair_paired = edair["paired_statistics"]
     edair_ci = edair_paired["bootstrap_mean_95_ci"]
+    edair_cluster = edair["design_cluster_sensitivity"]
+    edair_cluster_ci = edair_cluster["bootstrap_mean_95_ci"]
     edair_question_rows = [(
         row["question_id"], row["label"], pct(row["kpi_only"]["accuracy"]),
         pct(row["typed_edair"]["accuracy"]), pct(row["accuracy_difference"]),
@@ -234,6 +236,7 @@ def build(args: argparse.Namespace) -> tuple[str, list[dict], dict]:
 {table(("设计","观察接口","调用","答案","正确","准确率","UNKNOWN率","胡答率"), edair_design_rows)}
 {table(("设计","typed−KPI平均增量","原始p","Holm校正p","0.05显著"), edair_secondary_rows)}
 <p>总的 20 个配对调用差异显著；但每个设计只有 5 对，双侧精确检验的最小粒度有限，四重 Holm 校正后都没有单独达到 0.05。报告保留这个结果，不用总体显著性冒充“每个设计都已显著”。</p>
+<p class='boundary'><b>防止伪重复：</b>五次调用共享同一份设计上下文，不能当作 20 个独立芯片。把每个设计的五次结果先取平均、再以四个设计为统计单位时，平均增量仍为 {pct(edair_cluster['mean_accuracy_difference'])}，design-cluster bootstrap 95% CI 为 [{pct(edair_cluster_ci['lower'])}, {pct(edair_cluster_ci['upper'])}]，但精确 sign-flip p={num(edair_cluster['sign_flip']['p_value'])}。因此能证明这四个上下文内 typed 接口稳定改善事实读取，不能据此宣称已经覆盖任意设计分布。</p>
 <h3>6.2 十二类问题逐项结果</h3>
 {table(("题号","事实类型","KPI-only","Typed EDAIR","准确率增量"), edair_question_rows)}
 <p>UNKNOWN 不是自动算正确：只有标准答案本来就是 UNKNOWN 时才正确。若事实存在但模型说 UNKNOWN，它仍然是漏答；若事实不存在却猜一个数字，则计入胡答。这样能区分“谨慎但没找到”和“自信地编造”。</p>

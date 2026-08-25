@@ -89,6 +89,9 @@ def analyze(report_path: Path, protocol_path: Path) -> dict:
                 "typed_edair_false_answers": typed["false_answers"],
             })
     differences = [row["paired_difference"] for row in paired_rows]
+    design_means = {design: statistics.fmean(
+        row["paired_difference"] for row in paired_rows if row["design"] == design)
+        for design in protocol["designs"]}
     per_design = {}
     for design in protocol["designs"]:
         selected = [row["paired_difference"] for row in paired_rows if row["design"] == design]
@@ -130,6 +133,17 @@ def analyze(report_path: Path, protocol_path: Path) -> dict:
                 "bootstrap_mean_95_ci": _bootstrap_mean(differences, seed=20260825),
                 "sign_flip": _sign_flip(differences),
                 "per_design_secondary": per_design,
+            },
+            "design_cluster_sensitivity": {
+                "unit": "design-level mean over five model repeats",
+                "design_count": len(design_means), "design_mean_differences": design_means,
+                "mean_accuracy_difference": statistics.fmean(design_means.values()),
+                "bootstrap_mean_95_ci": _bootstrap_mean(
+                    list(design_means.values()), seed=20260826),
+                "sign_flip": _sign_flip(list(design_means.values())),
+                "interpretation": (
+                    "This four-design sensitivity analysis does not use repeated model calls "
+                    "as independent design generalization evidence."),
             },
             "paired_rows": paired_rows, "question_rows": question_rows,
             "claim_boundary": (report["claim_boundary"] +

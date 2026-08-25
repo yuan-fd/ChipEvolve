@@ -24,3 +24,9 @@ def test_holm_adjustment_is_monotonic():
     assert adjusted["a"]["holm_adjusted_p_value"] == .03
     assert adjusted["b"]["holm_adjusted_p_value"] == .06
     assert adjusted["c"]["holm_adjusted_p_value"] == .2
+
+
+def test_four_design_sign_flip_cannot_claim_small_p_from_repeated_calls():
+    result = MODULE._sign_flip([.9, .8, .7, .6])
+    assert result["draws"] == 16
+    assert result["p_value"] == 2 / 16
