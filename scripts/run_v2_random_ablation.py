@@ -128,6 +128,8 @@ def main() -> int:
         rows.append({
             "design": design_name, "design_record": design_records[design_name],
             "baseline": summaries[0], "candidates": summaries[1:], "best": best,
+            "terminal_statuses": [state.runtime_store.get_run(run_id).status.value
+                                  for item in summaries for run_id in item["run_ids"]],
             "best_utility": best["utility"],
             "met_practical_threshold": bool(best["utility"] is not None
                                              and best["utility"] >= .005),

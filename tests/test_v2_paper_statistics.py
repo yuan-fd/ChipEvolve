@@ -1,5 +1,6 @@
 import importlib.util
 from pathlib import Path
+import sqlite3
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts/analyze_v2_paper_parameter_matrix.py"
@@ -57,3 +58,18 @@ def test_objective_profile_replay_selects_measured_tradeoffs():
     assert replay["area"]["selected_index"] == 1
     assert replay["timing"]["selected_index"] == 2
     assert replay["performance"] == replay["timing"]
+
+
+def test_runtime_rows_preserve_failures_and_registered_order(tmp_path):
+    database = tmp_path / "runtime.db"
+    with sqlite3.connect(database) as connection:
+        connection.execute("CREATE TABLE runtime_runs "
+                           "(run_id TEXT PRIMARY KEY, status TEXT, started_at TEXT, ended_at TEXT)")
+        connection.executemany("INSERT INTO runtime_runs VALUES (?, ?, ?, ?)", [
+            ("a", "failed", "2026-01-01T00:00:00+00:00", "2026-01-01T00:01:00+00:00"),
+            ("b", "succeeded", "2026-01-01T00:00:00+00:00", "2026-01-01T00:02:00+00:00")])
+
+    rows = MODULE._runtime_rows(database, ["b", "a"])
+
+    assert [row["run_id"] for row in rows] == ["b", "a"]
+    assert [row["status"] for row in rows] == ["succeeded", "failed"]

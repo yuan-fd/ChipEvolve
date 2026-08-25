@@ -13,6 +13,7 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
+FULL_CANDIDATE_GATES = ("compile_lint", "simulation", "mutation_quality", "ppa")
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -37,6 +38,21 @@ def _kpi(root: Path, run_id: str) -> dict:
     return ((view.get("analysis_report") or {}).get("report") or {}).get("kpi") or {}
 
 
+def _full_candidate_gate_result(checks: list[dict], candidate_id: str | None) -> dict:
+    """Judge an authored candidate at the product boundary, not inside RTLScout.
+
+    RTLScout's own evaluator only covers its local lint/simulation loop.  A
+    paper-level first-candidate success additionally requires the independently
+    frozen testbench, mutation-quality gate, and the full ORFS PPA/GDS run.
+    """
+    selected = [item for item in checks if item.get("candidate_id") == candidate_id]
+    outcomes = {kind: next((item.get("status") for item in reversed(selected)
+                            if item.get("check_kind") == kind), "missing")
+                for kind in FULL_CANDIDATE_GATES}
+    return {"passed": all(outcomes[kind] == "passed" for kind in FULL_CANDIDATE_GATES),
+            "outcomes": outcomes}
+
+
 def _attempt(root: Path, design: str, index: int) -> dict:
     report = json.loads((root / "report.json").read_text(encoding="utf-8"))
     pipeline = report.get("pipeline") or {}; lineage = report.get("lineage") or {}
@@ -49,6 +65,12 @@ def _attempt(root: Path, design: str, index: int) -> dict:
         histories.append({"path": str(path.relative_to(root)), **value})
     evaluations = list(chain.from_iterable(item.get("candidates") or [] for item in histories))
     first = evaluations[0] if evaluations else None
+    rtlscout_steps = [item for item in pipeline.get("steps") or []
+                      if item.get("role") == "rtlscout"]
+    first_candidate_id = (((rtlscout_steps[0].get("collection") or {}).get("candidate_id"))
+                          if rtlscout_steps else
+                          (candidates[0].get("candidate_id") if candidates else None))
+    first_gate = _full_candidate_gate_result(checks, first_candidate_id)
     ppa_check = next((item for item in reversed(checks)
                       if item.get("candidate_id") == final_id and item.get("check_kind") == "ppa"), None)
     run_id = ((ppa_check or {}).get("detail") or {}).get("run_id")
@@ -67,9 +89,13 @@ def _attempt(root: Path, design: str, index: int) -> dict:
         "rtl_sha256": (final.get("provenance") or {}).get("rtl_sha256"),
         "testbench_sha256": refs[0].rsplit(":", 1)[-1] if refs else None,
         "candidate_evaluations": len(evaluations),
-        "first_authored_candidate_passed": bool(first and first.get("passed") is True),
-        "iterative_rescue": bool(report.get("status") == "passed" and first
-                                  and first.get("passed") is not True),
+        "first_authored_candidate_id": first_candidate_id,
+        "first_rtlscout_local_evaluator_passed": bool(first and first.get("passed") is True),
+        "first_authored_candidate_gate_outcomes": first_gate["outcomes"],
+        "first_authored_candidate_passed": first_gate["passed"],
+        "iterative_rescue": bool(report.get("status") == "passed"
+                                  and not first_gate["passed"]
+                                  and final_id != first_candidate_id),
         "mutation": {key: mutation.get(key) for key in ("generated_count", "executable_count",
                      "killed_count", "survived_count", "invalid_count", "mutation_score")},
         "rtl_revisions": pipeline.get("rtl_revision"),
@@ -115,7 +141,9 @@ def main() -> int:
                         "iterative_rescues": sum(x["iterative_rescue"] for x in selected),
                         "unique_rtl_hashes": len({x["rtl_sha256"] for x in passed if x["rtl_sha256"]}),
                         "unique_testbench_hashes": len({x["testbench_sha256"] for x in selected if x["testbench_sha256"]}),
-                        "mutation_blocked_revisions": sum(len(x["revision_history"]) for x in selected),
+                        "mutation_blocked_revisions": sum(
+                            sum(item.get("failed_stage") == "mutation_quality"
+                                for item in x["revision_history"]) for x in selected),
                         "ppa_vs_hidden_golden": ppa})
     total = len(rows); success = sum(row["passed"] for row in rows)
     result = {"schema_version": 1, "kind": "v2_paper_rtl_frozen_analysis",

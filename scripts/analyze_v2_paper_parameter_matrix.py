@@ -9,6 +9,7 @@ import json
 import math
 from pathlib import Path
 import random
+import sqlite3
 import statistics
 from typing import Iterable
 
@@ -94,6 +95,21 @@ def _duration_hours(rows: Iterable[dict]) -> float:
     return total
 
 
+def _runtime_rows(database: Path, run_ids: list[str]) -> list[dict]:
+    if not database.is_file():
+        raise FileNotFoundError(database)
+    with sqlite3.connect(database) as connection:
+        connection.row_factory = sqlite3.Row
+        rows = connection.execute(
+            f"SELECT run_id, status, started_at, ended_at FROM runtime_runs "
+            f"WHERE run_id IN ({','.join('?' for _ in run_ids)})", run_ids).fetchall()
+    found = {row["run_id"]: dict(row) for row in rows}
+    missing = [run_id for run_id in run_ids if run_id not in found]
+    if missing:
+        raise ValueError(f"Runtime DB is missing registered random-arm runs: {missing}")
+    return [found[run_id] for run_id in run_ids]
+
+
 def _best_curve(items: list[dict], floor: float) -> tuple[list[float], dict]:
     best = floor; curve = []; selected: dict = {}
     for item in items:
@@ -151,14 +167,17 @@ def _random_cell(path: Path, design: str, floor: float) -> dict:
     row = next(item for item in report["design_rows"] if item["design"] == design)
     items = [row["baseline"], *row["candidates"]]
     curve, selected = _best_curve(items, floor)
-    statuses = report.get("terminal_statuses", [])
+    run_ids = [run_id for item in items for run_id in item["run_ids"]]
+    runtime_rows = _runtime_rows(path / "runtime.db", run_ids)
+    statuses = [item["status"] for item in runtime_rows]
     return {"best_utility": curve[-1], "curve": curve,
             "profile_replay": _profile_replay(items),
             "selected_round": selected.get("vector_index"),
             "selected_summary": selected.get("summary"),
             "terminal_status": "completed" if all(x == "succeeded" for x in statuses) else "failed",
-            "failure_runs": None, "run_count": 12,
-            "summed_run_wall_hours": None}
+            "failure_runs": sum(status != "succeeded" for status in statuses),
+            "run_count": len(runtime_rows),
+            "summed_run_wall_hours": _duration_hours(runtime_rows)}
 
 
 def analyze(matrix: Path, protocol_path: Path) -> dict:
