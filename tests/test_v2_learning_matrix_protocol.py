@@ -13,3 +13,5 @@ def test_learning_protocol_covers_all_ordered_pairs_and_real_randomization():
     runner = (ROOT / "scripts/run_v2_paper_learning_matrix.py").read_text()
     assert "itertools.permutations" in runner
     assert '"--seed"' in runner
+    assert "except subprocess.TimeoutExpired" in runner
+    assert "final reconciliation skipped" in runner

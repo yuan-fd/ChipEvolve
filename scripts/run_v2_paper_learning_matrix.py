@@ -50,15 +50,26 @@ def main() -> int:
             "--max-parallel", "12", "--seed", str(seed),
         ]
         started = datetime.now(timezone.utc).isoformat()
+        execution_error = None
         with log_path.open("w", encoding="utf-8") as log:
-            completed = subprocess.run(command, cwd=ROOT, text=True, stdout=log,
-                                       stderr=subprocess.STDOUT, timeout=14_400, check=False)
-            if completed.returncode == 0:
-                audited = subprocess.run([
-                    sys.executable, str(ROOT / "scripts/audit_v2_causal_holdout.py"),
-                    "--experiment", str(destination),
-                ], cwd=ROOT, text=True, stdout=log, stderr=subprocess.STDOUT,
-                    timeout=900, check=False)
+            try:
+                completed = subprocess.run(command, cwd=ROOT, text=True, stdout=log,
+                                           stderr=subprocess.STDOUT, timeout=14_400, check=False)
+            except subprocess.TimeoutExpired as exc:
+                completed = None
+                execution_error = f"TimeoutExpired after {exc.timeout} seconds"
+                log.write(execution_error + "\n")
+            if completed is not None and completed.returncode == 0:
+                try:
+                    audited = subprocess.run([
+                        sys.executable, str(ROOT / "scripts/audit_v2_causal_holdout.py"),
+                        "--experiment", str(destination),
+                    ], cwd=ROOT, text=True, stdout=log, stderr=subprocess.STDOUT,
+                        timeout=900, check=False)
+                except subprocess.TimeoutExpired as exc:
+                    audited = None
+                    execution_error = f"Auditor TimeoutExpired after {exc.timeout} seconds"
+                    log.write(execution_error + "\n")
             else:
                 audited = None
         report = json.loads((destination / "report.json").read_text(encoding="utf-8")) \
@@ -67,9 +78,11 @@ def main() -> int:
         row = {
             "source": source, "holdout": holdout, "seed": seed,
             "started_at": started, "ended_at": datetime.now(timezone.utc).isoformat(),
-            "returncode": completed.returncode,
+            "returncode": completed.returncode if completed is not None else None,
             "audit_returncode": audited.returncode if audited is not None else None,
-            "accepted": completed.returncode == 0 and audited is not None and audited.returncode == 0,
+            "accepted": completed is not None and completed.returncode == 0
+                        and audited is not None and audited.returncode == 0,
+            "error": execution_error,
             "outcome": (validation.get("validation") or {}).get("outcome"),
             "knowledge_status": (validation.get("knowledge_card") or {}).get("status"),
             "source_interaction": (report.get("source_report") or {}).get("interaction_effect"),
@@ -86,13 +99,23 @@ def main() -> int:
     # auditor defect must not trigger new EDA runs or discard raw outcomes.
     for row in rows:
         with Path(row["log"]).open("a", encoding="utf-8") as log:
-            audited = subprocess.run([
-                sys.executable, str(ROOT / "scripts/audit_v2_causal_holdout.py"),
-                "--experiment", row["destination"],
-            ], cwd=ROOT, text=True, stdout=log, stderr=subprocess.STDOUT,
-                timeout=900, check=False)
-        row["audit_returncode"] = audited.returncode
-        row["accepted"] = row["returncode"] == 0 and audited.returncode == 0
+            if not Path(row["destination"], "report.json").is_file():
+                audited = None
+                log.write("final reconciliation skipped: report.json is absent\n")
+            else:
+                try:
+                    audited = subprocess.run([
+                        sys.executable, str(ROOT / "scripts/audit_v2_causal_holdout.py"),
+                        "--experiment", row["destination"],
+                    ], cwd=ROOT, text=True, stdout=log, stderr=subprocess.STDOUT,
+                        timeout=900, check=False)
+                except subprocess.TimeoutExpired as exc:
+                    audited = None
+                    row["error"] = f"Final auditor TimeoutExpired after {exc.timeout} seconds"
+                    log.write(row["error"] + "\n")
+        row["audit_returncode"] = audited.returncode if audited is not None else None
+        row["accepted"] = (row["returncode"] == 0 and audited is not None
+                           and audited.returncode == 0)
     result = {
         "schema_version": 1, "kind": "v2_paper_learning_matrix",
         "protocol_id": protocol["protocol_id"],
