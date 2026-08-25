@@ -35,6 +35,8 @@ def test_seeded_bootstrap_is_reproducible():
     first = MODULE._bootstrap_median([-.1, 0, .1, .2], seed=11, draws=1000)
     second = MODULE._bootstrap_median([-.1, 0, .1, .2], seed=11, draws=1000)
     assert first == second
+    mean = MODULE._bootstrap_mean([1.0, 1.0, 1.0, 1.0], seed=11, draws=100)
+    assert mean["estimate"] == mean["lower"] == mean["upper"] == 1.0
 
 
 def test_matrix_runner_freezes_protocol_bytes_before_execution():

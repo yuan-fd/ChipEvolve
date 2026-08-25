@@ -21,6 +21,10 @@ def _args(tmp_path):
             "objective_profile_replay": {"selection_difference_from_balanced": {
                 "bo_gp": {"area": 1, "timing": 0, "performance": 0, "power": 1},
                 "seeded_random": {"area": 0, "timing": 1, "performance": 1, "power": 0}}},
+            "design_cluster_sensitivity": {
+                "mean_paired_difference": .02,
+                "bootstrap_mean_95_ci": {"lower": -.01, "upper": .04},
+                "sign_flip": {"p_value": .125}},
             "claim_boundary": "parameter boundary",
         },
         "learning": {

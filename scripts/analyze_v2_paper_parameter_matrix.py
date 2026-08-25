@@ -74,6 +74,15 @@ def _bootstrap_median(values: list[float], *, seed: int, draws: int = 50_000) ->
             "lower": _quantile(samples, .025), "upper": _quantile(samples, .975)}
 
 
+def _bootstrap_mean(values: list[float], *, seed: int, draws: int = 50_000) -> dict:
+    rng = random.Random(seed); n = len(values)
+    samples = [statistics.fmean(values[rng.randrange(n)] for _ in range(n))
+               for _ in range(draws)]
+    return {"method": "seeded_nonparametric_design_bootstrap", "draws": draws,
+            "estimate": statistics.fmean(values), "confidence_level": .95,
+            "lower": _quantile(samples, .025), "upper": _quantile(samples, .975)}
+
+
 def _holm(pvalues: dict[str, float]) -> dict[str, dict]:
     ordered = sorted(pvalues, key=pvalues.get); count = len(ordered); running = 0.0
     result: dict[str, dict] = {}
@@ -198,6 +207,9 @@ def analyze(matrix: Path, protocol_path: Path) -> dict:
                          else "seeded_random" if random_cell["best_utility"] > bo["best_utility"]
                          else "tie"})
     differences = [row["paired_difference"] for row in rows]
+    design_mean_differences = {name: statistics.fmean(
+        row["paired_difference"] for row in rows if row["design"] == name)
+        for name in DESIGNS}
     per_design_tests = {name: _sign_flip_pvalue(
         [row["paired_difference"] for row in rows if row["design"] == name],
         seed=20260825 + index) for index, name in enumerate(DESIGNS)}
@@ -219,6 +231,19 @@ def analyze(matrix: Path, protocol_path: Path) -> dict:
                      for name in ("bo_gp", "seeded_random", "tie")},
         },
         "per_design_secondary": per_design_tests,
+        "design_cluster_sensitivity": {
+            "unit": "design-level mean over ten paired optimizer-policy seeds",
+            "design_count": len(DESIGNS),
+            "design_mean_differences": design_mean_differences,
+            "mean_paired_difference": statistics.fmean(design_mean_differences.values()),
+            "sign_flip": _sign_flip_pvalue(
+                list(design_mean_differences.values()), seed=20260826),
+            "bootstrap_mean_95_ci": _bootstrap_mean(
+                list(design_mean_differences.values()), seed=20260826),
+            "interpretation": (
+                "This sensitivity analysis does not treat optimizer seeds on the same "
+                "design as independent cross-design generalization evidence."),
+        },
         "threshold_hit_rate": {arm: sum(row[arm]["best_utility"] >= .005 for row in rows) / len(rows)
                                for arm in ("bo_gp", "seeded_random")},
         "failure_runs": {arm: sum((row[arm]["failure_runs"] or 0) for row in rows)

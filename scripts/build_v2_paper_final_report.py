@@ -119,6 +119,8 @@ def build(args: argparse.Namespace) -> tuple[str, list[dict], dict]:
         row["winner"], row["bo_gp"]["failure_runs"],
         row["seeded_random"]["failure_runs"],
     ) for row in parameter["cells"]]
+    parameter_cluster = parameter["design_cluster_sensitivity"]
+    parameter_cluster_ci = parameter_cluster["bootstrap_mean_95_ci"]
     profile_rows = []
     profile_data = parameter["objective_profile_replay"]["selection_difference_from_balanced"]
     for arm, values in profile_data.items():
@@ -219,6 +221,7 @@ def build(args: argparse.Namespace) -> tuple[str, list[dict], dict]:
 {table(("策略","area改选次数","timing改选次数","performance改选次数","power改选次数"), profile_rows)}
 <details><summary>展开查看全部 40 个 design×seed 配对单元</summary>{table(("设计","策略seed","BO最好效用","随机最好效用","配对差","赢家","BO失败run","随机失败run"), parameter_cell_rows)}</details>
 <p>“BO 赢”只在同一个设计、同一个策略 seed、同一组 OpenROAD replica seed 和同样三次新候选预算内判断。正的配对差表示 BO/GP 更好；负数表示随机搜索更好；任何失败都留在失败列中。</p>
+<p class='boundary'><b>设计聚类敏感性：</b>先在每个设计内汇总 10 个策略 seed，再把四个设计当统计单位，平均 BO−random 差为 {num(parameter_cluster['mean_paired_difference'])}，design bootstrap 95% CI 为 [{num(parameter_cluster_ci['lower'])}, {num(parameter_cluster_ci['upper'])}]，精确 sign-flip p={num(parameter_cluster['sign_flip']['p_value'])}。这项保守分析防止把同一设计的十个优化器 seed 冒充十个独立芯片。</p>
 <p class='boundary'>{esc(parameter['claim_boundary'])}</p></section>
 <section><h2>5. 自演化：不是“成功就记下来”，而是先问能不能迁移</h2>
 <p>四个设计组成全部 12 个有方向的 source→holdout 对。每对先在 source 做 utilization×density 的重复 2×2 干预，再在未参与学习的 holdout 设计复验。每个角三个配对 OR_SEED。方向相反就把规则标为 refuted，不能进入可执行知识。</p>
