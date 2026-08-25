@@ -114,17 +114,22 @@ def relative_utility(summary: Mapping[str, Any], reference: Mapping[str, Any],
 
 
 def stalled_decision(*, candidate_utility: float | None, best_utility: float,
-                     minimum_relative_improvement: float, stalled_rounds: int) -> dict[str, Any]:
+                     minimum_relative_improvement: float, stalled_rounds: int,
+                     has_feasible_incumbent: bool = True) -> dict[str, Any]:
     if minimum_relative_improvement < 0:
         raise ValueError("minimum_relative_improvement must be nonnegative")
-    improvement = None if candidate_utility is None else candidate_utility - best_utility
-    promoted = improvement is not None and improvement >= minimum_relative_improvement
+    improvement = (None if candidate_utility is None or not has_feasible_incumbent
+                   else candidate_utility - best_utility)
+    promoted = (candidate_utility is not None and not has_feasible_incumbent) or (
+        improvement is not None and improvement >= minimum_relative_improvement)
     return {
         "promoted": promoted, "candidate_utility": candidate_utility,
         "previous_best_utility": best_utility, "incremental_improvement": improvement,
         "minimum_relative_improvement": minimum_relative_improvement,
         "stalled_rounds": 0 if promoted else stalled_rounds + 1,
-        "reason": ("pre-registered improvement threshold met" if promoted
+        "reason": ("first hard-constraint-feasible candidate" if promoted
+                   and not has_feasible_incumbent
+                   else "pre-registered improvement threshold met" if promoted
                    else "ineligible or below pre-registered improvement threshold"),
     }
 

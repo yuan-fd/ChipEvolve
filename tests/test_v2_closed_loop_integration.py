@@ -123,6 +123,27 @@ def test_closed_loop_freezes_spec_clock_outside_bo_space(tmp_path, monkeypatch):
         state.start_bayesian_closed_loop(payload)
 
 
+def test_all_infeasible_search_ends_at_diagnosis_not_false_completed(tmp_path, monkeypatch):
+    state, design = _state(tmp_path, monkeypatch)
+    payload = _payload(design["id"])
+    payload.update({
+        "experiment_key": "all-infeasible",
+        "max_rounds": 1,
+        "hard_constraints": [
+            {"metric": "drc_errors", "operator": "<=", "threshold": -1.0}],
+    })
+    created = state.start_bayesian_closed_loop(payload)
+    result = state.run_bayesian_closed_loop_to_boundary(
+        created["pipeline_id"], {"max_transitions": 8})["state"]
+
+    assert result["status"] == "diagnosis_required"
+    assert result["best_feasible"] is False
+    assert result["best_utility"] == -1.0
+    assert result["history"][0]["utility"] is None
+    assert result["diagnosis"]["reason"] == (
+        "no hard-constraint-feasible baseline or candidate")
+
+
 def test_research_flow_timeout_is_bounded_and_frozen_in_every_replica(tmp_path, monkeypatch):
     state, design = _state(tmp_path, monkeypatch)
     payload = _payload(design["id"])

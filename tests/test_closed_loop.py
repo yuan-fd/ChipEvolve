@@ -51,6 +51,16 @@ def test_failed_constraint_blocks_promotion_and_produces_non_executable_diagnosi
     assert packet["violated_constraints"]
 
 
+def test_first_feasible_candidate_replaces_an_infeasible_baseline_even_if_relative_qor_is_negative():
+    decision = stalled_decision(
+        candidate_utility=-.2, best_utility=-1.0,
+        minimum_relative_improvement=.01, stalled_rounds=0,
+        has_feasible_incumbent=False)
+    assert decision["promoted"] is True
+    assert decision["incremental_improvement"] is None
+    assert decision["reason"] == "first hard-constraint-feasible candidate"
+
+
 def test_paired_replica_seeds_are_stable_distinct_and_seed_sensitive():
     first = paired_replica_seeds(20260825, 5)
     assert first == paired_replica_seeds(20260825, 5)

@@ -63,6 +63,21 @@ def closed_loop_rows(name: str, report: dict) -> list[tuple[object, ...]]:
     return rows
 
 
+def closed_loop_effective(report: dict) -> dict:
+    state = report["checkpoint"]["state"]
+    feasible = [item for item in state.get("history") or []
+                if (item.get("summary") or {}).get("eligible") is True]
+    if not feasible:
+        return {"status": "diagnosis_required: no feasible vector",
+                "best_utility": None, "feasible_rounds": 0,
+                "checkpoint_status": state["status"]}
+    utilities = [item.get("utility") for item in feasible
+                 if isinstance(item.get("utility"), (int, float))]
+    return {"status": state["status"],
+            "best_utility": max(utilities) if utilities else state.get("best_utility"),
+            "feasible_rounds": len(feasible), "checkpoint_status": state["status"]}
+
+
 def table(headers: tuple[str, ...], rows: list[tuple[object, ...]]) -> str:
     head = "".join(f"<th>{esc(item)}</th>" for item in headers)
     body = "".join("<tr>" + "".join(f"<td>{esc(item)}</td>" for item in row) + "</tr>"
@@ -84,6 +99,7 @@ def build(args: argparse.Namespace) -> tuple[str, list[dict], dict]:
     rtl = load(args.rtl); edair = load(args.edair); agent = load(args.agent)
     reference = load(args.references)
     aes = load(args.aes); jpeg = load(args.jpeg)
+    aes_effective = closed_loop_effective(aes); jpeg_effective = closed_loop_effective(jpeg)
     p = parameter["primary"]; ci = p["bootstrap_median_95_ci"]
     eda_kpi, eda_typed = edair["totals"]["kpi_only"], edair["totals"]["typed_edair"]
     learning_arms = learning["arms"]
@@ -196,9 +212,9 @@ def build(args: argparse.Namespace) -> tuple[str, list[dict], dict]:
         {"study": "agent-architecture", "unit": "injected-failure suite", "planned": 1,
          "observed": 1, "status": agent["status"]},
         {"study": "AES external smoke", "unit": "full ORFS flow", "planned": 4,
-         "observed": len(aes["runtime_runs"]), "status": aes["checkpoint"]["state"]["status"]},
+         "observed": len(aes["runtime_runs"]), "status": aes_effective["status"]},
         {"study": "JPEG external smoke", "unit": "full ORFS flow", "planned": 4,
-         "observed": len(jpeg["runtime_runs"]), "status": jpeg["checkpoint"]["state"]["status"]},
+         "observed": len(jpeg["runtime_runs"]), "status": jpeg_effective["status"]},
     ]
     refs = [
         ("EDA-Aware RTL Generation (DATE 2025)", "EDA 反馈进入 RTL 生成评价，而非只做语法生成", "写/审分离、完整质量门和 GDS 条件 PPA", "doi:10.23919/DATE64628.2025.10992789"),
@@ -274,7 +290,7 @@ def build(args: argparse.Namespace) -> tuple[str, list[dict], dict]:
 {table(("设计","终态","假设事件","实现事件","验证事件","带run ID验证","低于阈值正波动"), agent_trace_rows)}
 <p class='plain'>完整架构在中断恢复后没有重复实验；去掉 checkpoint 的反事实会重复两个已提交 child；去掉 review 门会把 {agent['arms']['no_review_threshold_counterfactual']['below_threshold_promotions']} 个低于 0.5% 的小波动误当成改进；去掉 authority 门会让 {agent['arms']['no_authority_gate_counterfactual']['unsupported_executable_hypotheses']} 个尚未验证的假设失去不可执行保护。</p><p class='boundary'>{esc(agent['claim_boundary'])}</p></section>
 <section><h2>8. 大设计外部有效性：AES 与 JPEG</h2>
-{table(("设计","真实运行","终态","轮数","最好效用","边界"), [("AES",len(aes['runtime_runs']),aes['checkpoint']['state']['status'],aes['checkpoint']['state']['round'],num(aes['checkpoint']['state']['best_utility']),aes['claim_boundary']), ("JPEG",len(jpeg['runtime_runs']),jpeg['checkpoint']['state']['status'],jpeg['checkpoint']['state']['round'],num(jpeg['checkpoint']['state']['best_utility']),jpeg['claim_boundary'])])}
+{table(("设计","真实运行","证据复核终态","原checkpoint终态","轮数","最好可行效用","可行轮数","边界"), [("AES",len(aes['runtime_runs']),aes_effective['status'],aes_effective['checkpoint_status'],aes['checkpoint']['state']['round'],num(aes_effective['best_utility']),aes_effective['feasible_rounds'],aes['claim_boundary']), ("JPEG",len(jpeg['runtime_runs']),jpeg_effective['status'],jpeg_effective['checkpoint_status'],jpeg['checkpoint']['state']['round'],num(jpeg_effective['best_utility']),jpeg_effective['feasible_rounds'],jpeg['claim_boundary'])])}
 {table(("设计","轮次","参数","效用","硬约束合格","失败硬约束","area中位数","area IQR","WNS中位数","WNS IQR","功耗中位数","功耗 IQR"), external_history_rows)}
 <p>AES 运行状态：{esc(status_counts(aes['runtime_runs']))}；JPEG 运行状态：{esc(status_counts(jpeg['runtime_runs']))}。这两项用于证明多文件、较大 RTL 的工具兼容性、成本和失败模式，不与四个小设计的显著性检验混合。</p></section>
 <section><h2>9. 与 2025–2026 前沿工作的功能对齐</h2>{table(("论文/项目","它解决什么","平台对应实现","固定标识符"), refs)}

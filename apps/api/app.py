@@ -1233,7 +1233,8 @@ class ApiState:
             "max_rounds": rounds, "stall_window": 3,
             "minimum_relative_improvement": minimum_improvement,
             "max_parallel": max(1, min(int(payload.get("max_parallel") or repetitions), 16)),
-            "round": 0, "stalled_rounds": 0, "best_utility": 0.0,
+            "round": 0, "stalled_rounds": 0, "best_utility": -1.0,
+            "best_feasible": False,
             "best_round": 0, "study_id": None, "history": [], "diagnosis": None,
             "active_kind": "baseline", "active_parameters": {
                 item.name: base.parameters[item.name] for item in parameters
@@ -1407,9 +1408,12 @@ class ApiState:
             })
             if state["active_kind"] == "baseline":
                 state["baseline_summary"] = summary
+                state["best_feasible"] = bool(summary["eligible"])
+                state["best_utility"] = 0.0 if summary["eligible"] else -1.0
                 state["history"].append({"round": 0, "kind": "baseline",
                                          "parameters": state["active_parameters"],
-                                         "summary": summary, "utility": 0.0,
+                                         "summary": summary,
+                                         "utility": 0.0 if summary["eligible"] else None,
                                          "decision": "baseline"})
                 state["agent_events"].append({
                     "phase": "review", "round": 0,
@@ -1428,6 +1432,8 @@ class ApiState:
                     candidate_utility=utility, best_utility=float(state["best_utility"]),
                     minimum_relative_improvement=float(state["minimum_relative_improvement"]),
                     stalled_rounds=int(state["stalled_rounds"]),
+                    has_feasible_incumbent=bool(state.get(
+                        "best_feasible", state.get("baseline_summary", {}).get("eligible"))),
                 )
                 state["history"].append({"round": state["round"], "kind": "bo_candidate",
                                          "parameters": state["active_parameters"],
@@ -1447,6 +1453,7 @@ class ApiState:
                 if decision["promoted"]:
                     state["best_utility"] = utility
                     state["best_round"] = state["round"]
+                    state["best_feasible"] = True
                 if state["stalled_rounds"] >= 3:
                     packet = diagnosis_packet(state["history"], objectives)
                     evidence_packets = []
@@ -1512,7 +1519,21 @@ class ApiState:
                                   "active_run_ids": []})
                     save(); break
             if state["round"] >= state["max_rounds"]:
-                state.update({"status": "completed", "active_run_ids": []})
+                if state.get("best_feasible"):
+                    state.update({"status": "completed", "active_run_ids": []})
+                else:
+                    packet = diagnosis_packet(state["history"], objectives)
+                    packet.update({
+                        "reason": "no hard-constraint-feasible baseline or candidate",
+                        "next": "repair_agent_stage_localization",
+                    })
+                    state["agent_events"].append({
+                        "phase": "diagnosis", "round": state["round"],
+                        "claim": "the search budget ended without a hard-constraint-feasible vector",
+                        "next": "repair_agent_stage_localization", "execution_allowed": False,
+                    })
+                    state.update({"status": "diagnosis_required", "diagnosis": packet,
+                                  "active_run_ids": []})
                 save(); break
             observations_all = self.optimization_store.observations(study.study_id)
             memory_priors = [

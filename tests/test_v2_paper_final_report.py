@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from scripts.build_v2_paper_final_report import build
+from scripts.build_v2_paper_final_report import build, closed_loop_effective
 
 
 def _args(tmp_path):
@@ -134,3 +134,13 @@ def test_paper_report_renders_all_evidence_sections(tmp_path):
     assert len(ledger) == 8
     assert summary["headline"]["rtl_iterative_rescues"] == 3
     assert summary["headline"]["parameter_mean_bo_minus_random"] == .02
+
+
+def test_completed_checkpoint_without_any_feasible_vector_is_not_reported_as_success():
+    report = {"checkpoint": {"state": {
+        "status": "completed", "best_utility": 0.0,
+        "history": [{"utility": 0.0, "summary": {"eligible": False}}]}}}
+    assert closed_loop_effective(report) == {
+        "status": "diagnosis_required: no feasible vector",
+        "best_utility": None, "feasible_rounds": 0,
+        "checkpoint_status": "completed"}
