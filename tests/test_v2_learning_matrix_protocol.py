@@ -15,3 +15,5 @@ def test_learning_protocol_covers_all_ordered_pairs_and_real_randomization():
     assert '"--seed"' in runner
     assert "except subprocess.TimeoutExpired" in runner
     assert "final reconciliation skipped" in runner
+    assert '"--reconcile-only"' in runner
+    assert "auditor_only_no_eda_rerun" in runner

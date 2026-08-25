@@ -22,18 +22,76 @@ def _write(path: Path, value: dict) -> None:
     temporary.replace(path)
 
 
+def _reconcile(output: Path, rows: list[dict], *, protocol: dict,
+               protocol_sha256: str, launched_at: str) -> dict:
+    """Re-run only the independent auditor; never repeat expensive EDA work."""
+    for row in rows:
+        log_path = Path(row["log"])
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as log:
+            if not Path(row["destination"], "report.json").is_file():
+                audited = None
+                log.write("final reconciliation skipped: report.json is absent\n")
+            else:
+                try:
+                    audited = subprocess.run([
+                        sys.executable, str(ROOT / "scripts/audit_v2_causal_holdout.py"),
+                        "--experiment", row["destination"],
+                    ], cwd=ROOT, text=True, stdout=log, stderr=subprocess.STDOUT,
+                        timeout=900, check=False)
+                except subprocess.TimeoutExpired as exc:
+                    audited = None
+                    row["error"] = f"Final auditor TimeoutExpired after {exc.timeout} seconds"
+                    log.write(row["error"] + "\n")
+        row["audit_returncode"] = audited.returncode if audited is not None else None
+        row["accepted"] = (row.get("returncode") == 0 and audited is not None
+                           and audited.returncode == 0)
+    progress = {
+        "schema_version": 1, "protocol_id": protocol["protocol_id"],
+        "protocol_sha256": protocol_sha256, "launched_at": launched_at,
+        "expected_pairs": len(rows), "completed": rows,
+    }
+    _write(output / "matrix-progress.json", progress)
+    result = {
+        "schema_version": 1, "kind": "v2_paper_learning_matrix",
+        "protocol_id": protocol["protocol_id"], "protocol_sha256": protocol_sha256,
+        "launched_at": launched_at, "ended_at": datetime.now(timezone.utc).isoformat(),
+        "expected_pairs": len(rows), "accepted_pairs": sum(row["accepted"] for row in rows),
+        "status": "passed" if rows and all(row["accepted"] for row in rows) else "failed",
+        "reconciliation": "auditor_only_no_eda_rerun", "pairs": rows,
+    }
+    _write(output / "matrix-report.json", result)
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--reconcile-only", action="store_true",
+                        help="Re-audit existing reports without launching any EDA runs")
     args = parser.parse_args()
     output = args.output.expanduser().resolve()
+    protocol_path = ROOT / "experiments/v2-paper-20260825/learning-protocol.json"
+    protocol_bytes = protocol_path.read_bytes()
+    protocol = json.loads(protocol_bytes); study = protocol
+    protocol_sha256 = hashlib.sha256(protocol_bytes).hexdigest()
+    if args.reconcile_only:
+        progress = json.loads((output / "matrix-progress.json").read_text(encoding="utf-8"))
+        rows = list(progress.get("completed") or [])
+        if len(rows) != int(study["ordered_source_holdout_pairs"]):
+            raise SystemExit("reconciliation requires every frozen ordered pair")
+        result = _reconcile(output, rows, protocol=protocol,
+                            protocol_sha256=protocol_sha256,
+                            launched_at=progress["launched_at"])
+        print(json.dumps({"output": str(output / "matrix-report.json"),
+                          "status": result["status"],
+                          "accepted_pairs": result["accepted_pairs"],
+                          "reconciliation": result["reconciliation"]}, ensure_ascii=False))
+        return 0 if result["status"] == "passed" else 1
     if output.exists() and any(output.iterdir()):
         raise SystemExit("output must be a new or empty directory")
     output.mkdir(parents=True, exist_ok=True)
-    protocol_path = ROOT / "experiments/v2-paper-20260825/learning-protocol.json"
-    protocol_bytes = protocol_path.read_bytes()
     (output / "protocol.snapshot.json").write_bytes(protocol_bytes)
-    protocol = json.loads(protocol_bytes); study = protocol
     designs = tuple(study["designs"])
     pairs = tuple(itertools.permutations(designs, 2))
     if len(pairs) != int(study["ordered_source_holdout_pairs"]):
@@ -92,40 +150,12 @@ def main() -> int:
         rows.append(row)
         _write(output / "matrix-progress.json", {
             "schema_version": 1, "protocol_id": protocol["protocol_id"],
-            "protocol_sha256": hashlib.sha256(protocol_bytes).hexdigest(),
+            "protocol_sha256": protocol_sha256,
             "launched_at": launched_at, "expected_pairs": len(pairs), "completed": rows,
         })
-    # Reconcile every pair with the current independent auditor. A transient
-    # auditor defect must not trigger new EDA runs or discard raw outcomes.
-    for row in rows:
-        with Path(row["log"]).open("a", encoding="utf-8") as log:
-            if not Path(row["destination"], "report.json").is_file():
-                audited = None
-                log.write("final reconciliation skipped: report.json is absent\n")
-            else:
-                try:
-                    audited = subprocess.run([
-                        sys.executable, str(ROOT / "scripts/audit_v2_causal_holdout.py"),
-                        "--experiment", row["destination"],
-                    ], cwd=ROOT, text=True, stdout=log, stderr=subprocess.STDOUT,
-                        timeout=900, check=False)
-                except subprocess.TimeoutExpired as exc:
-                    audited = None
-                    row["error"] = f"Final auditor TimeoutExpired after {exc.timeout} seconds"
-                    log.write(row["error"] + "\n")
-        row["audit_returncode"] = audited.returncode if audited is not None else None
-        row["accepted"] = (row["returncode"] == 0 and audited is not None
-                           and audited.returncode == 0)
-    result = {
-        "schema_version": 1, "kind": "v2_paper_learning_matrix",
-        "protocol_id": protocol["protocol_id"],
-        "protocol_sha256": hashlib.sha256(protocol_bytes).hexdigest(),
-        "launched_at": launched_at, "ended_at": datetime.now(timezone.utc).isoformat(),
-        "expected_pairs": len(pairs), "accepted_pairs": sum(row["accepted"] for row in rows),
-        "status": "passed" if all(row["accepted"] for row in rows) else "failed",
-        "pairs": rows,
-    }
-    _write(output / "matrix-report.json", result)
+    # A transient auditor defect must not trigger new EDA runs or discard raw outcomes.
+    result = _reconcile(output, rows, protocol=protocol,
+                        protocol_sha256=protocol_sha256, launched_at=launched_at)
     print(json.dumps({"output": str(output / "matrix-report.json"),
                       "status": result["status"], "accepted_pairs": result["accepted_pairs"]},
                      ensure_ascii=False))
