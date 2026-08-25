@@ -44,6 +44,25 @@ def status_counts(rows: list[dict]) -> str:
     return ", ".join(f"{name}={count}" for name, count in sorted(counts.items()))
 
 
+def closed_loop_rows(name: str, report: dict) -> list[tuple[object, ...]]:
+    rows = []
+    for item in report["checkpoint"]["state"].get("history") or []:
+        summary = item.get("summary") or {}; metrics = summary.get("metrics") or {}
+        constraints = summary.get("constraints") or []
+        failed = [str(row.get("metric")) for row in constraints if row.get("passed") is False]
+        rows.append((
+            name, item.get("round"), item.get("parameters"), item.get("utility"),
+            summary.get("eligible"), ", ".join(failed) if failed else "无",
+            num((metrics.get("area_um2") or {}).get("median")),
+            num((metrics.get("area_um2") or {}).get("iqr")),
+            num((metrics.get("setup_wns_ns") or {}).get("median")),
+            num((metrics.get("setup_wns_ns") or {}).get("iqr")),
+            num((metrics.get("power_W") or {}).get("median")),
+            num((metrics.get("power_W") or {}).get("iqr")),
+        ))
+    return rows
+
+
 def table(headers: tuple[str, ...], rows: list[tuple[object, ...]]) -> str:
     head = "".join(f"<th>{esc(item)}</th>" for item in headers)
     body = "".join("<tr>" + "".join(f"<td>{esc(item)}</td>" for item in row) + "</tr>"
@@ -139,6 +158,7 @@ def build(args: argparse.Namespace) -> tuple[str, list[dict], dict]:
         row["validation_events_with_run_ids"],
         row["below_threshold_positive_candidates"],
     ) for row in agent["real_trace_rows"]]
+    external_history_rows = closed_loop_rows("AES", aes) + closed_loop_rows("JPEG", jpeg)
     experiment_ledger = [
         {"study": "parameter", "unit": "full ORFS flow", "planned": 960,
          "observed": parameter["run_count"], "status": parameter["status"]},
@@ -225,6 +245,7 @@ def build(args: argparse.Namespace) -> tuple[str, list[dict], dict]:
 <p class='plain'>完整架构在中断恢复后没有重复实验；去掉 checkpoint 的反事实会重复两个已提交 child；去掉 review 门会把 {agent['arms']['no_review_threshold_counterfactual']['below_threshold_promotions']} 个低于 0.5% 的小波动误当成改进；去掉 authority 门会让 {agent['arms']['no_authority_gate_counterfactual']['unsupported_executable_hypotheses']} 个尚未验证的假设失去不可执行保护。</p><p class='boundary'>{esc(agent['claim_boundary'])}</p></section>
 <section><h2>8. 大设计外部有效性：AES 与 JPEG</h2>
 {table(("设计","真实运行","终态","轮数","最好效用","边界"), [("AES",len(aes['runtime_runs']),aes['checkpoint']['state']['status'],aes['checkpoint']['state']['round'],num(aes['checkpoint']['state']['best_utility']),aes['claim_boundary']), ("JPEG",len(jpeg['runtime_runs']),jpeg['checkpoint']['state']['status'],jpeg['checkpoint']['state']['round'],num(jpeg['checkpoint']['state']['best_utility']),jpeg['claim_boundary'])])}
+{table(("设计","轮次","参数","效用","硬约束合格","失败硬约束","area中位数","area IQR","WNS中位数","WNS IQR","功耗中位数","功耗 IQR"), external_history_rows)}
 <p>AES 运行状态：{esc(status_counts(aes['runtime_runs']))}；JPEG 运行状态：{esc(status_counts(jpeg['runtime_runs']))}。这两项用于证明多文件、较大 RTL 的工具兼容性、成本和失败模式，不与四个小设计的显著性检验混合。</p></section>
 <section><h2>9. 与 2025–2026 前沿工作的功能对齐</h2>{table(("论文/项目","它解决什么","平台对应实现"), refs)}
 <p class='boundary'>这里的论文数字不是本平台数字。预印本按 2026-08-25 获取的版本引用；复现实验只认本仓库 Runtime、协议快照和 artifact hash。</p></section>

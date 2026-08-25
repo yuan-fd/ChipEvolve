@@ -92,7 +92,12 @@ def _args(tmp_path):
     }
     closed_loop = {"runtime_runs": [{"status": "succeeded"}] * 4,
                    "checkpoint": {"state": {"status": "completed", "round": 1,
-                                              "best_utility": .02}},
+                                              "best_utility": .02,
+                                              "history": [{"round": 0, "parameters": {},
+                                                           "utility": 0.0,
+                                                           "summary": {"eligible": True,
+                                                                       "constraints": [],
+                                                                       "metrics": {}}}]}},
                    "claim_boundary": "external boundary"}
     values["aes"] = closed_loop
     values["jpeg"] = closed_loop
