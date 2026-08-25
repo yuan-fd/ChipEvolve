@@ -75,3 +75,26 @@ def test_runtime_rows_preserve_failures_and_registered_order(tmp_path):
 
     assert [row["run_id"] for row in rows] == ["b", "a"]
     assert [row["status"] for row in rows] == ["succeeded", "failed"]
+
+
+def test_missing_suite_report_remains_a_failed_floor_cell(tmp_path):
+    database = tmp_path / "runtime.db"
+    with sqlite3.connect(database) as connection:
+        connection.execute("CREATE TABLE runtime_runs "
+                           "(run_id TEXT PRIMARY KEY, status TEXT, started_at TEXT, ended_at TEXT)")
+        connection.execute("INSERT INTO runtime_runs VALUES (?, ?, ?, ?)",
+                           ("a", "timed_out", None, None))
+    cell = MODULE._failure_cell(tmp_path, floor=-1.0, expected_runs=12,
+                                reason="missing test report")
+    assert cell["best_utility"] == -1.0
+    assert cell["run_count"] == 1
+    assert cell["failure_runs"] == 12
+    assert cell["terminal_status"] == "failed"
+    assert all(item["selected_index"] is None
+               for item in cell["profile_replay"].values())
+
+
+def test_profile_replay_keeps_all_infeasible_candidate_set():
+    summary = {"eligible": False, "metrics": {}}
+    replay = MODULE._profile_replay([{"summary": summary}] * 4)
+    assert all(item["selected_index"] is None for item in replay.values())

@@ -107,6 +107,8 @@ def _duration_hours(rows: Iterable[dict]) -> float:
 def _runtime_rows(database: Path, run_ids: list[str]) -> list[dict]:
     if not database.is_file():
         raise FileNotFoundError(database)
+    if not run_ids:
+        return []
     with sqlite3.connect(database) as connection:
         connection.row_factory = sqlite3.Row
         rows = connection.execute(
@@ -131,12 +133,17 @@ def _best_curve(items: list[dict], floor: float) -> tuple[list[float], dict]:
 
 
 def _profile_utility(summary: dict, baseline: dict, profile: str) -> float | None:
-    if summary.get("eligible") is not True or baseline.get("eligible") is not True:
+    if summary.get("eligible") is not True:
         return None
     utility = 0.0
     for metric, (direction, weight) in PROFILE_WEIGHTS[profile].items():
-        current = float(summary["metrics"][metric]["median"])
-        reference = float(baseline["metrics"][metric]["median"])
+        current_metric = (summary.get("metrics") or {}).get(metric) or {}
+        reference_metric = (baseline.get("metrics") or {}).get(metric) or {}
+        if not isinstance(current_metric.get("median"), (int, float)) or not isinstance(
+                reference_metric.get("median"), (int, float)):
+            return None
+        current = float(current_metric["median"])
+        reference = float(reference_metric["median"])
         improvement = ((reference - current) / max(abs(reference), 1e-12)
                        if direction == "min" else
                        (current - reference) / max(abs(reference), 1e-12))
@@ -151,15 +158,54 @@ def _profile_replay(items: list[dict]) -> dict:
         scored = [(index, _profile_utility(item["summary"], baseline, profile))
                   for index, item in enumerate(items)]
         eligible = [(index, value) for index, value in scored if value is not None]
-        index, value = max(eligible, key=lambda pair: pair[1])
-        result[profile] = {"selected_index": index, "utility": value,
-                           "metrics": items[index]["summary"]["metrics"]}
+        if eligible:
+            index, value = max(eligible, key=lambda pair: pair[1])
+            result[profile] = {"selected_index": index, "utility": value,
+                               "metrics": items[index]["summary"]["metrics"]}
+        else:
+            result[profile] = {"selected_index": None, "utility": None, "metrics": {}}
     return result
 
 
+def _failure_cell(path: Path, *, floor: float, expected_runs: int,
+                  run_ids: list[str] | None = None, reason: str) -> dict:
+    database = path / "runtime.db"
+    rows: list[dict] = []
+    if database.is_file():
+        if run_ids is None:
+            with sqlite3.connect(database) as connection:
+                connection.row_factory = sqlite3.Row
+                rows = [dict(row) for row in connection.execute(
+                    "SELECT run_id,status,started_at,ended_at FROM runtime_runs").fetchall()]
+        else:
+            try:
+                rows = _runtime_rows(database, run_ids)
+            except ValueError:
+                with sqlite3.connect(database) as connection:
+                    connection.row_factory = sqlite3.Row
+                    found = {row["run_id"]: dict(row) for row in connection.execute(
+                        "SELECT run_id,status,started_at,ended_at FROM runtime_runs")}
+                rows = [found[run_id] for run_id in run_ids if run_id in found]
+    missing = max(0, expected_runs - len(rows))
+    return {"best_utility": floor, "curve": [floor] * 4,
+            "profile_replay": {profile: {"selected_index": None, "utility": None,
+                                         "metrics": {}} for profile in PROFILE_WEIGHTS},
+            "selected_round": None, "selected_summary": None,
+            "terminal_status": "failed", "failure_reason": reason,
+            "failure_runs": missing + sum(row["status"] != "succeeded" for row in rows),
+            "run_count": len(rows), "summed_run_wall_hours": _duration_hours(rows)}
+
+
 def _bo_cell(path: Path, design: str, floor: float) -> dict:
-    detail = _read(path / design / "report.json")
+    design_path = path / design; report_path = design_path / "report.json"
+    if not report_path.is_file():
+        return _failure_cell(design_path, floor=floor, expected_runs=12,
+                             reason="missing BO design report")
+    detail = _read(report_path)
     history = detail["checkpoint"]["state"]["history"]
+    if not history:
+        return _failure_cell(design_path, floor=floor, expected_runs=12,
+                             reason="empty BO history")
     curve, selected = _best_curve(history, floor)
     return {"best_utility": curve[-1], "curve": curve,
             "profile_replay": _profile_replay(history),
@@ -172,7 +218,15 @@ def _bo_cell(path: Path, design: str, floor: float) -> dict:
 
 
 def _random_cell(path: Path, design: str, floor: float) -> dict:
-    report = _read(path / "report.json")
+    report_path = path / "report.json"
+    if not report_path.is_file():
+        plan_path = path / "frozen-plan.json"
+        plan = _read(plan_path) if plan_path.is_file() else {"run_groups": {}}
+        run_ids = [run_id for index in range(4)
+                   for run_id in plan.get("run_groups", {}).get(f"{design}:{index}", [])]
+        return _failure_cell(path, floor=floor, expected_runs=12, run_ids=run_ids,
+                             reason="missing random-arm report")
+    report = _read(report_path)
     row = next(item for item in report["design_rows"] if item["design"] == design)
     items = [row["baseline"], *row["candidates"]]
     curve, selected = _best_curve(items, floor)
