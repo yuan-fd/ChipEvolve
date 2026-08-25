@@ -29,6 +29,7 @@ def _args(tmp_path):
         },
         "learning": {
             "status": "passed", "ordered_pair_count": 1,
+            "run_count": 24,
             "validated_pair_count": 0, "rejected_pair_count": 1,
             "arms": {"retrieval_only_counterfactual": {"false_transfer_rules_admitted": 1}},
             "pairs": [{"source": "gcd", "holdout": "fifo", "source_interaction": 1.0,

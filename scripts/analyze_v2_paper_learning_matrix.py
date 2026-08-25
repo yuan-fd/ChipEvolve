@@ -14,7 +14,16 @@ def main() -> int:
     args = parser.parse_args()
     root = args.matrix.expanduser().resolve()
     matrix = json.loads((root / "matrix-report.json").read_text(encoding="utf-8"))
-    rows = matrix["pairs"]
+    rows = []
+    for source_row in matrix["pairs"]:
+        row = dict(source_row); report_path = Path(row["destination"]) / "report.json"
+        if report_path.is_file():
+            detail = json.loads(report_path.read_text(encoding="utf-8"))
+            row["run_count"] = (len(detail.get("source_run_ids") or [])
+                                + len(detail.get("holdout_run_ids") or []))
+        else:
+            row["run_count"] = 0
+        rows.append(row)
     rejected = [row for row in rows if row.get("outcome") == "rejected"]
     validated = [row for row in rows if row.get("outcome") == "validated"]
     ineligible = [row for row in rows if row.get("outcome") not in {"validated", "rejected"}]
@@ -22,6 +31,7 @@ def main() -> int:
         "schema_version": 1, "kind": "v2_paper_learning_frozen_analysis",
         "protocol_id": matrix["protocol_id"], "protocol_sha256": matrix["protocol_sha256"],
         "status": "passed" if not ineligible and matrix["status"] == "passed" else "failed",
+        "run_count": sum(row["run_count"] for row in rows),
         "ordered_pair_count": len(rows), "validated_pair_count": len(validated),
         "rejected_pair_count": len(rejected), "ineligible_pair_count": len(ineligible),
         "arms": {

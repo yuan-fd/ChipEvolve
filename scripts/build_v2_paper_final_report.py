@@ -202,7 +202,7 @@ def build(args: argparse.Namespace) -> tuple[str, list[dict], dict]:
         {"study": "parameter", "unit": "full ORFS flow", "planned": 960,
          "observed": parameter["run_count"], "status": parameter["status"]},
         {"study": "learning", "unit": "full ORFS flow", "planned": 288,
-         "observed": learning["ordered_pair_count"] * 24, "status": learning["status"]},
+         "observed": learning["run_count"], "status": learning["status"]},
         {"study": "rtl-generation", "unit": "independent NL→GDS attempt", "planned": 20,
          "observed": rtl["attempts"], "status": rtl["status"]},
         {"study": "rtl-hidden-reference", "unit": "full ORFS flow", "planned": 12,
