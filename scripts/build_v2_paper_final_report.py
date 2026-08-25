@@ -126,6 +126,25 @@ def build(args: argparse.Namespace) -> tuple[str, list[dict], dict]:
     for arm, values in profile_data.items():
         profile_rows.append((arm, values["area"], values["timing"],
                              values["performance"], values["power"]))
+    repeatability_rows = []
+    for arm in ("bo_gp", "seeded_random"):
+        for metric in ("area_um2", "setup_wns_ns", "power_W"):
+            iqrs = [((row[arm].get("selected_summary") or {}).get("metrics") or {})
+                    .get(metric, {}).get("iqr") for row in parameter["cells"]]
+            observed = [float(value) for value in iqrs if isinstance(value, (int, float))]
+            repeatability_rows.append((
+                arm, metric, len(observed), sum(value == 0 for value in observed),
+                sum(value > 0 for value in observed), num(max(observed) if observed else None)))
+    reference_variation_rows = []
+    for row in reference["design_rows"]:
+        values = row["metrics"]
+        reference_variation_rows.append((
+            row["design"], len(row["run_ids"]),
+            f"{num(values['area_um2']['minimum'])}–{num(values['area_um2']['maximum'])}",
+            f"{num(values['setup_wns_ns']['minimum'])}–{num(values['setup_wns_ns']['maximum'])}",
+            f"{num(values['power_W']['minimum'])}–{num(values['power_W']['maximum'])}",
+            f"{values['drc_errors']['minimum']}–{values['drc_errors']['maximum']}",
+        ))
     learning_pair_rows = [(
         row["source"], row["holdout"], num(row.get("source_interaction")),
         num(row.get("holdout_interaction")), row.get("outcome"),
@@ -255,7 +274,13 @@ def build(args: argparse.Namespace) -> tuple[str, list[dict], dict]:
 <p>AES 运行状态：{esc(status_counts(aes['runtime_runs']))}；JPEG 运行状态：{esc(status_counts(jpeg['runtime_runs']))}。这两项用于证明多文件、较大 RTL 的工具兼容性、成本和失败模式，不与四个小设计的显著性检验混合。</p></section>
 <section><h2>9. 与 2025–2026 前沿工作的功能对齐</h2>{table(("论文/项目","它解决什么","平台对应实现"), refs)}
 <p class='boundary'>这里的论文数字不是本平台数字。预印本按 2026-08-25 获取的版本引用；复现实验只认本仓库 Runtime、协议快照和 artifact hash。</p></section>
-<section><h2>10. 可以写进论文的结论，以及不能写的结论</h2><div class='twocol'><div><h3>可以写</h3><ul><li>固定四设计下，NL→RTL→独立验证→GDS 的重复成功率和 pass@k。</li><li>同预算、同设计、同 seed 的 BO/GP 与随机配对效果和不确定性。</li><li>因果 holdout 相对 retrieval-only 阻止了多少错误迁移规则。</li><li>typed EDAIR 相对 KPI-only 的事实 QA 准确率、UNKNOWN 和胡答率。</li><li>checkpoint、review、authority 对恢复与安全的具体贡献。</li></ul></div><div><h3>不能写</h3><ul><li>四题成功不等于“任意自然语言芯片都能生成”。</li><li>确定性重复的零 IQR 不能伪装成独立随机样本。</li><li>Agent 编排可靠不等于它单独提高 QoR。</li><li>v2 diagnosis trace 不等于已经执行 TimingECO/EvoDRC。</li><li>一个 PDK 的结果不能声称任意工艺可迁移。</li></ul></div></div></section>
+<section><h2>10. 重复运行和 PPA 波动：零波动也要如实写</h2>
+<p>隐藏参考 RTL 每题用三个不同 OR_SEED 完整跑到 GDS。下表不是只报最好值，而是直接列最小–最大范围。</p>
+{table(("设计","重复数","area范围","WNS范围","功耗范围","DRC范围"), reference_variation_rows)}
+<p>参数实验每个向量同样有三个配对 OR_SEED。下表统计每个 design×policy-seed 最终选中向量的 IQR；“零 IQR”表示三个真实 run 的解析 PPA 完全一致，不代表实验没有实际执行。</p>
+{table(("策略","指标","有IQR的选中向量","IQR=0","IQR>0","最大IQR"), repeatability_rows)}
+<p class='boundary'>OR_SEED 是工具随机化块，不是新的设计样本。当前小设计和固定 ORFS 配置常表现为确定性，因此报告 IQR=0；策略显著性来自不同 optimizer policy seeds 的候选选择，而不是虚构的 OpenROAD 噪声。</p></section>
+<section><h2>11. 可以写进论文的结论，以及不能写的结论</h2><div class='twocol'><div><h3>可以写</h3><ul><li>固定四设计下，NL→RTL→独立验证→GDS 的重复成功率和 pass@k。</li><li>同预算、同设计、同 seed 的 BO/GP 与随机配对效果和不确定性。</li><li>因果 holdout 相对 retrieval-only 阻止了多少错误迁移规则。</li><li>typed EDAIR 相对 KPI-only 的事实 QA 准确率、UNKNOWN 和胡答率。</li><li>checkpoint、review、authority 对恢复与安全的具体贡献。</li></ul></div><div><h3>不能写</h3><ul><li>四题成功不等于“任意自然语言芯片都能生成”。</li><li>确定性重复的零 IQR 不能伪装成独立随机样本。</li><li>Agent 编排可靠不等于它单独提高 QoR。</li><li>v2 diagnosis trace 不等于已经执行 TimingECO/EvoDRC。</li><li>一个 PDK 的结果不能声称任意工艺可迁移。</li></ul></div></div></section>
 <footer>生成依据：冻结 protocol snapshot、Runtime SQLite、candidate history、EDAIR、独立统计后处理。所有原始证据保留在 openroad-platform/artifacts。</footer>
 """
     style = """<style>*{box-sizing:border-box}body{margin:0;background:#f4f1e9;color:#17202a;font:16px/1.7 system-ui,'Noto Sans SC',sans-serif}header,section,footer{max-width:1160px;margin:auto;padding:34px 48px}header{padding-top:70px}.eyebrow{color:#925b2b;font-weight:800;letter-spacing:.12em}h1{font:800 48px/1.15 Georgia,serif;max-width:900px}h2{font:800 30px/1.2 Georgia,serif;border-bottom:2px solid #1c6b67;padding-bottom:10px}h3{margin-bottom:6px}.lead{font-size:20px;max-width:960px}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.cards article{background:#fff;border:1px solid #d7d0c2;border-radius:14px;padding:20px;box-shadow:0 5px 18px #2b251611}.cards b{font:800 28px Georgia;color:#1c6b67;display:block}.cards span{display:block;margin-top:8px}.plain,.boundary{padding:16px 20px;border-radius:10px}.plain{background:#e3f0eb}.boundary{background:#f4e2d5;border-left:5px solid #b95f36}.flow{padding:18px;background:#173f45;color:white;border-radius:12px;font-weight:700;text-align:center}.scroll{overflow:auto;background:white;border-radius:12px;border:1px solid #d8d3c8}table{border-collapse:collapse;width:100%;font-size:14px}th,td{text-align:left;padding:11px;border-bottom:1px solid #e3ded5;vertical-align:top}th{background:#e8ece7}.bars{background:white;padding:18px;border-radius:12px;margin:16px 0}.barrow{display:grid;grid-template-columns:180px 1fr 90px;gap:12px;align-items:center;margin:9px}.track{height:18px;background:#e9e5dc;border-radius:9px;overflow:hidden}.track i{display:block;height:100%;background:linear-gradient(90deg,#1c6b67,#d48b45)}.twocol{display:grid;grid-template-columns:1fr 1fr;gap:20px}.twocol>div{background:white;padding:18px 24px;border-radius:12px}footer{color:#59636b;border-top:1px solid #cec8bb;margin-top:35px}@media(max-width:800px){header,section,footer{padding:25px 18px}.cards,.twocol{grid-template-columns:1fr}.barrow{grid-template-columns:120px 1fr 65px}h1{font-size:35px}}</style>"""

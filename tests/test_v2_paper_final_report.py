@@ -96,6 +96,12 @@ def _args(tmp_path):
             "claim_boundary": "agent boundary",
         },
         "references": {"status": "passed", "run_count": 12,
+                       "design_rows": [{"design": "gcd", "run_ids": ["a", "b", "c"],
+                                        "metrics": {
+                                            "area_um2": {"minimum": 1, "maximum": 1},
+                                            "setup_wns_ns": {"minimum": 2, "maximum": 2},
+                                            "power_W": {"minimum": 3, "maximum": 3},
+                                            "drc_errors": {"minimum": 0, "maximum": 0}}}],
                        "claim_boundary": "reference boundary"},
     }
     closed_loop = {"runtime_runs": [{"status": "succeeded"}] * 4,
