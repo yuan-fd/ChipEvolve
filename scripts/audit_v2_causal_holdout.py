@@ -17,6 +17,21 @@ if str(ROOT) not in sys.path:
 from apps.api.app import ApiState  # noqa: E402
 
 
+def knowledge_safety_checks(validation: dict) -> dict[str, bool]:
+    """Validate admission and execution boundaries for either holdout outcome."""
+    outcome = (validation.get("validation") or {}).get("outcome")
+    card = validation.get("knowledge_card") or {}
+    status = card.get("status")
+    return {
+        "knowledge_status_matches_holdout": (
+            (outcome == "validated" and status == "validated")
+            or (outcome == "rejected" and status == "refuted")),
+        "refuted_rule_not_action_eligible": (
+            outcome != "rejected" or card.get("action_eligible") is False),
+        "knowledge_card_not_directly_executable": card.get("execution_allowed") is False,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--experiment", type=Path, required=True)
@@ -94,8 +109,7 @@ def main() -> int:
             in {"validated", "rejected"},
         "hypothesis_precedes_holdout": preregistered,
         "append_only_learning_history": len(ledger) >= 3,
-        "no_refuted_rule_is_action_eligible": not bool(
-            (validation.get("knowledge_card") or {}).get("action_eligible")),
+        **knowledge_safety_checks(validation),
     }
     audit = {
         "schema_version": 1, "kind": "v2_causal_holdout_audit",
