@@ -216,6 +216,68 @@ def build(args: argparse.Namespace) -> tuple[str, list[dict], dict]:
         {"study": "JPEG external smoke", "unit": "full ORFS flow", "planned": 4,
          "observed": len(jpeg["runtime_runs"]), "status": jpeg_effective["status"]},
     ]
+    detailed_ledger: list[dict[str, object]] = []
+    for row in parameter["cells"]:
+        for arm in ("bo_gp", "seeded_random"):
+            value = row[arm]
+            detailed_ledger.append({
+                "study": "parameter", "record_id": f"{row['design']}-{row['seed']}-{arm}",
+                "design": row["design"], "arm": arm, "seed_or_repeat": row["seed"],
+                "planned_runs": 12, "observed_runs": value.get("run_count", 12),
+                "status": value.get("terminal_status", "complete"), "primary_value": value["best_utility"],
+                "failure_count": value["failure_runs"],
+                "evidence_ref": f"parameter/cell/{row['design']}/{row['seed']}/{arm}",
+                "claim_boundary": parameter["claim_boundary"],
+            })
+    for row in learning["pairs"]:
+        detailed_ledger.append({
+            "study": "learning", "record_id": f"{row['source']}--{row['holdout']}",
+            "design": f"{row['source']}→{row['holdout']}", "arm": "causal_holdout_gate",
+            "seed_or_repeat": row.get("seed"), "planned_runs": 24,
+            "observed_runs": row.get("run_count", 24), "status": row.get("outcome") or "ineligible",
+            "primary_value": row.get("holdout_interaction"),
+            "failure_count": max(0, 24 - int(row.get("run_count", 24))),
+            "evidence_ref": row.get("destination"),
+            "claim_boundary": learning["claim_boundary"],
+        })
+    for row in rtl["attempt_rows"]:
+        detailed_ledger.append({
+            "study": "rtl-generation",
+            "record_id": f"{row['design']}-attempt-{int(row['attempt']):02d}",
+            "design": row["design"], "arm": "full_independent_verification_to_gds",
+            "seed_or_repeat": row["attempt"], "planned_runs": 1,
+            "observed_runs": 1, "status": "passed" if row["passed"] else "failed",
+            "primary_value": row["candidate_evaluations"],
+            "failure_count": 0 if row["passed"] else 1,
+            "evidence_ref": row.get("orfs_run_id") or row.get("spec_id"),
+            "claim_boundary": rtl["claim_boundary"],
+        })
+    for call_index, row in enumerate(edair["calls"], start=1):
+        repetition = row.get("repetition", call_index)
+        detailed_ledger.append({
+            "study": "edair-qa",
+            "record_id": f"{row['design']}-{row['arm']}-rep-{int(repetition):02d}",
+            "design": row["design"], "arm": row["arm"],
+            "seed_or_repeat": repetition, "planned_runs": row["total"],
+            "observed_runs": row["total"],
+            "status": "complete" if row.get("returncode", 0) == 0 and not row.get("parse_error") else "failed",
+            "primary_value": row["correct"] / row["total"],
+            "failure_count": row["total"] - row["correct"],
+            "evidence_ref": f"edair/{row['design']}/{row['arm']}/{repetition}",
+            "claim_boundary": edair["claim_boundary"],
+        })
+    for row in reference["design_rows"]:
+        detailed_ledger.append({
+            "study": "rtl-hidden-reference", "record_id": row["design"],
+            "design": row["design"], "arm": "hidden_golden", "seed_or_repeat": "3 OR_SEED",
+            "planned_runs": 3, "observed_runs": len(row["run_ids"]),
+            "status": "passed" if all(x == "succeeded" for x in row.get("statuses", ["succeeded"] * len(row["run_ids"]))) else "failed",
+            "primary_value": row["metrics"]["area_um2"].get(
+                "median", row["metrics"]["area_um2"].get("minimum")),
+            "failure_count": sum(x != "succeeded" for x in row.get("statuses", ["succeeded"] * len(row["run_ids"]))),
+            "evidence_ref": ",".join(row["run_ids"]),
+            "claim_boundary": reference["claim_boundary"],
+        })
     refs = [
         ("EDA-Aware RTL Generation (DATE 2025)", "EDA 反馈进入 RTL 生成评价，而非只做语法生成", "写/审分离、完整质量门和 GDS 条件 PPA", "doi:10.23919/DATE64628.2025.10992789"),
         ("VeriOpt (ICCAD 2025)", "多角色 LLM 与 PPA-aware RTL 生成", "Spec/Verification/RTLScout 独立角色与隐藏参考", "doi:10.1109/ICCAD66269.2025.11240771"),
@@ -332,6 +394,7 @@ def build(args: argparse.Namespace) -> tuple[str, list[dict], dict]:
             "agent": agent["claim_boundary"], "references": reference["claim_boundary"],
             "aes": aes["claim_boundary"], "jpeg": jpeg["claim_boundary"],
         },
+        "records": detailed_ledger,
     }
     return document, experiment_ledger, summary
 
@@ -353,8 +416,11 @@ def main() -> int:
     args.html.expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)
     args.html.expanduser().resolve().write_text(document, encoding="utf-8")
     with args.csv.expanduser().resolve().open("w", encoding="utf-8-sig", newline="") as stream:
-        writer = csv.DictWriter(stream, fieldnames=("study","unit","planned","observed","status"))
-        writer.writeheader(); writer.writerows(ledger)
+        writer = csv.DictWriter(stream, fieldnames=(
+            "study", "record_id", "design", "arm", "seed_or_repeat",
+            "planned_runs", "observed_runs", "status", "primary_value",
+            "failure_count", "evidence_ref", "claim_boundary"))
+        writer.writeheader(); writer.writerows(summary["records"])
     sources = {}
     for name in ("parameter", "learning", "rtl", "edair", "agent", "references", "aes", "jpeg"):
         path = getattr(args, name).expanduser().resolve()

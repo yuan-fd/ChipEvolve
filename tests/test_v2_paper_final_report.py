@@ -50,6 +50,9 @@ def _args(tmp_path):
                                  "setup_wns_ns": {"generated_median": .1, "golden_median": .2},
                                  "power_W": {"generated_median": .01, "golden_median": .009}}}],
             "claim_boundary": "rtl boundary",
+            "attempt_rows": [{"design": "gcd", "attempt": 1, "passed": True,
+                              "candidate_evaluations": 2, "orfs_run_id": "run-rtl",
+                              "spec_id": "spec-rtl"}],
         },
         "edair": {
             "status": "complete",
@@ -135,6 +138,8 @@ def test_paper_report_renders_all_evidence_sections(tmp_path):
     assert len(ledger) == 8
     assert summary["headline"]["rtl_iterative_rescues"] == 3
     assert summary["headline"]["parameter_mean_bo_minus_random"] == .02
+    assert {row["study"] for row in summary["records"]} == {
+        "parameter", "learning", "rtl-generation", "edair-qa", "rtl-hidden-reference"}
 
 
 def test_completed_checkpoint_without_any_feasible_vector_is_not_reported_as_success():
