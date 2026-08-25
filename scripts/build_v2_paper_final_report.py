@@ -201,12 +201,17 @@ def build(args: argparse.Namespace) -> tuple[str, list[dict], dict]:
          "observed": len(jpeg["runtime_runs"]), "status": jpeg["checkpoint"]["state"]["status"]},
     ]
     refs = [
-        ("EvolVE (2026, arXiv:2601.18067)", "结构化 testbench、演化式候选搜索、功能与 PPA 联合评价", "本平台写/审分离、候选历史、mutation 门与 GDS 条件 PPA"),
-        ("AgenticPD (2026, arXiv:2607.04758)", "阶段感知 Agent、AES/ibex/JPEG、多次后端评估", "八阶段证据链、大设计 smoke、重复 OR_SEED 与停滞诊断"),
-        ("Retrieve, Schedule, Reflect (2026, arXiv:2603.13767)", "检索、调度、反思与多轮 QoR 优化消融", "上下文隔离数值先验、非执行假设、BO/GP 对随机同预算比较"),
-        ("PDAGENT-BENCH (2026, arXiv:2606.17253)", "Agent grounding、架构与 benchmark 化评价", "固定四设计、故障注入、权限与 evidence completeness"),
-        ("EDATracer (2026, arXiv:2608.04032)", "typed graph/vector artifact analysis、重复 QA", "typed EDAIR 对 KPI-only 的 12题×4设计×5重复实测"),
-        ("CircuitOps (ICCAD 2023)", "cell/pin/net 等 EDA 对象转成 ML 可查询结构", "逻辑实例/网、物理实例、时序路径及 SHA provenance"),
+        ("EDA-Aware RTL Generation (DATE 2025)", "EDA 反馈进入 RTL 生成评价，而非只做语法生成", "写/审分离、完整质量门和 GDS 条件 PPA", "doi:10.23919/DATE64628.2025.10992789"),
+        ("VeriOpt (ICCAD 2025)", "多角色 LLM 与 PPA-aware RTL 生成", "Spec/Verification/RTLScout 独立角色与隐藏参考", "doi:10.1109/ICCAD66269.2025.11240771"),
+        ("AutoSilicon (TODAES 2025)", "扩大 RTL 任务覆盖和生成能力", "固定回归题、重复自然语言尝试和失败保留", "doi:10.1145/3737286"),
+        ("EvolVE (2026)", "结构化 testbench、演化式候选搜索、功能与 PPA 联合评价", "候选历史、mutation 门与 GDS 条件 PPA", "arXiv:2601.18067v1"),
+        ("ORFS-agent (MLCAD 2025)", "可调用物理设计工具的 QoR 优化 Agent", "Runtime 工具权限、可回放 run ID 与阶段证据", "doi:10.1109/MLCAD65511.2025.11189204"),
+        ("AgenticPD (2026)", "阶段感知 Agent、AES/ibex/JPEG、多次后端评估", "八阶段证据链、大设计 smoke、停滞诊断", "arXiv:2607.04758v2"),
+        ("Retrieve, Schedule, Reflect (2026)", "检索、调度、反思与多轮 QoR 优化消融", "非执行假设、反思审查、同预算策略比较", "arXiv:2603.13767v2"),
+        ("PDAGENT-BENCH (2026)", "Agent grounding、架构与 benchmark 化评价", "固定四设计、故障注入、权限与证据完整率", "arXiv:2606.17253v6"),
+        ("PTPT (TCAD 2023) / iPO (TODAES 2026)", "多目标 BO、并行/迁移参数优化", "GP/BO 与随机同预算比较；尚未声称实现 iPO transfer", "doi:10.1109/TCAD.2022.3167858; doi:10.1145/3747292"),
+        ("EDATracer (2026)", "typed graph/vector artifact analysis、重复 QA", "typed EDAIR 对 KPI-only 的 12题×4设计×5重复实测", "arXiv:2608.04032v1"),
+        ("CircuitOps (ICCAD 2023)", "cell/pin/net 等 EDA 对象转成 ML 可查询结构", "逻辑实例/网、物理实例、时序路径及 SHA provenance", "doi:10.1109/ICCAD57390.2023.10323611"),
     ]
     html_body = f"""
 <header><p class='eyebrow'>OpenROAD AgenticEDA · v2.0 · 冻结协议实验</p><h1>不是“跑通一次”，而是让数据经得住追问</h1>
@@ -272,8 +277,8 @@ def build(args: argparse.Namespace) -> tuple[str, list[dict], dict]:
 {table(("设计","真实运行","终态","轮数","最好效用","边界"), [("AES",len(aes['runtime_runs']),aes['checkpoint']['state']['status'],aes['checkpoint']['state']['round'],num(aes['checkpoint']['state']['best_utility']),aes['claim_boundary']), ("JPEG",len(jpeg['runtime_runs']),jpeg['checkpoint']['state']['status'],jpeg['checkpoint']['state']['round'],num(jpeg['checkpoint']['state']['best_utility']),jpeg['claim_boundary'])])}
 {table(("设计","轮次","参数","效用","硬约束合格","失败硬约束","area中位数","area IQR","WNS中位数","WNS IQR","功耗中位数","功耗 IQR"), external_history_rows)}
 <p>AES 运行状态：{esc(status_counts(aes['runtime_runs']))}；JPEG 运行状态：{esc(status_counts(jpeg['runtime_runs']))}。这两项用于证明多文件、较大 RTL 的工具兼容性、成本和失败模式，不与四个小设计的显著性检验混合。</p></section>
-<section><h2>9. 与 2025–2026 前沿工作的功能对齐</h2>{table(("论文/项目","它解决什么","平台对应实现"), refs)}
-<p class='boundary'>这里的论文数字不是本平台数字。预印本按 2026-08-25 获取的版本引用；复现实验只认本仓库 Runtime、协议快照和 artifact hash。</p></section>
+<section><h2>9. 与 2025–2026 前沿工作的功能对齐</h2>{table(("论文/项目","它解决什么","平台对应实现","固定标识符"), refs)}
+<p class='boundary'>这里的论文数字不是本平台数字。书目信息来自 knowledge/public-corpus.lock.json；预印本按 2026-08-25 获取的明确版本引用。平台没有复现的能力会写“尚未实现”，不会因为列入参考文献就算作本平台结果；本平台实验只认 Runtime、协议快照和 artifact hash。</p></section>
 <section><h2>10. 重复运行和 PPA 波动：零波动也要如实写</h2>
 <p>隐藏参考 RTL 每题用三个不同 OR_SEED 完整跑到 GDS。下表不是只报最好值，而是直接列最小–最大范围。</p>
 {table(("设计","重复数","area范围","WNS范围","功耗范围","DRC范围"), reference_variation_rows)}
