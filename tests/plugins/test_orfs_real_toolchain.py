@@ -16,11 +16,16 @@ because it copies the flow tree (1.6 GB on the machine this was written for):
 
 It runs the whole flow to ``finish`` and then the protected evaluator over the
 result, because that is the only way to prove the two halves of the platform are
-wired to each other.  What that produced on nangate45 for a small counter, so a
-later reader can tell "this got slower" from "this broke": six stages in 71 s of
-flow time, a ``6_final.gds``, and an admissible verdict with nine metrics
-(``setup_wns_ns`` 7.82 against a 10 ns period, ``power_W`` 1.18e-05,
-``drc_errors`` 0).  OpenROAD 26Q1-1961-g63ed2e0fe5, Yosys 0.63, ORFS commit
+wired to each other.  What that produced, so a later reader can tell "this got slower" from "this
+broke":
+
+* nangate45, 10 ns period: six stages in 71 s of flow time, a ``6_final.gds``,
+  and an admissible verdict with ``setup_wns_ns`` 7.82, ``power_W`` 1.18e-05,
+  ``drc_errors`` 0.
+* asap7, 1 ns period: six stages in 104 s, ``setup_wns_ns`` 0.696 from a report
+  that said 695.997 (picoseconds), ``power_W`` 2.29e-05, ``drc_errors`` 0.
+
+OpenROAD 26Q1-1961-g63ed2e0fe5, Yosys 0.63, ORFS commit
 51ad1231a231ee85234c06db807688d029b85c35.
 
 This module exists because the first real run found a defect no stub could: a
@@ -47,6 +52,14 @@ ORFS_ROOT = os.environ.get("OPENROAD_PLATFORM_ORFS_ROOT")
 OPENROAD_BIN = os.environ.get("OPENROAD_PLATFORM_OPENROAD_BIN")
 YOSYS_BIN = os.environ.get("OPENROAD_PLATFORM_YOSYS_BIN")
 PLATFORM = os.environ.get("OPENROAD_PLATFORM_REAL_PLATFORM", "nangate45")
+
+#: The clock the test requests, in public nanoseconds.  ASAP7 carries the same
+#: trap every configuration in this plugin has to survive: the flow writes the
+#: period in the platform's Liberty unit, so 1 ns is written as 1000, and the
+#: report comes back in picoseconds.  Running this module with
+#: ``OPENROAD_PLATFORM_REAL_PLATFORM=asap7`` is what proves the conversion
+#: against a real report rather than against the table.
+PERIOD_NS = {"nangate45": 10.0, "asap7": 1.0}.get(PLATFORM, 10.0)
 
 pytestmark = pytest.mark.skipif(
     not (ORFS_ROOT and OPENROAD_BIN and YOSYS_BIN),
@@ -90,7 +103,7 @@ def real_run(tmp_path_factory) -> tuple[dict, Path]:
             "design_id": "counter", "plugin_id": "orfs",
             "inputs": {
                 "rtl_path": str(rtl), "platform": PLATFORM, "design": "counter",
-                "clock_period_ns": 10.0, "target_stage": "finish",
+                "clock_period_ns": PERIOD_NS, "target_stage": "finish",
                 "orfs_root": str(Path(ORFS_ROOT).expanduser()),
                 "openroad_bin": str(Path(OPENROAD_BIN).expanduser()),
                 "yosys_bin": str(Path(YOSYS_BIN).expanduser()),
@@ -229,9 +242,12 @@ def test_the_protected_evaluator_scores_the_real_run(real_run, tmp_path):
     assert verdict["status"] == "admissible", verdict.get("reason")
 
     metrics = {metric["name"]: metric["value"] for metric in verdict["metrics"]}
-    # The clock period is the design's constraint; a positive setup slack below
-    # it is the only thing a 10 ns counter can mean.
-    assert 0 < metrics["setup_wns_ns"] < 10.0, metrics
+    # The clock period is the design's constraint, so a positive setup slack
+    # *below* it is the only thing this design can mean.  On ASAP7 that bound is
+    # also the unit check: the report gives slack in picoseconds, and a
+    # conversion that did not happen would report 696 ns of slack for a 1 ns
+    # clock.
+    assert 0 < metrics["setup_wns_ns"] < PERIOD_NS, metrics
     assert metrics["drc_errors"] == 0, metrics
     assert metrics["power_W"] > 0, metrics
     # Every metric cites a file that exists in the workspace.  That traceability

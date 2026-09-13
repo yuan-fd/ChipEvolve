@@ -641,14 +641,43 @@ of flow time, a signoff layout, and an admissible verdict with nine metrics --
 ``drc_errors`` 0 -- each citing a file that exists in the evaluated workspace.
 The whole path is repeatable as an opt-in test.
 
+## The picosecond trap, against a real report
+
+The unit conversion is the correctness trap this whole port is organised around:
+OpenROAD reports timing in the active Liberty unit, and that unit is **not always
+nanoseconds**.  Until now it was proven by tests built from the table.  It has
+now been run for real on **asap7**, whose unit is picoseconds:
+
+| | raw report | verdict | period written |
+| --- | --- | --- | --- |
+| nangate45 | ``finish__timing__setup__ws`` 7.82 | ``setup_wns_ns`` 7.82 | 10 |
+| asap7 | ``finish__timing__setup__ws`` 695.997 | ``setup_wns_ns`` 0.696 | 1000 |
+
+A conversion that did not happen would have reported 696 ns of slack for a 1 ns
+clock.  The opt-in real test now proves this by construction: it takes the period
+per platform and asserts the slack is positive and *below* the period, so on
+asap7 the bound is the unit check.  ``OPENROAD_PLATFORM_REAL_PLATFORM=asap7``
+runs the same module against the same real toolchain.
+
+One detail worth keeping, because it is the design working rather than a
+coincidence: ``6_report.json`` carries no time-unit key at all.  The unit lives
+in ``2_1_floorplan.json`` -- ``"run__flow__platform__time_units": "1ps"`` -- a
+different file from the timing numbers it applies to, which is exactly why the
+parser looks for the declaration across the stage reports instead of assuming it
+sits beside the value.
+
 ## Next
 
 1. More applications, one per capability the objective names: RTL Studio,
    Teaching Workbench, Knowledge Service, Extensions Console, Terminal Bench.
-2. Move `scripts/` to its own `research-toolchain` repository.
-3. A real ASAP7 run, to exercise the picosecond path against a real report
-   rather than a fixture.  Every other unit conversion is now covered by real
-   evidence; that one is still argued from the table.
+2. Move `scripts/` to its own `research-toolchain` repository -- **blocked on a
+   decision**: that decision's wording says v1 is frozen read-only and must not
+   be modified, and moving its ``scripts/`` directory out modifies it.  Either
+   the new repository takes a copy and v1 keeps its own, or v1 is amended and the
+   freeze means "no new work on v1" rather than "no changes at all".
+3. A real multi-stage run with the reference designs (a bundle with include
+   directories and a synthesis frontend), which would exercise the restored
+   bundle path end to end rather than against a stub.
 
 ## v1 knowledge that must be carried across by hand
 
@@ -690,7 +719,7 @@ reader does not have to re-derive the decision -- or, worse, port it by default.
   87 commits. It grew 49.6% *after* being labelled LEGACY.
 - Gate calibration: G1 fires **1,119 times** on v1's kernel-equivalent packages;
   G13 fires **147 times**. Both are zero in v2.
-- v2 size: 23693 Python lines including tests, against 102,852 in v1.
+- v2 size: 23721 Python lines including tests, against 102,852 in v1.
 
 ## How to run
 
