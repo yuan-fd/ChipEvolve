@@ -119,7 +119,15 @@ class Instance:
         for key in ("clk", "ck", "clock"):
             if key in self.named_connections:
                 return self.named_connections[key]
-        # Positional fallback: pin 0 of a dff primitive.
+        if self.named_connections:
+            # The pins were named and none of them was a clock, so there is no
+            # clock to report.  Falling through to the positional slot here
+            # would return the DATA net, because a named dff with no clock has
+            # its data first in the filtered input list -- and a register
+            # reported as clocked by its own data is worse than one reported as
+            # unclocked.
+            return None
+        # Positional pins, so slot 0 really is the clock.
         return self.inputs[0] if self.inputs else None
 
     def dff_data(self) -> Optional[str]:
@@ -127,7 +135,9 @@ class Instance:
             return None
         if "d" in self.named_connections:
             return self.named_connections["d"]
-        # Pin 2, because the primitive order is (clk, rst, d, q).
+        if self.named_connections:
+            return None
+        # Pin 2, because the positional primitive order is (clk, rst, d, q).
         return self.inputs[2] if len(self.inputs) >= 3 else None
 
     def dff_q(self) -> Optional[str]:

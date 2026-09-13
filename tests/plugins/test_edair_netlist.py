@@ -251,6 +251,27 @@ def test_a_positional_flip_flop_with_only_three_connections_has_no_output(
     assert ff.dff_q() is None
 
 
+def test_a_named_flip_flop_without_a_clock_reports_no_clock(tmp_path: Path):
+    """The positional fallback applies only to positional pins.
+
+    A named dff with no clock has its data first in the filtered input list, so
+    falling through to slot 0 would report the register as clocked by its own
+    data -- and two such registers would then look like different clock domains
+    because their data nets differ.  Worse than a missing answer: a wrong one.
+    """
+    path = tmp_path / "no_clock.v"
+    path.write_text(
+        "module m (d, q);\n  input d;\n  output q;\n"
+        "  dff ff0 (.d(d), .q(q));\nendmodule\n",
+        encoding="utf-8",
+    )
+    ff = next(i for i in parse_verilog_netlist(path).instances
+              if i.name == "ff0")
+    assert ff.dff_clock() is None
+    assert ff.dff_data() == "d"
+    assert ff.dff_q() == "q"
+
+
 def test_a_named_flip_flop_without_a_reset_does_not_gain_a_positional_hole(
     tmp_path: Path,
 ):

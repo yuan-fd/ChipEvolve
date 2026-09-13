@@ -270,6 +270,42 @@ A continuous `assign` becomes a buffer instance so every edge comes from one
 kind of object, and its synthesized name is made unique rather than assuming the
 netlist does not already contain `__assign_buf_0`.
 
+`plugins/edair/analyzer.py` adds the structural half: reachability, paths, cuts,
+combinational depth, logic cones and clock domains.  The **property that explains
+most of its numbers is that flip-flops are not edges** -- a register drives its Q
+but conducts no combinational path -- so every depth is combinational and a
+register boundary is a natural end of a cone.  v1's boolean half (expression
+extraction, truth tables, equivalence) is deliberately **not** carried across: it
+is a separate capability with its own cost, and leaving it out means an index
+that says less rather than one that guesses.
+
+It also fixed a real defect found by reading v1 closely.  `dff_clock()` fell back
+to the first input when no clock pin was named -- but a named dff with no clock
+has its *data* first in the filtered input list, so a register was reported as
+clocked by its own data net, and two such registers compared as different clock
+domains because their data differed.  The positional fallback now applies only
+when the pins really were positional.
+
+## A flaky safety test, fixed properly
+
+Two guardian tests failed on the build host, and the reason was measurable
+rather than mysterious.  At load average 74,
+``bash -c "sleep 0.1 & echo PID:$!; wait"`` took **up to 13.9 seconds** to
+complete.  A 1-second deadline therefore fires before the child has forked
+anything, and the assertion describes a process tree that never existed.
+
+The earlier version of these tests had replaced a racy pid *file* with a pid on
+*stdout* and I had called the race fixed.  It was half fixed: the deadline still
+had to outlast process startup.  The tests are now handshake-driven -- the child
+reports its grandchild's pid and the stop happens the moment that line arrives --
+which is deterministic, because the test refuses to assert about a tree until the
+child has said the tree exists.  The deadline path reaches the same
+``_terminate_tree`` code, and is covered separately by a test that needs only a
+silent child and makes no timing assumption.
+
+Measured result: 3 consecutive runs, all 10 guardian tests passing, ~5s each, on
+a host at load 51.
+
 `plugins/orfs/reference_designs.py` carries the pinned source-bundle recipes --
 six registered designs plus the fixed-clock recipe the paper comparison used.
 This is the benchmark identity, so three properties are enforced rather than
