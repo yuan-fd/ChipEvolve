@@ -11,6 +11,7 @@ dependencies = ["openroad-platform-contracts"]
 
 [project.scripts]
 openroad-platform-runtime = "openroad_platform_runtime.cli:main"
+openroad-platform-worker = "openroad_platform_runtime.worker:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

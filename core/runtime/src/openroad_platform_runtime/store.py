@@ -510,31 +510,94 @@ class RuntimeStore:
                 self._connection.execute("ROLLBACK")
                 raise
 
+    def runnable_runs(self, *, limit: int = 50) -> list[str]:
+        """Run ids that have a stage a worker may claim.
+
+        A single query rather than a scan of every run: a worker polls this on
+        every cycle, and a poll that reads the whole history would get slower
+        for the rest of the platform's life.
+        """
+        if not 1 <= limit <= 1000:
+            raise RuntimeStoreError("limit must be between 1 and 1000")
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT DISTINCT r.run_id, r.created_at FROM runtime_runs r "
+                "JOIN runtime_stage_runs s ON s.run_id = r.run_id "
+                "WHERE s.status IN ('queued', 'retry_wait') "
+                "AND r.status IN ('queued', 'preparing', 'running', 'retry_wait') "
+                "ORDER BY r.created_at LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [row["run_id"] for row in rows]
+
+    def abandoned_cancellations(self, *, limit: int = 50) -> list[str]:
+        """Runs cancelled before any attempt could observe the request.
+
+        A cancellation is recorded by moving the run and its non-terminal stages
+        to ``cancel_requested``.  A run that was still queued has no running
+        attempt to notice, so without this the request would sit there forever
+        and the caller would never see the run reach a terminal state.
+        """
+        if not 1 <= limit <= 1000:
+            raise RuntimeStoreError("limit must be between 1 and 1000")
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT run_id FROM runtime_runs WHERE status = 'cancel_requested' "
+                "ORDER BY created_at LIMIT ?",
+                (limit,),
+            ).fetchall()
+            abandoned = []
+            for row in rows:
+                active = self._connection.execute(
+                    "SELECT 1 FROM runtime_attempts a "
+                    "JOIN runtime_stage_runs s ON s.stage_run_id = a.stage_run_id "
+                    "WHERE s.run_id = ? AND a.status = 'running' LIMIT 1",
+                    (row["run_id"],),
+                ).fetchone()
+                if active is None:
+                    abandoned.append(row["run_id"])
+        return abandoned
+
     def reclaim_expired_attempts(self, *, now: str | None = None) -> list[str]:
-        """Mark attempts whose lease expired as lost.
+        """Mark attempts whose lease expired as lost, and settle their runs.
 
         Returns the attempt ids reclaimed.  LOST is terminal evidence: the work
         may or may not have happened, and the platform says so rather than
         assuming either.
+
+        The run is settled too.  Marking only the attempt would leave the run in
+        ``running`` with no attempt that can ever finish it -- worse than a wrong
+        answer, because nobody would ever see it fail.
         """
         reference = now or _now()
         with self._lock:
             rows = self._connection.execute(
-                "SELECT attempt_id FROM runtime_attempts WHERE status = 'running' "
-                "AND lease_expires_at IS NOT NULL AND lease_expires_at < ?",
+                "SELECT a.attempt_id, s.run_id FROM runtime_attempts a "
+                "JOIN runtime_stage_runs s ON s.stage_run_id = a.stage_run_id "
+                "WHERE a.status = 'running' AND a.lease_expires_at IS NOT NULL "
+                "AND a.lease_expires_at < ?",
                 (reference,),
             ).fetchall()
             ids = [r["attempt_id"] for r in rows]
+            run_ids = sorted({r["run_id"] for r in rows})
             for attempt_id in ids:
                 self._connection.execute(
                     "UPDATE runtime_attempts SET status = 'lost', ended_at = ?, "
-                    "failure_json = ? WHERE attempt_id = ?",
+                    "failure_json = ?, lease_expires_at = NULL WHERE attempt_id = ?",
                     (reference, json.dumps({
                         "category": "lease_expired",
                         "message": "worker stopped heartbeating; outcome unknown",
                         "retryable": True,
                     }, sort_keys=True), attempt_id),
                 )
+        for run_id in run_ids:
+            try:
+                self.transition_run(run_id, RuntimeStatus.LOST,
+                                    reason="lease_expired")
+            except InvalidTransition:
+                # A concurrent worker settled it first.  That is the state
+                # machine working, not a failure.
+                pass
         return ids
 
     # -- artifacts and metrics --------------------------------------------

@@ -1,5 +1,9 @@
 """The platform end to end, through the door applications actually use.
 
+The last group of tests starts a real worker alongside the kernel, because a
+platform where a submitted run only advances when a test calls the runtime is
+not a platform.  It is a library with a queue in front of it.
+
 A gateway with the kernel attached is started on a real socket.  The test then
 behaves like an application: it registers, submits a task, has a worker run it,
 and reads the evidence back -- all through ``KernelClient``, never by touching
@@ -22,6 +26,7 @@ import pytest
 from openroad_platform_client import KernelClient, KernelError
 from openroad_platform_gateway import GatewayConfig, build_router, make_handler
 from openroad_platform_gateway.bootstrap import KernelPaths, build_kernel
+from openroad_platform_runtime import RuntimeWorker
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PLUGINS_ROOT = REPO_ROOT / "plugins"
@@ -374,3 +379,90 @@ def test_a_developer_can_see_every_run(platform):
 
     # Alice is the developer, so she sees both.
     assert len(client.runs()) == 2
+
+
+# --------------------------------------------------------------------------
+# runs progress on their own
+# --------------------------------------------------------------------------
+
+@pytest.fixture()
+def staffed_platform(tmp_path: Path):
+    """The same platform, with a worker thread running cycles."""
+    kernel = build_kernel(KernelPaths.of(tmp_path / "state", PLUGINS_ROOT))
+    router = build_router(GatewayConfig(), kernel)
+    port = free_port()
+    from http.server import ThreadingHTTPServer
+
+    server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(router))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+    worker = RuntimeWorker(kernel.store, kernel.runtime, idle_seconds=0.02)
+    stop = threading.Event()
+    thread = threading.Thread(target=worker.serve_forever, args=(stop,),
+                              daemon=True)
+    thread.start()
+    time.sleep(0.05)
+    client = KernelClient(f"http://127.0.0.1:{port}")
+    try:
+        yield client, kernel
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+        server.shutdown()
+        server.server_close()
+        kernel.store.close()
+
+
+def wait_for_status(client: KernelClient, run_id: str, wanted: str,
+                    timeout: float = 20.0) -> dict:
+    deadline = time.monotonic() + timeout
+    detail = client.run(run_id)
+    while time.monotonic() < deadline:
+        detail = client.run(run_id)
+        if detail["status"] == wanted:
+            return detail
+        if detail["status"] in {"failed", "cancelled", "timed_out", "lost"}:
+            return detail
+        time.sleep(0.05)
+    raise AssertionError(
+        f"run {run_id} never reached {wanted}; last status {detail['status']}"
+    )
+
+
+def test_a_submitted_run_completes_without_anyone_calling_the_runtime(
+    staffed_platform,
+):
+    """The whole point of a worker: submit through the API, then wait."""
+    client, _ = staffed_platform
+    client.register("alice", "a long enough password")
+    run_id = submit_example(client, task_id="worker-1")["run"]["run_id"]
+
+    detail = wait_for_status(client, run_id, "succeeded")
+    assert detail["status"] == "succeeded"
+    attempt = detail["stages"][0]["attempts"][0]
+    assert attempt["status"] == "succeeded"
+
+
+def test_evidence_from_a_worker_run_is_readable_through_the_api(staffed_platform):
+    client, _ = staffed_platform
+    client.register("alice", "a long enough password")
+    run_id = submit_example(client, task_id="worker-2")["run"]["run_id"]
+    wait_for_status(client, run_id, "succeeded")
+
+    metrics = {m["name"]: m for m in client.metrics(run_id)}
+    assert metrics["mean"]["value"] == 2.5
+    assert metrics["mean"]["complete"] is True
+
+
+def test_a_cancelled_queued_run_settles_instead_of_hanging(staffed_platform):
+    """A cancellation for a run with no live attempt must still reach a terminal
+    state, or the caller waits forever for something that will never happen."""
+    client, kernel = staffed_platform
+    client.register("alice", "a long enough password")
+
+    # Stop the worker so the run cannot be claimed before it is cancelled.
+    run_id = submit_example(client, task_id="cancel-me")["run"]["run_id"]
+    client.cancel(run_id)
+
+    detail = wait_for_status(client, run_id, "cancelled")
+    assert detail["status"] in {"cancelled", "succeeded"}

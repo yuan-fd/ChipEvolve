@@ -26,6 +26,7 @@ from .runtime import (
     RuntimeConfig,
     WorkflowRuntime,
 )
+from .worker import CycleReport, RuntimeWorker
 from .store import (
     Attempt,
     InvalidTransition,
@@ -48,8 +49,9 @@ __all__ = (
     # orchestration
     "ManifestResolver", "RuntimeConfig", "WorkflowRuntime",
     "RECEIPT_ARTIFACT_KIND",
-    # stage progress
     "ProgressObserver",
+    # stage progress
+    "CycleReport", "RuntimeWorker",
     # the one digest
     "sha256",
 )

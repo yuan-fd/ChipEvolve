@@ -186,6 +186,24 @@ class WorkflowRuntime:
         external_cancel_requested: Callable[[], bool] | None = None,
     ) -> RunRecord:
         """Advance a run by at most one attempt."""
+        run, _ = self.execute_once_reporting(
+            run_id, on_line=on_line,
+            external_cancel_requested=external_cancel_requested,
+        )
+        return run
+
+    def execute_once_reporting(
+        self, run_id: str, *,
+        on_line: Callable[[str], None] | None = None,
+        external_cancel_requested: Callable[[], bool] | None = None,
+    ) -> tuple[RunRecord, bool]:
+        """Advance a run, and say whether *this* call did the work.
+
+        The boolean exists because a caller cannot work it out for itself.
+        A worker that lost the race for the lease still observes the run move,
+        so any check it makes -- status changed, attempt count grew -- reports
+        work it did not do.  Only this method knows.
+        """
         # Record an external cancellation in our own store first.  A caller may
         # observe that cancellation is wanted; it may not declare the outcome.
         if external_cancel_requested is not None and external_cancel_requested():
@@ -193,11 +211,11 @@ class WorkflowRuntime:
 
         run = self.store.get_run(run_id)
         if is_terminal(run.status):
-            return run
+            return run, False
 
         stage = self._next_ready_stage(run_id)
         if stage is None:
-            return run
+            return run, False
 
         manifest = self.resolver.resolve(
             stage.plugin_id, version=stage.plugin_version,
@@ -217,8 +235,8 @@ class WorkflowRuntime:
             )
         except InvalidTransition:
             # Another worker won the race between selection and claim.  Return
-            # the authoritative state instead of inventing a failure.
-            return self.store.get_run(run_id)
+            # the authoritative state, and report that we did nothing.
+            return self.store.get_run(run_id), False
 
         pulse = _LeasePulse(
             self.store, run_id, attempt.attempt_id,
@@ -241,7 +259,7 @@ class WorkflowRuntime:
             self._record_runtime_failure(run, attempt, exc)
         finally:
             observer.record_summary()
-        return self.store.get_run(run_id)
+        return self.store.get_run(run_id), True
 
     def _run_attempt(
         self, run: RunRecord, stage: StageRun, attempt: Attempt,

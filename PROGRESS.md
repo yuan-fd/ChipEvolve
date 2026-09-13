@@ -229,13 +229,32 @@ Contract tests prove the door works: an application registers, submits a task, a
 worker runs it, and the application reads the resulting artifacts, metrics,
 timeline and graph back -- all through HTTP, never by touching the store.
 
+**The worker.** `core/runtime/worker.py` makes runs progress on their own; a
+submitted run no longer waits for somebody to call ``execute_once``.  A cycle
+reclaims expired leases, settles cancellations nobody could observe, then claims
+and executes.  In that order, so a stage whose lease just expired becomes
+available in the same cycle rather than the next one.
+
+The concurrency test forced a real design decision.  A worker that lost the race
+for a lease still *observes* the run move, so every check it could make for
+itself -- status changed, attempt count grew -- reported work it had not done;
+two workers each claimed to have executed one attempt.  Only the method that
+claims the lease knows, so ``execute_once_reporting`` returns that fact
+explicitly.
+
+Two more corrections, both because the tests were right:
+
+* A reclaimed lease now settles its **run** as LOST, not just its attempt.
+  Marking only the attempt left the run in ``running`` with no attempt that could
+  ever finish it -- a run nobody would ever see fail.
+* The worker's cycle caught only two exception types, so a run naming an unknown
+  plugin took the whole cycle down with it.
+
 ## Next
 
 1. `plugins/orfs/` remaining knowledge: the admitted-flow compatibility patch and
    the toolchain snapshot, both of which have exact byte-level provenance.
 2. More applications, one per capability the objective names.
-3. A worker entry point, so runs progress without an operator calling the
-   runtime directly.
 
 ## v1 knowledge that must be carried across by hand
 

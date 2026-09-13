@@ -8,15 +8,15 @@
     "See AGENTS.md and guardrails/rules.py (G7, G8, G10)."
   ],
   "max_file_loc": 1500,
-  "core_total_loc": 5869,
+  "core_total_loc": 6167,
   "file_loc": {
     "core/identity/src/openroad_platform_identity/auth.py": 407,
     "core/provenance/src/openroad_platform_provenance/index.py": 339,
     "core/registry/src/openroad_platform_registry/registry.py": 300,
     "core/runtime/src/openroad_platform_runtime/adapter.py": 370,
     "core/runtime/src/openroad_platform_runtime/guardian.py": 319,
-    "core/runtime/src/openroad_platform_runtime/runtime.py": 558,
-    "core/runtime/src/openroad_platform_runtime/store.py": 737
+    "core/runtime/src/openroad_platform_runtime/runtime.py": 576,
+    "core/runtime/src/openroad_platform_runtime/store.py": 800
   },
   "protected_sha256": {}
 }
