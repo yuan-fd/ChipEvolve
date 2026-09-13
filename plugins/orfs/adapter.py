@@ -20,6 +20,7 @@ from pathlib import Path
 
 # The script's own directory is on sys.path because Python adds it for the main
 # script, so the ported modules import normally.  No sys.path surgery.
+from compatibility import apply_backports, stage_flow
 from config import infer_clock, infer_top, write_design_files
 from digest import sha256_file
 from runner import (
@@ -171,6 +172,18 @@ def run_flow(
     clock = inputs.get("clock") or infer_clock(rtl, design)
 
     report("prepare", "started")
+    # Never run ``make`` in the operator's ORFS tree.  Materialize a per-attempt
+    # copy first, so every write the flow performs -- Makefile outputs, patched
+    # scripts, generated Tcl -- is contained by this attempt's workspace.  A run
+    # that wrote into the shared tree would change the toolchain under every
+    # other experiment.
+    staged_flow = stage_flow(flow_home, workdir)
+    report("stage-flow", "finished", status="succeeded",
+           scope=str(staged_flow.name))
+    backports = apply_backports(staged_flow, workdir)
+    report("backport", "finished", status="succeeded",
+           applied=len(backports))
+
     config_path = write_design_files(
         workdir=workdir, rtl_path=rtl_path, design=design, platform=platform,
         clock=clock, clock_period_ns=clock_period_ns,
@@ -204,7 +217,7 @@ def run_flow(
         report(stage, "started")
         outcome, seconds = run_make(
             stage=stage, config_path=config_path, workdir=workdir,
-            flow_home=flow_home, openroad_bin=openroad_bin, yosys_bin=yosys_bin,
+            flow_home=staged_flow, openroad_bin=openroad_bin, yosys_bin=yosys_bin,
             cores=cores, timeout_seconds=timeout,
             cancel_requested=cancel_requested, on_line=None, log_path=log_path,
         )
@@ -217,7 +230,7 @@ def run_flow(
             report("gds", "started")
             gds_outcome, gds_seconds = run_make(
                 stage="gds", config_path=config_path, workdir=workdir,
-                flow_home=flow_home, openroad_bin=openroad_bin,
+                flow_home=staged_flow, openroad_bin=openroad_bin,
                 yosys_bin=yosys_bin, cores=cores, timeout_seconds=timeout,
                 cancel_requested=cancel_requested, on_line=None,
                 log_path=log_path,

@@ -194,6 +194,38 @@ dictionary and then used the explicit arguments unchecked when it was absent, so
 an out-of-range utilization could pass straight through the gate.  The effective
 set is now what gets validated.
 
+`plugins/orfs/compatibility.py` adds the reviewed upstream backport, and with it
+a **defect in v2 that reading v1 exposed**.
+
+The frozen runner never invoked `make` in the operator's ORFS tree.  It copied
+the whole flow into the attempt workspace first:
+
+    # Never invoke make in the operator-owned ORFS tree.  Materialize a
+    # per-Attempt flow copy before any executable step so all possible
+    # Makefile/script writes are contained by Runtime's workspace.
+
+v2 was running `make` against the shared tree.  A run that writes into it changes
+the toolchain under every other experiment, and the backport below would have
+edited shared source rather than a per-attempt copy.
+
+The backport itself is verified rather than assumed: it applies only when the
+file's digest matches the reviewed source, the search string must occur exactly
+once, and the result must hash to the reviewed patched digest.  A different ORFS
+revision is therefore left alone rather than mangled -- a newer ORFS already
+carries the fix, so a mismatch is not an error.  Every change is recorded in
+`flow_compatibility.json` with its upstream commit, issue, paired OpenROAD commit
+and capability probe, and the receipt is written even when nothing was patched,
+so "no patch was needed" is evidence rather than an absence to interpret.
+
+The pinned ORFS/OpenROAD pair predates two coordinated upstream fixes, and the
+pinned OpenROAD reports GUI support despite exposing no `gui::show` command, so
+the flow's own headless check takes the wrong branch and the final report step
+fails.  Backporting is the alternative to moving the pin, which would change
+every measurement in the study.
+
+**Cost accepted:** staging copies the flow per attempt. That is the price of
+containment, and it is what the frozen implementation paid too.
+
 The adapter is exercised as a **real process** against a stub Makefile, so the
 whole chain is testable without a toolchain: configuration written, stages run
 in order, each gated on the artifact it should have produced, evidence collected

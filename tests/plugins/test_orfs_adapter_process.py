@@ -224,6 +224,48 @@ def test_evidence_is_collected_with_the_right_kinds(tmp_path, stub_toolchain):
         assert ".." not in path.split("/")
 
 
+def test_the_flow_is_staged_into_the_workspace(tmp_path, stub_toolchain):
+    """`make` must run in the attempt's own copy.
+
+    The operator's ORFS tree is shared.  A run that wrote into it would change
+    the toolchain under every other experiment, and the compatibility backport
+    would edit the shared source rather than a per-attempt copy.
+    """
+    _, workspace = run_adapter(tmp_path, stub_toolchain)
+    staged = workspace / "orfs-flow"
+    assert staged.is_dir()
+    assert (staged / "Makefile").is_file()
+    # The operator tree is still intact: staging copied rather than moved.
+    assert (stub_toolchain["flow_home"] / "Makefile").is_file()
+
+
+def test_the_operator_tree_is_never_patched(tmp_path, stub_toolchain):
+    """Add a patchable script to the operator tree and prove it is untouched."""
+    scripts = stub_toolchain["flow_home"] / "scripts"
+    scripts.mkdir()
+    original = "header\nif {[expr [llength [info procs save_image]] > 0]} {\n"
+    (scripts / "final_report.tcl").write_text(original, encoding="utf-8")
+
+    _, workspace = run_adapter(tmp_path, stub_toolchain)
+
+    # The operator copy is unchanged, whatever the staged one became.
+    assert (scripts / "final_report.tcl").read_text(encoding="utf-8") == original
+    assert (workspace / "orfs-flow" / "scripts" / "final_report.tcl").is_file()
+
+
+def test_the_compatibility_receipt_is_evidence(tmp_path, stub_toolchain):
+    """Written even when nothing needed patching, so "no patch was needed" is
+    evidence rather than an absence to interpret."""
+    result, workspace = run_adapter(tmp_path, stub_toolchain)
+    receipt = json.loads(
+        (workspace / "flow_compatibility.json").read_text(encoding="utf-8")
+    )
+    assert receipt["kind"] == "orfs-flow-compatibility"
+    assert receipt["changes"] == []
+    assert "claim_boundary" in receipt
+    assert "flow_compatibility.json" in {a["path"] for a in result["artifacts"]}
+
+
 def test_the_generated_configuration_is_evidence(tmp_path, stub_toolchain):
     _, workspace = run_adapter(tmp_path, stub_toolchain)
     config = workspace / "designs" / "nangate45" / "counter" / "config.mk"
