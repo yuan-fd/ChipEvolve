@@ -245,6 +245,31 @@ timing paths, and the parser's contract is that it is an *index*, not a summary:
 * the adapter registers the raw report alongside the index.  An index whose
   source is not kept cannot be checked.
 
+`plugins/orfs/reference_designs.py` carries the pinned source-bundle recipes --
+six registered designs plus the fixed-clock recipe the paper comparison used.
+This is the benchmark identity, so three properties are enforced rather than
+assumed:
+
+* **The clock is part of the recipe, not a tunable.**  Two arms that could each
+  choose their own period are not being compared on the same design.
+* **The fingerprint covers the recipe, every source file's bytes, and the
+  toolchain commit.**  A recipe alone would not notice an edited source; the
+  sources alone would not notice a different toolchain, and the same sources
+  built by two ORFS revisions are two different measurements.
+* **The paper recipe is a separate recipe, not a flag.**  It pins a different
+  ORFS commit with a 4.5 ns SDC rather than the current 3.6 ns, and accepting
+  the current one in its place would make the L1-to-L2 evidence handoff
+  ambiguous about which design was actually built.  It also requires a clean
+  checkout, because a dirty tree means the sources may not be the ones that were
+  measured.
+
+The ASAP7 unit conversion lives in the table as the boundary: the recipe holds
+nanoseconds while the source SDC stays byte-identical and keeps its official raw
+value.  And the paper anchor's utilization of 20 is exactly the parameter gate's
+SKY130HD lower bound -- those two numbers living in different files is how a gate
+ends up rejecting the official starting configuration of the study it is meant to
+reproduce, so a test asserts them together.
+
 The adapter is exercised as a **real process** against a stub Makefile, so the
 whole chain is testable without a toolchain: configuration written, stages run
 in order, each gated on the artifact it should have produced, evidence collected
