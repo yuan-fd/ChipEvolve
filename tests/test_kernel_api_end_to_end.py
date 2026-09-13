@@ -280,7 +280,13 @@ def test_idempotent_submission_returns_the_same_run(platform):
 # refusal behaviour
 # --------------------------------------------------------------------------
 
-def test_an_unknown_plugin_is_refused(platform):
+def test_an_unknown_plugin_is_refused_as_a_bad_request(platform):
+    """The request is the problem, so the answer is 4xx.
+
+    This was a 500: the registry's refusal escaped the handler and was reported
+    as a server error, which tells an operator to investigate the platform for a
+    mistake that is in their own task.
+    """
     client, _ = platform
     client.register("alice", "a long enough password")
     with pytest.raises(KernelError) as caught:
@@ -288,7 +294,7 @@ def test_an_unknown_plugin_is_refused(platform):
             "schema_version": 2, "task_id": "x", "project_id": "p",
             "design_id": "d", "plugin_id": "no-such-plugin", "inputs": {},
         })
-    assert caught.value.status == 500
+    assert caught.value.status == 400
     assert "unknown plugin" in str(caught.value)
 
 

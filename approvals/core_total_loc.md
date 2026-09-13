@@ -37,6 +37,18 @@ checked that this file existed. The consequence was not theoretical: the kernel
 reached 6,195 lines against the 6,167 budget and every gate stayed green.
 
 `approvals/ceiling.json` now holds the number this key authorises -- currently
-6,195, which is the 6,167 budget plus the 28 lines documented in
-`core_runtime_src_openroad_platform_runtime_store.py.md`. Raising it again means
-editing that number and saying why here.
+6,201, which is the 6,167 budget plus the 28 lines documented in
+`core_runtime_src_openroad_platform_runtime_store.py.md` and the 6 below.
+Raising it again means editing that number and saying why here.
+
+## 6,195 -> 6,201: a refusal reported as a server error
+
+`gateway/kernel_api.py`, `submit_run`. A task naming a capability the registry
+does not have raised `RegistryError`, which escaped the handler and reached the
+client as **500**. The request is the problem, so the answer is 400, and the
+registry's own message -- which names what it could not resolve -- is passed
+through. Six lines: the `try`, the `except`, the re-raise, and the reason.
+
+Worth recording that this is what the ratchet is for. The growth is small and
+the change is a correctness fix, and it still took an entry here, because the
+alternative is a budget that every "but it is only six lines" erodes.

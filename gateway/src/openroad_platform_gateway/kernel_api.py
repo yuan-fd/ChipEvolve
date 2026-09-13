@@ -153,10 +153,16 @@ class KernelApi:
         except ContractError as exc:
             raise HttpError(400, str(exc)) from exc
 
-        if request.q("idempotent"):
-            run = self.runtime.submit_idempotent(task)
-        else:
-            run = self.runtime.submit(task)
+        try:
+            run = (self.runtime.submit_idempotent(task)
+                   if request.q("idempotent") else self.runtime.submit(task))
+        except RegistryError as exc:
+            # A task naming a capability that is not available is the caller's
+            # mistake, not the server's, and the registry already names what it
+            # could not resolve.  Unhandled, this reached the client as a 500,
+            # which sends an operator to investigate the platform for a problem
+            # that is in their own request.
+            raise HttpError(400, str(exc)) from exc
         owner = session.user_id if session else self.local_user_id
         if owner:
             self.identity.bind_resource("run", run.run_id, owner)
