@@ -1,0 +1,24 @@
+{
+  "schema_version": 2,
+  "plugin_id": "edair",
+  "plugin_version": "1.0.0",
+  "adapter_entry": ["python3", "./adapter.py"],
+  "capabilities": ["eda.edair.index"],
+  "supported_arch": ["aarch64", "x86_64", "arm64"],
+  "input_schema": {
+    "type": "object",
+    "required": ["timing_report"]
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["status", "artifacts"]
+  },
+  "required_tools": ["python3"],
+  "default_timeout_seconds": 300,
+  "artifact_rules": [
+    {"kind": "report", "required": true},
+    {"kind": "log", "required": false}
+  ],
+  "progress_marker": "[progress]",
+  "environment": {}
+}

@@ -226,6 +226,25 @@ every measurement in the study.
 **Cost accepted:** staging copies the flow per attempt. That is the price of
 containment, and it is what the frozen implementation paid too.
 
+`plugins/edair/` is a new capability: turning one raw EDA artifact into a
+bounded, provenance-bearing index.  `opensta.py` parses OpenSTA's labelled
+timing paths, and the parser's contract is that it is an *index*, not a summary:
+
+* it reads only blocks OpenSTA explicitly labels, and never guesses a value into
+  a field for a line it did not understand;
+* the result says how much it did **not** capture -- `unparsed_blocks` counts
+  labelled blocks it could not turn into a row, and `truncated` says the cap cut
+  the report short.  A 400-path report read with `max_paths=256` is not a report
+  with 256 paths, and a reader who is not told will misread the distribution;
+* a block missing its slack line is counted and skipped rather than emitted with
+  an invented slack, because a missing measurement and a measured zero look
+  identical once a default exists;
+* path ids identify the **block's position in the report**, not the row number,
+  so a row does not silently renumber when the parser learns to read one more
+  block;
+* the adapter registers the raw report alongside the index.  An index whose
+  source is not kept cannot be checked.
+
 The adapter is exercised as a **real process** against a stub Makefile, so the
 whole chain is testable without a toolchain: configuration written, stages run
 in order, each gated on the artifact it should have produced, evidence collected

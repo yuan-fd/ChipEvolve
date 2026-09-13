@@ -1,0 +1,7 @@
+{
+  "status": "admitted",
+  "license": "green",
+  "source_url": "https://github.com/The-OpenROAD-Project/OpenSTA",
+  "source_commit": "0000000000000000000000000000000000000000",
+  "reason": "first-party indexer; reads OpenSTA text output that the tool itself emits. It executes no upstream code, so no upstream licence applies to what it runs; the report format it parses is documented by OpenSTA, which is Apache-2.0."
+}
