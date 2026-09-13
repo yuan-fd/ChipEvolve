@@ -607,6 +607,11 @@ SINGLETON_CONCERNS: dict[str, re.Pattern[str]] = {
 }
 
 
+def _is_test_path(rel: str) -> bool:
+    parts = rel.split("/")
+    return "tests" in parts or "fixtures" in parts
+
+
 def duplicate_implementation_violations(root: Path) -> list[Violation]:
     """G13: each named concern may have exactly one implementation site.
 
@@ -618,6 +623,12 @@ def duplicate_implementation_violations(root: Path) -> list[Violation]:
     for concern, rx in SINGLETON_CONCERNS.items():
         hits: list[tuple[str, int]] = []
         for path in _walk_python(root):
+            # A test double is not a second implementation of a platform
+            # concern.  A fake app must define do_GET because the HTTP
+            # server requires it; counting that would make the rule
+            # unusable and tempt someone to switch it off.
+            if _is_test_path(_rel(root, path)):
+                continue
             try:
                 tree = ast.parse(_read(path), filename=str(path))
             except SyntaxError:

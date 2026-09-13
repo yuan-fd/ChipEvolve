@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=59.4"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openroad-platform-gateway"
+version = "0.1.0"
+description = "Integration entry point: identity, routing, navigation"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+openroad-platform-gateway = "openroad_platform_gateway.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["openroad_platform_gateway*"]
