@@ -28,7 +28,7 @@ plugins/    external algorithms. Each owns its own adapter.
 | G5 | An app must never open a kernel-owned database. | `guardrails/test_g5_apps_do_not_open_kernel_databases.py` |
 | G6 | Each app has its own `pyproject.toml` and its own process entry point. | `guardrails/test_g6_apps_are_independently_installable.py` |
 | G7 | No source file exceeds the per-file line ceiling. | `guardrails/test_g7_file_size_ceiling.py` |
-| G8 | Recorded sizes may only shrink. Growth requires an approval file. | `guardrails/test_g8_ratchet_only_shrinks.py` |
+| G8 | Recorded sizes may only shrink. Growth requires an approval naming the size. | `guardrails/test_g8_ratchet_only_shrinks.py` |
 | G9 | Each app ships a real end-to-end smoke. | `guardrails/test_g9_apps_have_end_to_end_smoke.py` |
 | G10 | Protected components are hash-locked. | `guardrails/test_g10_protected_files_are_hash_locked.py` |
 | G11 | Defensive anti-patterns are forbidden. | `guardrails/test_g11_no_defensive_antipatterns.py` |
@@ -82,5 +82,8 @@ pass, and do not add a compatibility layer to avoid a decision.
 ## Amending the rules
 
 `guardrails/baseline.json` holds the size ceilings. Raising a ceiling requires
-an approval file under `approvals/` explaining why. Removing a forbidden token
-from `rules.py` is never allowed: that silently re-opens a hole.
+two things: a reason in `approvals/<key>.md` and the amount in
+`approvals/ceiling.json`. Both, because an approval that only had to *exist*
+exempted its component for the rest of the project's life -- the kernel sat above
+its budget with every gate green. Removing a forbidden token from `rules.py` is
+never allowed: that silently re-opens a hole.

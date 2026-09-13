@@ -17,6 +17,12 @@
       "base_url": "http://127.0.0.1:8820",
       "title": "DSE Lab",
       "description": "Submit a parameter sweep and compare the measured evidence."
+    },
+    {
+      "name": "run_console",
+      "base_url": "http://127.0.0.1:8830",
+      "title": "Run Console",
+      "description": "Submit a task and follow the progress the kernel recorded."
     }
   ]
 }

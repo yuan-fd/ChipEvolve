@@ -574,6 +574,37 @@ mutation-checked.  The run itself is repeatable as an opt-in test:
 ``tests/plugins/test_orfs_real_toolchain.py``, skipped unless the toolchain is
 named, because it copies the flow tree (1.6 GB here) and runs real synthesis.
 
+## The third application, and a gate that had stopped meaning anything
+
+`apps/run_console/` submits a task and follows it. Its one honest behaviour is
+that it **does not invent progress**: no percentage, no bar driven by elapsed
+time against an expected duration, no stage list known in advance. It reports the
+stage events the kernel holds, in the order the plugin announced them, with the
+stage name carried through as opaque data; a run that reported nothing is
+reported as having reported nothing rather than as 0% complete. A test asserts
+the exact field set of the progress payload, so adding a quantity to it has to be
+a decision rather than an accident.
+
+Writing its test for "a run that reported no progress" exposed a kernel defect.
+The platform requires every adapter to report *why* it failed, stores that, and
+never read it back: `Attempt` had no ``failure`` field and ``describe_run`` did
+not project one. A failed run was ``status: failed`` and nothing else -- and
+since an app may not open the kernel's database (G5), no application could ever
+show the reason either. The read model now carries it, which is what
+`approvals/core_runtime_src_openroad_platform_runtime_store.py.md` is about.
+
+**The ratchet had a hole.** Being forced through the approval path is what found
+it: `approvals/core_total_loc.md` existed, so G8 skipped every later comparison
+against the budget. The kernel was at 6,195 lines against a budget of 6,167 and
+every gate was green. An approval that only has to *exist* exempts its component
+for the rest of the project's life, which is the same as having no ratchet.
+
+An approval now needs two things: a reason in `approvals/<key>.md` and the amount
+in `approvals/ceiling.json`. The gate compares the number, so it can fail again
+tomorrow. Both directions are tested, including the one it was blind to --
+an approval for less than the component actually is -- and an unreadable grant
+fails closed rather than passing by accident.
+
 ## Next
 
 1. Run the full flow (`finish`) for one real reference design, and the protected

@@ -340,3 +340,44 @@ def test_only_one_thread_wins_a_concurrent_claim(tmp_path: Path):
         assert outcomes.count("lost") == 3
     finally:
         store.close()
+
+
+def test_the_reason_an_attempt_failed_survives_to_the_reader(
+    store: RuntimeStore, tmp_path: Path
+):
+    """The platform makes adapters report *why*, so it has to be able to show it.
+
+    "The run failed" without "because the toolchain was not found" is a status,
+    not a diagnosis, and it is the difference between an operator knowing what to
+    fix and re-running the same broken thing.
+    """
+    run = submit(store)
+    stage = store.list_stages(run.run_id)[0]
+    attempt = store.start_attempt(stage.stage_run_id, worker_id="w1",
+                                  workspace=tmp_path, lease_seconds=30)
+    failure = {"category": "configuration_error",
+               "message": "ORFS Makefile not found: /absent/flow/Makefile",
+               "retryable": False}
+    store.finish_attempt(attempt.attempt_id, AttemptStatus.FAILED,
+                         exit_code=3, failure=failure)
+
+    view = store.describe_run(run.run_id)
+    assert view["stages"][0]["attempts"][0]["failure"] == failure
+
+    # The read model is also the only place it can come from: the attempt is
+    # loaded from the row, not from the value that was passed in.
+    reloaded = store.list_attempts(stage.stage_run_id)[0]
+    assert reloaded.failure == failure
+
+
+def test_an_attempt_with_no_recorded_failure_says_nothing(
+    store: RuntimeStore, tmp_path: Path
+):
+    """Absent is not the same as empty, and neither is an error."""
+    run = submit(store)
+    stage = store.list_stages(run.run_id)[0]
+    attempt = store.start_attempt(stage.stage_run_id, worker_id="w1",
+                                  workspace=tmp_path, lease_seconds=30)
+    store.finish_attempt(attempt.attempt_id, AttemptStatus.SUCCEEDED, exit_code=0)
+    view = store.describe_run(run.run_id)
+    assert view["stages"][0]["attempts"][0]["failure"] is None

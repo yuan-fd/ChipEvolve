@@ -128,6 +128,23 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _optional_json_object(raw: str | None) -> Mapping[str, Any] | None:
+    """Decode a stored JSON object, or report its absence.
+
+    A stored failure is read back, not trusted: a row written by an older
+    version, or truncated by a crash, is reported as "no reason recorded" rather
+    than taking the read model down with it.  That is the read side of boundary
+    validation -- the write side already refuses anything that is not an object.
+    """
+    if not raw:
+        return None
+    try:
+        decoded = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    return decoded if isinstance(decoded, dict) else None
+
+
 def _new_id(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex}"
 
@@ -159,6 +176,11 @@ class Attempt:
     status: AttemptStatus
     workspace: str
     worker_id: str
+    #: The adapter's own report of why it failed, as it was written down.  It is
+    #: carried here because the platform requires adapters to report it and then
+    #: has to be able to show it: "the run failed" without "because the toolchain
+    #: was not found" is a status, not a diagnosis.
+    failure: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -326,6 +348,11 @@ class RuntimeStore:
                 attempt_number=r["attempt_number"],
                 status=AttemptStatus(r["status"]), workspace=r["workspace"],
                 worker_id=r["worker_id"],
+                # A malformed or absent failure record is loaded as absent
+                # rather than crashing the read model: the run is still real, and
+                # a reader asking why it failed should not be told "the store is
+                # unreadable".
+                failure=_optional_json_object(r["failure_json"]),
             )
             for r in rows
         ]
@@ -767,6 +794,7 @@ class RuntimeStore:
                     "status": attempt.status.value,
                     "workspace": attempt.workspace,
                     "worker_id": attempt.worker_id,
+                    "failure": attempt.failure,
                     "artifacts": [
                         {
                             "artifact_id": a.artifact_id, "kind": a.kind,

@@ -425,12 +425,12 @@ def ratchet_violations(root: Path) -> list[Violation]:
             if (root / d).is_dir() and not _is_test_path(_rel(root, p))
         )
         if actual > int(core_budget):
-            approved = _has_approval(root, "core_total_loc")
-            if not approved:
+            approved = _approved_ceiling(root, "core_total_loc")
+            if approved is None or actual > approved:
                 out.append(Violation(
                     "G8", CORE_DIR, 0,
                     f"kernel is {actual} lines, above the frozen budget "
-                    f"{core_budget}; lower the code or add an approval",
+                    f"{core_budget}; " + _approval_advice(approved),
                 ))
 
     for rel, ceiling in (baseline.get("file_loc") or {}).items():
@@ -438,17 +438,67 @@ def ratchet_violations(root: Path) -> list[Violation]:
         if not path.is_file():
             continue
         actual = _loc(path)
-        if actual > int(ceiling) and not _has_approval(root, rel):
-            out.append(Violation(
-                "G8", rel, 0,
-                f"{actual} lines, above the frozen ceiling {ceiling}",
-            ))
+        if actual > int(ceiling):
+            approved = _approved_ceiling(root, rel)
+            if approved is None or actual > approved:
+                out.append(Violation(
+                    "G8", rel, 0,
+                    f"{actual} lines, above the frozen ceiling {ceiling}; "
+                    + _approval_advice(approved),
+                ))
     return out
 
 
-def _has_approval(root: Path, key: str) -> bool:
+def _approval_path(root: Path, key: str) -> Path:
     safe = re.sub(r"[^A-Za-z0-9_.-]", "_", key)
-    return (root / "approvals" / f"{safe}.md").is_file()
+    return root / "approvals" / f"{safe}.md"
+
+
+def _has_approval(root: Path, key: str) -> bool:
+    """Whether a written reason exists for this key.
+
+    Used where there is nothing to measure -- G10 asks "was this protected file
+    changed on purpose", and the answer is the existence of the reason.
+    """
+    return _approval_path(root, key).is_file()
+
+
+def _approved_ceiling(root: Path, key: str) -> int | None:
+    """The size an approval authorises for *key*, or ``None``.
+
+    The number, not the filename.  An approval that only had to *exist* stopped
+    exempting nothing: once ``approvals/core_total_loc.md`` was written, every
+    later comparison against the budget was skipped, so the kernel could grow
+    past what was approved without a single gate objecting -- which it did.  A
+    written reason is still required; it just has to say how much.
+
+    The reason lives in ``approvals/<key>.md`` and the amount in
+    ``approvals/ceiling.json``, so the document a human reads and the number the
+    gate enforces cannot drift apart silently: a missing or unparsable grant is
+    no approval at all.
+    """
+    if not _approval_path(root, key).is_file():
+        return None
+    grants_path = root / "approvals" / "ceiling.json"
+    if not grants_path.is_file():
+        return None
+    try:
+        grants = json.loads(_read(grants_path))
+    except ValueError:
+        return None
+    if not isinstance(grants, dict):
+        return None
+    granted = grants.get(key)
+    if isinstance(granted, bool) or not isinstance(granted, int):
+        return None
+    return granted
+
+
+def _approval_advice(approved: int | None) -> str:
+    if approved is None:
+        return "lower the code or add an approval"
+    return (f"the approval covers only {approved}; lower the code or raise "
+            f"approvals/ceiling.json")
 
 
 # --------------------------------------------------------------------------

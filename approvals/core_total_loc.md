@@ -28,3 +28,15 @@ kernel keeps one process, and `kernel_api.py` keeps the routing thin.
 The budget roughly doubles. It is raised once, in writing, for the transport
 between the kernel and the applications the objective requires. Any further
 growth needs its own approval, and the budget may be lowered at any time.
+
+## Later ceilings under this key
+
+`core_total_loc_2.md` raised the budget to 6,167. Both of those approvals should
+have said *how much* they authorised, and neither did, because the gate only
+checked that this file existed. The consequence was not theoretical: the kernel
+reached 6,195 lines against the 6,167 budget and every gate stayed green.
+
+`approvals/ceiling.json` now holds the number this key authorises -- currently
+6,195, which is the 6,167 budget plus the 28 lines documented in
+`core_runtime_src_openroad_platform_runtime_store.py.md`. Raising it again means
+editing that number and saying why here.

@@ -1,0 +1,11 @@
+{
+  "_comment": [
+    "The size each approval authorises, keyed exactly as G8 names it. A written",
+    "reason is required as well, in approvals/<key>.md; this file holds the",
+    "number, so an approval cannot keep exempting a component after it has grown",
+    "past what was approved. Raising a number here without a reason beside it is",
+    "the thing the ratchet exists to make impossible."
+  ],
+  "core_total_loc": 6195,
+  "core/runtime/src/openroad_platform_runtime/store.py": 828
+}
