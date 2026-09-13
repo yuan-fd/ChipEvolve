@@ -120,7 +120,8 @@ def run_adapter(tmp_path: Path, toolchain: dict[str, Path],
                 *, inputs: dict | None = None,
                 create_layout: bool = True,
                 makefile: str | None = None,
-                adapter_environment: dict | None = None) -> tuple[dict, Path]:
+                adapter_environment: dict | None = None,
+                bundle: bool = False) -> tuple[dict, Path]:
     workspace = tmp_path / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)
     rtl = tmp_path / "counter.v"
@@ -150,6 +151,10 @@ def run_adapter(tmp_path: Path, toolchain: dict[str, Path],
         "yosys_bin": str(toolchain["yosys_bin"]),
         "stage_timeout_seconds": 60,
     }
+    if bundle:
+        # A reference design names its sources as a rooted bundle and never as a
+        # single file.
+        task_inputs.pop("rtl_path")
     task_inputs.update(inputs or {})
 
     request_path = workspace / "adapter_request.json"
@@ -483,3 +488,115 @@ def test_the_composed_path_does_not_accumulate_duplicates(tmp_path, stub_toolcha
     assert "/usr/bin" in entries
     assert "/bin" in entries
     assert len(entries) == len(set(entries))
+
+
+# --------------------------------------------------------------------------
+# a reference-design bundle
+# --------------------------------------------------------------------------
+
+BUNDLE_RTL = """\
+module blob_core (clk_i, nrst, q);
+  input clk_i;
+  input nrst;
+  output [3:0] q;
+  counter u_count (.clk_i(clk_i), .nrst(nrst), .q(q));
+endmodule
+"""
+
+
+def make_bundle(tmp_path: Path) -> dict:
+    """The shape ``reference_designs.to_inputs()`` produces.
+
+    Two sources under a root, an include directory, a synthesis frontend, the
+    design's own constraint file and its recipe options -- everything a reviewed
+    reference design carries, and everything an earlier version of the adapter
+    silently dropped.
+    """
+    root = tmp_path / "bundle"
+    (root / "rtl").mkdir(parents=True)
+    (root / "include").mkdir(parents=True)
+    (root / "rtl" / "blob_core.sv").write_text(BUNDLE_RTL, encoding="utf-8")
+    (root / "rtl" / "counter.sv").write_text(
+        "module counter (input clk_i, input nrst, output reg [3:0] q);\n"
+        "  always @(posedge clk_i) if (!nrst) q <= 0; else q <= q + 1;\n"
+        "endmodule\n", encoding="utf-8")
+    (root / "include" / "defs.svh").write_text("`define W 4\n", encoding="utf-8")
+    sdc = root / "constraint_pos_slack.sdc"
+    sdc.write_text("create_clock -name clk_i -period 1.468 [get_ports clk_i]\n",
+                   encoding="utf-8")
+    return {
+        "rtl_root": str(root),
+        "rtl_files": [str(root / "rtl" / "blob_core.sv"),
+                      str(root / "rtl" / "counter.sv")],
+        "rtl_include_dirs": [str(root / "include")],
+        "top": "blob_core",
+        "clock": "clk_i",
+        # The reviewed ASAP7 ibex constraint, in public nanoseconds: the writer
+        # converts it to the platform's unit on the way in.
+        "clock_period_ns": 1.468,
+        "sdc_path": str(sdc),
+        "synth_hdl_frontend": "slang",
+        "design_options": {"swap_arith_operators": 1, "openroad_hierarchical": 1},
+    }
+
+
+def test_a_reference_design_bundle_runs_end_to_end(tmp_path, stub_toolchain):
+    """The bundle is the shape every reference design has.
+
+    Before this, the adapter read only ``rtl_path`` and a bundle task failed
+    outright -- which meant the reviewed reference designs could not be run at
+    all, and the milestone tests below could never have caught it.
+    """
+    result, workspace = run_adapter(
+        tmp_path, stub_toolchain, bundle=True,
+        inputs=make_bundle(tmp_path) | {"platform": "asap7"},
+    )
+    assert result["status"] == "succeeded", result.get("failure")
+
+    config = (workspace / "designs" / "asap7" / "blob_core" / "config.mk").read_text(
+        encoding="utf-8")
+    # Both sources, staged under their path relative to the bundle root.
+    assert "blob_core.sv" in config and "counter.sv" in config
+    assert "export VERILOG_INCLUDE_DIRS = " in config
+    assert "export SYNTH_HDL_FRONTEND = slang" in config
+    assert "export SWAP_ARITH_OPERATORS = 1" in config
+    assert "export OPENROAD_HIERARCHICAL = 1" in config
+    # The design's own constraint, not a generated one.
+    sdc = (workspace / "designs" / "asap7" / "blob_core" / "constraint.sdc").read_text(
+        encoding="utf-8")
+    assert sdc == "create_clock -name clk_i -period 1.468 [get_ports clk_i]\n"
+    # The ASAP7 period is in the platform's unit, not nanoseconds.
+    assert "export CLOCK_PERIOD = 1468" in config
+
+
+def test_the_top_module_names_the_design_not_the_bundle_label(tmp_path, stub_toolchain):
+    """``top`` is what ORFS elaborates and the name it gives the design;
+    ``design`` is the bundle's own label and only a fallback."""
+    result, workspace = run_adapter(
+        tmp_path, stub_toolchain, bundle=True,
+        inputs=make_bundle(tmp_path) | {"design": "some_label"},
+    )
+    assert result["status"] == "succeeded", result.get("failure")
+    plan = json.loads((workspace / "plan.json").read_text(encoding="utf-8"))
+    assert plan["design"] == "blob_core"
+
+
+def test_a_bundle_without_a_root_is_refused(tmp_path, stub_toolchain):
+    """A bundle's files are staged relative to its root; without one there is
+    nothing to be relative to, and guessing would invent a design identity."""
+    bundle = make_bundle(tmp_path)
+    bundle.pop("rtl_root")
+    result, _ = run_adapter(
+        tmp_path, stub_toolchain, bundle=True, inputs=bundle)
+    assert result["status"] == "failed"
+    assert "rtl_root" in result["failure"]["message"]
+
+
+def test_naming_both_a_file_and_a_bundle_is_refused(tmp_path, stub_toolchain):
+    """A caller who gave both meant one of them; a precedence rule would decide
+    silently and the snapshot would describe the other."""
+    result, _ = run_adapter(
+        tmp_path, stub_toolchain, bundle=False,   # keeps rtl_path
+        inputs=make_bundle(tmp_path))
+    assert result["status"] == "failed"
+    assert "not both" in result["failure"]["message"]

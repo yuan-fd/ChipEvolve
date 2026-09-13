@@ -54,6 +54,37 @@ def report(stage: str, phase: str, **extra) -> None:
     ), flush=True)
 
 
+def design_sources(inputs: dict) -> list[Path]:
+    """The design's RTL files, from either task shape.
+
+    A task may name one file (``rtl_path``) or a rooted bundle (``rtl_files``
+    with ``rtl_root``), and a reference design always uses the second.  Which
+    one applies is decided here, once, so that inference, staging and the
+    snapshot cannot disagree about which files are the design.
+
+    Naming both is an error rather than a precedence rule: a caller who meant one
+    of them should be told which took effect, not left to discover it.
+    """
+    rtl_files = tuple(
+        Path(str(item)).expanduser().resolve()
+        for item in (inputs.get("rtl_files") or ())
+    )
+    rtl_path = inputs.get("rtl_path")
+    if rtl_files and rtl_path:
+        raise ValueError("give either rtl_path or rtl_files, not both")
+    if rtl_files:
+        missing = [str(item) for item in rtl_files if not item.is_file()]
+        if missing:
+            raise FileNotFoundError("RTL source not found: " + ", ".join(missing))
+        return list(rtl_files)
+    if not rtl_path:
+        raise ValueError("a task must name rtl_path or rtl_files")
+    path = Path(str(rtl_path)).expanduser().resolve()
+    if not path.is_file():
+        raise FileNotFoundError(f"RTL file not found: {path}")
+    return [path]
+
+
 def write_result(path: Path, payload: dict, started_at: str) -> None:
     path.write_text(json.dumps({
         "schema_version": 2, "started_at": started_at, "ended_at": now(), **payload,
@@ -144,9 +175,7 @@ def run_flow(
     flow_home: Path, cores: int, toolchain: ToolchainConfig, cancel_requested,
 ) -> dict:
     """Prepare the design, run every stage, and record what happened."""
-    rtl_path = Path(str(inputs["rtl_path"])).expanduser().resolve()
-    if not rtl_path.is_file():
-        raise FileNotFoundError(f"RTL file not found: {rtl_path}")
+    sources = design_sources(inputs)
 
     platform = str(inputs.get("platform") or "nangate45")
     target_stage = str(inputs.get("target_stage") or "finish")
@@ -155,9 +184,25 @@ def run_flow(
 
     clock_period_ns = float(inputs.get("clock_period_ns") or 10.0)
     or_seed = int(parameters.get("or_seed") or inputs.get("or_seed") or 1)
-    rtl = rtl_path.read_text(encoding="utf-8", errors="replace")
-    design = str(inputs.get("design") or infer_top(rtl, rtl_path.stem))
+    # Inference reads the whole bundle, not one file of it: a bundle's top
+    # module is often declared in one file and instantiated in another, so
+    # inferring from the first file would name the wrong module -- or none.
+    rtl = "\n".join(
+        source.read_text(encoding="utf-8", errors="replace") for source in sources
+    )
+    # ``top`` is the module ORFS elaborates and the name it gives the design;
+    # ``design`` is the bundle's own label and only a fallback.
+    design = str(
+        inputs.get("top") or inputs.get("design") or infer_top(rtl, sources[0].stem)
+    )
     clock = inputs.get("clock") or infer_clock(rtl, design)
+
+    # The bundle is the general shape; one file is the bundle with one entry, so
+    # its root is the file's own directory when the task did not name one.
+    rtl_root = (Path(str(inputs["rtl_root"])).expanduser().resolve()
+                if inputs.get("rtl_root") else None)
+    if rtl_root is None and len(sources) == 1:
+        rtl_root = sources[0].parent
 
     report("prepare", "started")
     # Never run ``make`` in the operator's ORFS tree.  Materialize a per-attempt
@@ -178,8 +223,21 @@ def run_flow(
     environment = toolchain.build_environment()
 
     config_path = write_design_files(
-        workdir=workdir, rtl_path=rtl_path, design=design, platform=platform,
+        workdir=workdir, rtl_files=tuple(sources), rtl_root=rtl_root,
+        design=design, platform=platform,
         clock=clock, clock_period_ns=clock_period_ns,
+        rtl_include_dirs=tuple(
+            Path(str(item)).expanduser().resolve()
+            for item in (inputs.get("rtl_include_dirs") or ())
+        ),
+        synth_hdl_frontend=inputs.get("synth_hdl_frontend") or None,
+        sdc_path=(Path(str(inputs["sdc_path"])).expanduser().resolve()
+                  if inputs.get("sdc_path") else None),
+        fast_route_tcl_path=(
+            Path(str(inputs["fast_route_tcl_path"])).expanduser().resolve()
+            if inputs.get("fast_route_tcl_path") else None
+        ),
+        design_options=dict(inputs.get("design_options") or {}),
         core_utilization_pct=float(
             parameters.get("core_utilization_pct")
             or inputs.get("core_utilization_pct") or 40.0
@@ -214,7 +272,7 @@ def run_flow(
             "place_density": parameters.get("place_density"),
             "flow_parameters": dict(parameters.get("flow_parameters") or {}),
         },
-        rtl_path=rtl_path, rtl_files=list(inputs.get("rtl_files") or []),
+        rtl_path=sources[0], rtl_files=[str(item) for item in sources],
         generated_config=config_path,
         sdc_path=(Path(str(inputs["sdc_path"]))
                   if inputs.get("sdc_path") else None),

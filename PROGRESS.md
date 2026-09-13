@@ -367,6 +367,38 @@ whole chain is testable without a toolchain: configuration written, stages run
 in order, each gated on the artifact it should have produced, evidence collected
 with the right kinds, exit code agreeing with the reported status.
 
+**The bundle gap, found by following the recipes.** Auditing those six recipes
+against what the adapter could spend turned up a defect that no unit test could
+have shown, because each half was individually correct: `reference_designs.py`
+published `rtl_files`/`rtl_root`/`rtl_include_dirs`/`sdc_path`/
+`synth_hdl_frontend`/`fast_route_tcl_path`/`design_options`, and the adapter read
+only `rtl_path`.  A reference-design task therefore **failed outright** -- the
+reviewed designs could not be run at all -- and the snapshot was hashing bundle
+entries the flow never used.  Five of the six recipes carry recipe options
+(`asap7/ibex` needs `swap_arith_operators` and `openroad_hierarchical`), so an
+attempt that dropped them would have elaborated a different design than the one
+reviewed, silently.
+
+What was restored, each with a test that fails without it:
+
+* `design_options.py` -- the closed registry of the three ORFS recipe switches.
+  Closed because the writer emits ``export <name> = <value>``: an unvalidated
+  key would be an arbitrary Make assignment smuggled in through a task bundle.
+  An unknown name is refused, and ``"1"`` is refused too -- it would reach the
+  flow as ``export X = 1`` and look identical while bypassing the check.
+* The rooted **bundle** as the writer's only shape, with relative structure
+  preserved, include directories copied header-by-header, the synthesis
+  frontend, a verbatim SDC, and the fast-route script.  A source outside the
+  bundle root is an error, because staging it would put a file into the attempt
+  that the bundle's identity does not cover.
+* The adapter normalizes the task's two shapes ("one file" or "a bundle") in one
+  place, and **inference reads the whole bundle**: a bundle's top module is often
+  declared in one file and instantiated in another, so inferring from the first
+  file names the wrong module or none.  ``top`` names the design, ``design`` is
+  only the bundle's label -- ORFS elaborates the former.
+* Boundary validation on the names that reach Make and Tcl.  A design name
+  carrying a newline would not be a bad name, it would be a second statement.
+
 Reading v1's `run()` corrected a design error that functions alone could not
 show.  The layout export happens **inside the finish stage and before its gate**,
 because the finish gate requires the layout and the export is a make target of
@@ -506,12 +538,11 @@ invented, all corrected here:
 
 ## Next
 
-1. `plugins/orfs/` remaining knowledge: the three v1 modules deliberately
-   deferred (`cell_coords.py`, `orfs_generated_design.py`,
-   `orfs_design_options.py`).
-2. More applications, one per capability the objective names: RTL Studio,
+1. More applications, one per capability the objective names: RTL Studio,
    Teaching Workbench, Knowledge Service, Extensions Console, Terminal Bench.
-3. Move `scripts/` to its own `research-toolchain` repository.
+2. Move `scripts/` to its own `research-toolchain` repository.
+3. Re-run one real reference design against a real toolchain -- the bundle path
+   is now provable in principle and has never been executed end to end.
 
 ## v1 knowledge that must be carried across by hand
 
@@ -531,6 +562,18 @@ Not guessed, not paraphrased — read from v1 and re-derived as tests:
 | `orfs_config.py` | 220 | configuration mapping |
 | `orfs_protected_evaluator.py` | 214 | protected verdict semantics |
 
+### Not ported, and why
+
+Audited rather than assumed.  Each of these has no consumer on v2's product
+path, and the condition that would bring it back is written down so a future
+reader does not have to re-derive the decision -- or, worse, port it by default.
+
+| v1 module | Lines | Why it is not here |
+| --- | ---: | --- |
+| `orfs_generated_design.py` | 430 | Exists to bridge ORFS design *discovery* for the upstream AutoTuner, which hard-codes `flow/designs/<pdk>/<design>`. Its only real consumer in v1 is `official_autotuner.py`. v2 stages a per-attempt flow and passes `DESIGN_CONFIG` explicitly, so nothing needs the bridge, and D4 sends optimizers out of the product path. **Returns if** a plugin that ignores `DESIGN_HOME` is added. |
+| `orfs_design_options.py` | 38 | *Was* in this category by association -- it is imported by `generated_design` -- but `orfs_config.py` imports it too, on the product path, and five of the six reference recipes carry options. Ported as `design_options.py`; the bundle that carried them could not spend them. |
+| `parsers/cell_coords.py` | 238 | The placement-density grid format. v1 consumers are `pipeline.py`, `diagnosis.py`, `reporter.py` and `apps/api/app.py`; v2 has no diagnosis or layout-visualization capability. **Returns if** an app renders the density grid. |
+
 ## v1 measurements worth keeping
 
 - 102,852 Python lines; tests 20,575, scripts 22,694, library 58,705.
@@ -541,7 +584,7 @@ Not guessed, not paraphrased — read from v1 and re-derived as tests:
   87 commits. It grew 49.6% *after* being labelled LEGACY.
 - Gate calibration: G1 fires **1,119 times** on v1's kernel-equivalent packages;
   G13 fires **147 times**. Both are zero in v2.
-- v2 size: 21,410 Python lines including tests, against 102,852 in v1.
+- v2 size: 22218 Python lines including tests, against 102,852 in v1.
 
 ## How to run
 

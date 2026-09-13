@@ -111,7 +111,7 @@ def test_picosecond_platforms_scale_the_period_up():
 def test_the_written_config_carries_the_converted_period(tmp_path):
     rtl = write_rtl(tmp_path)
     config = write_design_files(
-        workdir=tmp_path, rtl_path=rtl, design="top", platform="asap7",
+        workdir=tmp_path, rtl_files=(rtl,), rtl_root=rtl.parent, design="top", platform="asap7",
         clock="clk", clock_period_ns=10.0, core_utilization_pct=40.0,
         place_density=0.6,
     )
@@ -128,7 +128,7 @@ def test_the_written_config_carries_the_converted_period(tmp_path):
 def test_the_default_uses_core_utilization(tmp_path):
     rtl = write_rtl(tmp_path)
     config = write_design_files(
-        workdir=tmp_path, rtl_path=rtl, design="top", platform="sky130hd",
+        workdir=tmp_path, rtl_files=(rtl,), rtl_root=rtl.parent, design="top", platform="sky130hd",
         clock="clk", clock_period_ns=10.0, core_utilization_pct=45.0,
         place_density=0.6,
     )
@@ -147,7 +147,7 @@ def test_a_minimum_die_size_emits_both_rectangles(tmp_path):
     """
     rtl = write_rtl(tmp_path)
     config = write_design_files(
-        workdir=tmp_path, rtl_path=rtl, design="top", platform="sky130hd",
+        workdir=tmp_path, rtl_files=(rtl,), rtl_root=rtl.parent, design="top", platform="sky130hd",
         clock="clk", clock_period_ns=10.0, core_utilization_pct=45.0,
         place_density=0.6, minimum_die_size_um=100.0,
     )
@@ -168,13 +168,13 @@ def test_an_out_of_range_value_is_refused_through_the_real_argument(tmp_path):
     rtl = write_rtl(tmp_path)
     with pytest.raises(ValueError, match="below its lower bound"):
         write_design_files(
-            workdir=tmp_path, rtl_path=rtl, design="top", platform="nangate45",
+            workdir=tmp_path, rtl_files=(rtl,), rtl_root=rtl.parent, design="top", platform="nangate45",
             clock="clk", clock_period_ns=10.0, core_utilization_pct=1.0,
             place_density=0.6,
         )
     with pytest.raises(ValueError, match="calibrated range for asap7"):
         write_design_files(
-            workdir=tmp_path, rtl_path=rtl, design="top", platform="asap7",
+            workdir=tmp_path, rtl_files=(rtl,), rtl_root=rtl.parent, design="top", platform="asap7",
             clock="clk", clock_period_ns=10.0, core_utilization_pct=76.0,
             place_density=0.6,
         )
@@ -185,7 +185,7 @@ def test_an_unknown_tuning_parameter_is_refused(tmp_path):
     rtl = write_rtl(tmp_path)
     with pytest.raises(ValueError, match="unsupported ORFS tuning parameters"):
         write_design_files(
-            workdir=tmp_path, rtl_path=rtl, design="top", platform="nangate45",
+            workdir=tmp_path, rtl_files=(rtl,), rtl_root=rtl.parent, design="top", platform="nangate45",
             clock="clk", clock_period_ns=10.0, core_utilization_pct=40.0,
             place_density=0.6, flow_parameters={"make_it_faster": 1},
         )
@@ -195,7 +195,7 @@ def test_tuned_parameters_reach_the_config_through_the_allowlist(tmp_path):
     """Names come from the parameter table, not from upper-casing a key."""
     rtl = write_rtl(tmp_path)
     config = write_design_files(
-        workdir=tmp_path, rtl_path=rtl, design="top", platform="nangate45",
+        workdir=tmp_path, rtl_files=(rtl,), rtl_root=rtl.parent, design="top", platform="nangate45",
         clock="clk", clock_period_ns=10.0, core_utilization_pct=40.0,
         place_density=0.6,
         flow_parameters={"cts_cluster_size": 20, "gpl_timing_driven": 1},
@@ -208,7 +208,7 @@ def test_tuned_parameters_reach_the_config_through_the_allowlist(tmp_path):
 def test_nangate45_gets_its_own_pdn_template(tmp_path):
     rtl = write_rtl(tmp_path)
     config = write_design_files(
-        workdir=tmp_path, rtl_path=rtl, design="top", platform="nangate45",
+        workdir=tmp_path, rtl_files=(rtl,), rtl_root=rtl.parent, design="top", platform="nangate45",
         clock="clk", clock_period_ns=10.0, core_utilization_pct=40.0,
         place_density=0.6,
     )
@@ -224,7 +224,7 @@ def test_other_platforms_get_no_generated_pdn(tmp_path):
     produce a wrong power network rather than an error."""
     rtl = write_rtl(tmp_path)
     config = write_design_files(
-        workdir=tmp_path, rtl_path=rtl, design="top", platform="sky130hd",
+        workdir=tmp_path, rtl_files=(rtl,), rtl_root=rtl.parent, design="top", platform="sky130hd",
         clock="clk", clock_period_ns=10.0, core_utilization_pct=40.0,
         place_density=0.6,
     )
@@ -235,14 +235,14 @@ def test_other_platforms_get_no_generated_pdn(tmp_path):
 def test_place_density_is_written_as_a_single_policy(tmp_path):
     rtl = write_rtl(tmp_path)
     config = write_design_files(
-        workdir=tmp_path, rtl_path=rtl, design="top", platform="nangate45",
+        workdir=tmp_path, rtl_files=(rtl,), rtl_root=rtl.parent, design="top", platform="nangate45",
         clock="clk", clock_period_ns=10.0, core_utilization_pct=40.0,
         place_density=0.6,
     )
     assert "export PLACE_DENSITY = 0.6" in config.read_text(encoding="utf-8")
 
     config2 = write_design_files(
-        workdir=tmp_path / "second", rtl_path=rtl, design="top",
+        workdir=tmp_path / "second", rtl_files=(rtl,), rtl_root=rtl.parent, design="top",
         platform="nangate45", clock="clk", clock_period_ns=10.0,
         core_utilization_pct=40.0, place_density=0.6,
         flow_parameters={"place_density_lb_addon": 0.03},
@@ -261,7 +261,7 @@ def test_the_rtl_is_staged_into_the_workspace(tmp_path):
     workdir = tmp_path / "work"
     workdir.mkdir()
     config = write_design_files(
-        workdir=workdir, rtl_path=rtl, design="top", platform="nangate45",
+        workdir=workdir, rtl_files=(rtl,), rtl_root=rtl.parent, design="top", platform="nangate45",
         clock="clk", clock_period_ns=10.0, core_utilization_pct=40.0,
         place_density=0.6,
     )
@@ -459,3 +459,232 @@ def test_the_plan_records_what_the_evaluator_will_need(tmp_path):
     assert plan["request"]["platform"] == "sky130hd"
     assert plan["request"]["or_seed"] == 3
     assert plan["request"]["clock_period_ns"] == 10.0
+
+
+# --------------------------------------------------------------------------
+# a design bundle: what a reference design actually needs
+# --------------------------------------------------------------------------
+
+def write_bundle(root: Path) -> tuple[Path, Path]:
+    """A two-file design with a header, laid out the way ORFS designs are."""
+    (root / "rtl").mkdir(parents=True, exist_ok=True)
+    (root / "include").mkdir(parents=True, exist_ok=True)
+    (root / "rtl" / "top.v").write_text(RTL, encoding="utf-8")
+    (root / "rtl" / "sub.v").write_text(
+        "module sub (input a, output y);\n assign y = ~a;\nendmodule\n",
+        encoding="utf-8")
+    (root / "include" / "defs.vh").write_text("`define WIDTH 8\n", encoding="utf-8")
+    return root / "rtl" / "top.v", root / "rtl" / "sub.v"
+
+
+def test_a_multi_file_bundle_keeps_its_relative_structure(tmp_path):
+    """A bundle's files are staged under their path relative to the root.
+
+    Flattening them into one directory would collapse two files of the same name
+    from different subdirectories -- and the flow would elaborate whichever
+    survived.
+    """
+    source = tmp_path / "bundle"
+    top, sub = write_bundle(source)
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    config = write_design_files(
+        workdir=workdir, rtl_files=(top, sub), rtl_root=source, design="top",
+        platform="sky130hd", clock="clk", clock_period_ns=10.0,
+        core_utilization_pct=40.0, place_density=0.6,
+    )
+    staged = workdir / "designs" / "src" / "top"
+    assert (staged / "rtl" / "top.v").is_file()
+    assert (staged / "rtl" / "sub.v").is_file()
+    text = config.read_text(encoding="utf-8")
+    assert f"export VERILOG_FILES = {staged}/rtl/top.v {staged}/rtl/sub.v" in text
+
+
+def test_a_source_outside_the_bundle_root_is_refused(tmp_path):
+    """Silently staging it would put a file into the attempt that the bundle's
+    identity does not cover."""
+    source = tmp_path / "bundle"
+    top, _ = write_bundle(source)
+    stray = tmp_path / "stray.v"
+    stray.write_text(RTL, encoding="utf-8")
+    with pytest.raises(ValueError, match="is not under rtl_root"):
+        write_design_files(
+            workdir=tmp_path / "work", rtl_files=(top, stray), rtl_root=source,
+            design="top", platform="sky130hd", clock="clk", clock_period_ns=10.0,
+            core_utilization_pct=40.0, place_density=0.6,
+        )
+
+
+def test_include_directories_are_staged_and_exported(tmp_path):
+    """Headers alone are copied: a directory copied wholesale would carry build
+    products and vendor blobs into the attempt."""
+    source = tmp_path / "bundle"
+    top, _ = write_bundle(source)
+    (source / "include" / "notes.txt").write_text("not a header\n", encoding="utf-8")
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    config = write_design_files(
+        workdir=workdir, rtl_files=(top,), rtl_root=source, design="top",
+        rtl_include_dirs=(source / "include",), platform="sky130hd", clock="clk",
+        clock_period_ns=10.0, core_utilization_pct=40.0, place_density=0.6,
+    )
+    staged_dir = workdir / "designs" / "src" / "top" / "include"
+    assert (staged_dir / "defs.vh").is_file()
+    assert not (staged_dir / "notes.txt").exists()
+    assert f"export VERILOG_INCLUDE_DIRS = {staged_dir}" in config.read_text(
+        encoding="utf-8")
+
+
+def test_the_synthesis_frontend_is_written_when_asked_for(tmp_path):
+    """ASAP7's ibex recipe needs ``slang``; without it the flow elaborates a
+    different RTL dialect than the reference design was reviewed with."""
+    source = tmp_path / "bundle"
+    top, _ = write_bundle(source)
+    config = write_design_files(
+        workdir=tmp_path / "work", rtl_files=(top,), rtl_root=source, design="top",
+        platform="asap7", clock="clk", clock_period_ns=1.468,
+        core_utilization_pct=40.0, place_density=0.6,
+        synth_hdl_frontend="slang",
+    )
+    assert "export SYNTH_HDL_FRONTEND = slang" in config.read_text(encoding="utf-8")
+
+
+def test_a_supplied_sdc_is_copied_verbatim(tmp_path):
+    """A reviewed recipe depends on the exact bytes of its constraint file, so
+    the writer must not regenerate or reformat it."""
+    source = tmp_path / "bundle"
+    top, _ = write_bundle(source)
+    sdc = tmp_path / "constraint_pos_slack.sdc"
+    sdc.write_text("create_clock -period 1.468 [get_ports clk_i]\n", encoding="utf-8")
+    config = write_design_files(
+        workdir=tmp_path / "work", rtl_files=(top,), rtl_root=source, design="top",
+        platform="asap7", clock="clk_i", clock_period_ns=1.468,
+        core_utilization_pct=40.0, place_density=0.6, sdc_path=sdc,
+    )
+    assert (config.parent / "constraint.sdc").read_text(encoding="utf-8") == \
+        sdc.read_text(encoding="utf-8")
+
+
+def test_a_missing_sdc_is_an_error_not_a_generated_substitute(tmp_path):
+    """Substituting a generated constraint would change the design under test
+    and report success."""
+    source = tmp_path / "bundle"
+    top, _ = write_bundle(source)
+    with pytest.raises(FileNotFoundError):
+        write_design_files(
+            workdir=tmp_path / "work", rtl_files=(top,), rtl_root=source,
+            design="top", platform="asap7", clock="clk_i", clock_period_ns=1.468,
+            core_utilization_pct=40.0, place_density=0.6,
+            sdc_path=tmp_path / "absent.sdc",
+        )
+
+
+def test_design_options_reach_the_configuration(tmp_path):
+    """The reference recipes carry options; before this they were recorded and
+    then dropped, so an attempt elaborated a different design than the one the
+    recipe describes."""
+    source = tmp_path / "bundle"
+    top, _ = write_bundle(source)
+    config = write_design_files(
+        workdir=tmp_path / "work", rtl_files=(top,), rtl_root=source, design="top",
+        platform="asap7", clock="clk", clock_period_ns=1.468,
+        core_utilization_pct=40.0, place_density=0.6,
+        design_options={"swap_arith_operators": 1, "openroad_hierarchical": 1},
+    )
+    text = config.read_text(encoding="utf-8")
+    assert "export SWAP_ARITH_OPERATORS = 1" in text
+    assert "export OPENROAD_HIERARCHICAL = 1" in text
+
+
+def test_a_fast_route_script_is_staged_and_exported(tmp_path):
+    script = tmp_path / "fastroute.tcl"
+    script.write_text("set_global_routing_layer_adjustment * 0.5\n", encoding="utf-8")
+    source = tmp_path / "bundle"
+    top, _ = write_bundle(source)
+    config = write_design_files(
+        workdir=tmp_path / "work", rtl_files=(top,), rtl_root=source, design="top",
+        platform="sky130hd", clock="clk", clock_period_ns=10.0,
+        core_utilization_pct=40.0, place_density=0.6,
+        fast_route_tcl_path=script,
+    )
+    assert (config.parent / "fastroute.tcl").read_text(encoding="utf-8") == \
+        script.read_text(encoding="utf-8")
+    assert "export FASTROUTE_TCL = " in config.read_text(encoding="utf-8")
+
+
+def test_an_empty_fast_route_script_is_refused(tmp_path):
+    script = tmp_path / "fastroute.tcl"
+    script.write_text("", encoding="utf-8")
+    source = tmp_path / "bundle"
+    top, _ = write_bundle(source)
+    with pytest.raises(FileNotFoundError):
+        write_design_files(
+            workdir=tmp_path / "work", rtl_files=(top,), rtl_root=source,
+            design="top", platform="sky130hd", clock="clk", clock_period_ns=10.0,
+            core_utilization_pct=40.0, place_density=0.6,
+            fast_route_tcl_path=script,
+        )
+
+
+def test_a_clock_with_no_port_becomes_a_virtual_clock(tmp_path):
+    """A design with no identifiable clock gets a virtual clock on purpose:
+    naming a port that does not exist makes ``get_ports`` return nothing, so the
+    constraint would apply to no path at all while looking like it constrained
+    something."""
+    source = tmp_path / "bundle"
+    top, _ = write_bundle(source)
+    config = write_design_files(
+        workdir=tmp_path / "work", rtl_files=(top,), rtl_root=source, design="top",
+        platform="sky130hd", clock=None, clock_period_ns=10.0,
+        core_utilization_pct=40.0, place_density=0.6,
+    )
+    sdc = (config.parent / "constraint.sdc").read_text(encoding="utf-8")
+    assert sdc.startswith("create_clock -name vclk -period 10\n")
+    assert "get_ports" not in sdc
+
+
+# --------------------------------------------------------------------------
+# boundary validation
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("injected", [
+    "top\nexport EVIL = 1",   # a second statement in the Makefile
+    "top sub",                # two words where one name belongs
+    "top;rm -rf /",
+    "",                       # no name at all
+])
+def test_a_design_name_that_is_not_an_identifier_is_refused(tmp_path, injected):
+    """The name is written into Make and Tcl; whitespace would not be a bad
+    name, it would be a second statement."""
+    source = tmp_path / "bundle"
+    top, _ = write_bundle(source)
+    with pytest.raises(ValueError, match="design is not a valid identifier"):
+        write_design_files(
+            workdir=tmp_path / "work", rtl_files=(top,), rtl_root=source,
+            design=injected, platform="sky130hd", clock="clk",
+            clock_period_ns=10.0, core_utilization_pct=40.0, place_density=0.6,
+        )
+
+
+def test_a_clock_name_that_is_not_an_identifier_is_refused(tmp_path):
+    source = tmp_path / "bundle"
+    top, _ = write_bundle(source)
+    with pytest.raises(ValueError, match="clock is not a valid identifier"):
+        write_design_files(
+            workdir=tmp_path / "work", rtl_files=(top,), rtl_root=source,
+            design="top", platform="sky130hd", clock="clk]\nset_units -time ns",
+            clock_period_ns=10.0, core_utilization_pct=40.0, place_density=0.6,
+        )
+
+
+def test_a_platform_name_that_is_not_usable_is_refused(tmp_path):
+    """A platform names a directory, so it may hold a dash -- but never a path
+    separator or a newline."""
+    source = tmp_path / "bundle"
+    top, _ = write_bundle(source)
+    with pytest.raises(ValueError, match="platform is not a usable name"):
+        write_design_files(
+            workdir=tmp_path / "work", rtl_files=(top,), rtl_root=source,
+            design="top", platform="../../etc", clock="clk",
+            clock_period_ns=10.0, core_utilization_pct=40.0, place_density=0.6,
+        )
