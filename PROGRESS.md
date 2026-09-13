@@ -52,15 +52,39 @@ Removed during the port: `RepairAction`'s `core_utilization_pct` and
 
 54 tests pass: 30 gate, 24 contract.
 
+**Runtime.** `core/runtime/` is the kernel's memory and its safety net.
+
+- `store.py` — runs, stages, attempts, artifacts, metrics, events over SQLite.
+  Transition tables are data, not scattered `if`s, so the state machine is
+  testable and the API layer cannot invent its own.  Carried over from v1
+  because v1 got these right: attempts are leased; a stale lease becomes LOST
+  (terminal, auditable, never overwritten); journal mode is DELETE because the
+  state root may be a shared filesystem; the artifact hash is **measured from
+  disk**, not read from the adapter's claim.
+- `guardian.py` — one command under a wall-clock deadline, whole-tree cleanup
+  including `setsid()` descendants.  The bounded drain that stops a noisy child
+  from starving its own deadline is preserved.
+
+**Test style changed on purpose.** v1 asserted that a bash child had written a
+pid file within 250 ms.  On a loaded host bash needed longer, so the *safety*
+tests failed for reasons unrelated to the safety code — and a flaky safety test
+gets ignored.  The new tests let the child report its own grandchild pid on
+stdout, so no assertion races the scheduler.
+
+**87 tests pass on the aarch64 Linux target**, including the 9 that need
+`/proc` and are skipped on the development laptop.
+
 ## Next
 
-1. `core/runtime` — store, lease/heartbeat, attempt lifecycle, process
-   guardian, artifact registration, generic progress observer.
-2. `core/registry` — manifest discovery from `plugins/*/`, admission gate.
-3. `core/evaluator` — the boundary only; ORFS parsers become a plugin.
-4. Port the ~4,200 lines of ORFS integration knowledge, line by line, with the
-   behaviour encoded as tests first.
-5. Apps, starting with the one that is already a real app.
+1. `core/adapter.py` — bounded process adapter: request/result envelope, path
+   containment, artifact declaration validation.
+2. `core/runtime/runtime.py` — orchestration: submit, lease, execute, validate,
+   register, evaluate, record. Plus the generic progress observer.
+3. `core/registry` — discover manifests under `plugins/*/`, admission gate.
+4. `core/evaluator` — the boundary only; domain parsers become a plugin.
+5. Port the ~4,200 lines of ORFS integration knowledge, behaviour as tests
+   first.
+6. Apps, starting with the one that is already a real app.
 
 ## v1 knowledge that must be carried across by hand
 
