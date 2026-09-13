@@ -245,6 +245,31 @@ timing paths, and the parser's contract is that it is an *index*, not a summary:
 * the adapter registers the raw report alongside the index.  An index whose
   source is not kept cannot be checked.
 
+`plugins/edair/netlist.py` reads the *mapped* netlist a synthesis tool emits.
+It does not elaborate: a netlist whose semantics depend on parameters, generate
+blocks or arithmetic operators is read structurally, and an unexpected shape is
+a reason to look at the raw artifact rather than a fact.  It also does not fail
+on a construct it does not recognise -- unrecognised text produces no instance,
+and the raw netlist stays the source of truth.
+
+Two conventions are recorded rather than inferred, because both are fragile:
+
+* **Positional connections follow the tool's pin order, not a language rule.**
+  A `dff` primitive is `(clk, rst, d, q)`, so its output is the *fourth*
+  connection; a `buf`/`not` is `(y, a)`; anything else is `(y, a, b, s)`.  Named
+  connections are always preferred, and the fallback exists only for pre-mapped
+  primitives that have no names.  A positional `dff` with fewer than four
+  connections gets **no output** rather than a guessed one.
+* **`one_` and `zero_` are constant wires, not signals.**  A synthesis flow ties
+  constants through wires with those names, and treating them as signals would
+  invent edges to a net carrying no information.  They are rewritten only when
+  they are not ports and nothing drives them -- the name is a convention, and a
+  design with a port called `one_` means it.
+
+A continuous `assign` becomes a buffer instance so every edge comes from one
+kind of object, and its synthesized name is made unique rather than assuming the
+netlist does not already contain `__assign_buf_0`.
+
 `plugins/orfs/reference_designs.py` carries the pinned source-bundle recipes --
 six registered designs plus the fixed-clock recipe the paper comparison used.
 This is the benchmark identity, so three properties are enforced rather than
