@@ -1,0 +1,11 @@
+{
+  "_comment": [
+    "Frozen size ceilings. These may only be lowered.",
+    "Raising a value requires an approval file under approvals/ explaining why.",
+    "See AGENTS.md and guardrails/rules.py (G7, G8, G10)."
+  ],
+  "max_file_loc": 1500,
+  "core_total_loc": 7000,
+  "file_loc": {},
+  "protected_sha256": {}
+}

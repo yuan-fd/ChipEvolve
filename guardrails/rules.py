@@ -1,0 +1,655 @@
+"""Guardrail rule engine.
+
+Every architectural rule in AGENTS.md is implemented here as a pure function
+that scans a repository root and returns a list of violations.  Each rule has:
+
+  * a positive check  - the real tree must produce ZERO violations
+  * a negative fixture - guardrails/negative/<rule>/ must produce >= 1 violation
+
+The negative fixture is the point.  A gate that cannot be shown to fail is not
+a gate; it is a comment.  ``test_g00_gates_are_capable_of_failing`` enforces
+that every rule actually fires on its own fixture.
+"""
+
+from __future__ import annotations
+
+import ast
+import json
+import re
+from dataclasses import dataclass
+from pathlib import Path
+
+# --------------------------------------------------------------------------
+# Repository layout the rules are written against
+# --------------------------------------------------------------------------
+
+CORE_DIR = "core"
+CONTRACTS_DIR = "contracts"
+APP_DIR = "apps"
+PLUGIN_DIR = "plugins"
+GATEWAY_DIR = "gateway"
+
+#: Directories that make up the platform kernel.  Nothing here may know a
+#: concrete plugin, tool, or vendor name.
+KERNEL_DIRS = (CORE_DIR, GATEWAY_DIR)
+
+SKIP_DIR_NAMES = {
+    ".git", "__pycache__", ".pytest_cache", "node_modules", ".venv",
+    "venv", "guardrails", ".mypy_cache", ".ruff_cache", "build", "dist",
+    ".eggs",
+}
+
+
+@dataclass(frozen=True)
+class Violation:
+    rule: str
+    path: str
+    line: int
+    detail: str
+
+    def __str__(self) -> str:  # pragma: no cover - display helper
+        return f"[{self.rule}] {self.path}:{self.line}: {self.detail}"
+
+
+def _walk_python(root: Path):
+    """Yield every .py file under *root* outside vendored/skip directories."""
+    for path in sorted(root.rglob("*.py")):
+        parts = set(path.relative_to(root).parts)
+        if parts & SKIP_DIR_NAMES:
+            continue
+        yield path
+
+
+def _rel(root: Path, path: Path) -> str:
+    return path.relative_to(root).as_posix()
+
+
+def _read(path: Path) -> str:
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
+def _loc(path: Path) -> int:
+    return len(_read(path).splitlines())
+
+
+# --------------------------------------------------------------------------
+# G1 - the kernel must not name a concrete plugin, tool, or vendor
+# --------------------------------------------------------------------------
+
+#: Concrete capability / tool / vendor identifiers.  A thin control plane may
+#: not know any of these.  Add to this list, never remove from it: removing an
+#: entry silently re-opens a hole.
+FORBIDDEN_KERNEL_TOKENS: tuple[str, ...] = (
+    # plugin ids observed in v1
+    "orfs", "orfs_agent", "orfs-agent", "a2_orfo", "a2-orfo",
+    "rtlscout", "rtl_scout", "agenticpd", "edacraft", "implcraft",
+    "dplevolve", "orassistant", "posteda", "closer_bench", "statetune",
+    "taiwei", "sky130", "nangate45", "asap7",
+    # concrete EDA tool binaries
+    "openroad", "yosys", "verilator", "klayout", "iverilog", "opensta",
+    "magic", "netgen", "make",
+)
+
+#: Tokens that are legitimate inside a *generic* control plane.  Each entry is
+#: a deliberate carve-out with a reason.
+KERNEL_TOKEN_ALLOWLIST: dict[str, str] = {
+    # the platform's own identity strings
+    "openroad_platform": "platform package namespace",
+    "openroad-platform": "platform project name",
+}
+
+_TOKEN_RE = {t: re.compile(rf"(?<![A-Za-z0-9_]){re.escape(t)}(?![A-Za-z0-9_])", re.I)
+             for t in FORBIDDEN_KERNEL_TOKENS}
+
+
+def kernel_plugin_name_violations(root: Path) -> list[Violation]:
+    """G1: kernel source must not mention a concrete plugin/tool/vendor."""
+    out: list[Violation] = []
+    for d in KERNEL_DIRS:
+        base = root / d
+        if not base.is_dir():
+            continue
+        for path in _walk_python(base):
+            for lineno, line in enumerate(_read(path).splitlines(), 1):
+                code = line.split("#", 1)[0]
+                for token, rx in _TOKEN_RE.items():
+                    if token in KERNEL_TOKEN_ALLOWLIST:
+                        continue
+                    if rx.search(code):
+                        out.append(Violation(
+                            "G1", _rel(root, path), lineno,
+                            f"kernel names concrete token {token!r}",
+                        ))
+    return out
+
+
+# --------------------------------------------------------------------------
+# G2 - the kernel must not carry adapter / plugin implementation files
+# --------------------------------------------------------------------------
+
+_ADAPTER_FILE_RE = re.compile(r"(_adapter|_plugin)\.py$")
+
+
+def kernel_adapter_file_violations(root: Path) -> list[Violation]:
+    """G2: no *_plugin.py / *_adapter.py may live in the kernel."""
+    out: list[Violation] = []
+    for d in KERNEL_DIRS:
+        base = root / d
+        if not base.is_dir():
+            continue
+        for path in _walk_python(base):
+            if _ADAPTER_FILE_RE.search(path.name):
+                out.append(Violation(
+                    "G2", _rel(root, path), 0,
+                    "adapter/plugin implementation file inside the kernel",
+                ))
+    return out
+
+
+# --------------------------------------------------------------------------
+# G3 / G4 - application import direction
+# --------------------------------------------------------------------------
+
+def _imported_modules(path: Path) -> list[tuple[str, int]]:
+    """Return (dotted module, line) for every import in *path*."""
+    try:
+        tree = ast.parse(_read(path), filename=str(path))
+    except SyntaxError:
+        return []
+    found: list[tuple[str, int]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                found.append((alias.name, node.lineno))
+        elif isinstance(node, ast.ImportFrom):
+            if node.module and node.level == 0:
+                found.append((node.module, node.lineno))
+                for alias in node.names:
+                    found.append((f"{node.module}.{alias.name}", node.lineno))
+    return found
+
+
+def _app_dirs(root: Path) -> list[Path]:
+    base = root / APP_DIR
+    if not base.is_dir():
+        return []
+    return sorted(p for p in base.iterdir() if p.is_dir())
+
+
+def app_cross_import_violations(root: Path) -> list[Violation]:
+    """G3: one app must never import another app."""
+    out: list[Violation] = []
+    names = [d.name for d in _app_dirs(root)]
+    for app in _app_dirs(root):
+        others = [n for n in names if n != app.name]
+        for path in _walk_python(app):
+            for module, lineno in _imported_modules(path):
+                parts = module.split(".")
+                # apps.<other>.…  or  openroad_app_<other>
+                if len(parts) >= 2 and parts[0] == APP_DIR and parts[1] in others:
+                    out.append(Violation(
+                        "G3", _rel(root, path), lineno,
+                        f"app {app.name!r} imports sibling app {parts[1]!r}",
+                    ))
+                for other in others:
+                    if parts[0] in (f"openroad_app_{other}",
+                                    f"openroad_app_{other.replace('_', '')}"):
+                        out.append(Violation(
+                            "G3", _rel(root, path), lineno,
+                            f"app {app.name!r} imports sibling app {other!r}",
+                        ))
+    return out
+
+
+#: The only import surfaces an app may use to reach the platform.
+APP_ALLOWED_PLATFORM_IMPORTS = (
+    "openroad_contracts",   # the shared language
+    "openroad_core_client",  # the typed client for the kernel service
+)
+
+
+def app_forbidden_core_import_violations(root: Path) -> list[Violation]:
+    """G4: an app may only import contracts + the core client, not kernel innards."""
+    out: list[Violation] = []
+    for app in _app_dirs(root):
+        for path in _walk_python(app):
+            for module, lineno in _imported_modules(path):
+                top = module.split(".")[0]
+                if not top.startswith("openroad_core"):
+                    continue
+                if any(top == allowed or module.startswith(allowed + ".")
+                       for allowed in APP_ALLOWED_PLATFORM_IMPORTS):
+                    continue
+                out.append(Violation(
+                    "G4", _rel(root, path), lineno,
+                    f"app imports kernel internals via {module!r}; "
+                    f"allowed: {', '.join(APP_ALLOWED_PLATFORM_IMPORTS)}",
+                ))
+    return out
+
+
+# --------------------------------------------------------------------------
+# G5 - an app must not open a kernel database
+# --------------------------------------------------------------------------
+
+_SQLITE_CONNECT_RE = re.compile(r"sqlite3\.connect\s*\(")
+#: Kernel-owned database basenames.  An app that names one of these is reaching
+#: past the typed API into the kernel's private state.
+KERNEL_DB_NAMES = ("runtime.db", "agent-traces.db", "identity.db",
+                   "provenance.db", "core.db")
+
+
+def app_opens_kernel_db_violations(root: Path) -> list[Violation]:
+    """G5: apps must not open a kernel-owned SQLite database."""
+    out: list[Violation] = []
+    for app in _app_dirs(root):
+        for path in _walk_python(app):
+            text = _read(path)
+            lines = text.splitlines()
+            for lineno, line in enumerate(lines, 1):
+                code = line.split("#", 1)[0]
+                if not _SQLITE_CONNECT_RE.search(code):
+                    continue
+                # Look at this statement plus the following two lines for the
+                # database name, so a wrapped call is still caught.
+                window = " ".join(
+                    l.split("#", 1)[0] for l in lines[lineno - 1:lineno + 2]
+                )
+                for name in KERNEL_DB_NAMES:
+                    if name in window:
+                        out.append(Violation(
+                            "G5", _rel(root, path), lineno,
+                            f"app opens kernel database {name!r} directly",
+                        ))
+                        break
+    return out
+
+
+# --------------------------------------------------------------------------
+# G6 - every app is an independently installable, independently runnable unit
+# --------------------------------------------------------------------------
+
+def app_packaging_violations(root: Path) -> list[Violation]:
+    """G6: each app needs its own pyproject.toml and a process entry point."""
+    out: list[Violation] = []
+    for app in _app_dirs(root):
+        rel = _rel(root, app)
+        if not (app / "pyproject.toml").is_file():
+            out.append(Violation("G6", rel, 0, "app has no pyproject.toml"))
+        has_entry = (app / "__main__.py").is_file() or any(
+            p.name in ("main.py", "server.py", "cli.py") for p in app.glob("*.py")
+        ) or any(
+            p.is_file() and not any(part.startswith(".") for part in p.parts)
+            for p in app.rglob("__main__.py")
+        )
+        if not has_entry:
+            out.append(Violation("G6", rel, 0, "app has no process entry point"))
+    return out
+
+
+# --------------------------------------------------------------------------
+# G7 / G8 - the ratchet
+# --------------------------------------------------------------------------
+
+DEFAULT_MAX_FILE_LOC = 1500
+
+
+def load_baseline(root: Path) -> dict:
+    path = root / "guardrails" / "baseline.json"
+    if not path.is_file():
+        return {}
+    return json.loads(_read(path))
+
+
+def file_loc_ceiling_violations(root: Path) -> list[Violation]:
+    """G7: no single source file may exceed the hard per-file ceiling."""
+    baseline = load_baseline(root)
+    ceiling = int(baseline.get("max_file_loc", DEFAULT_MAX_FILE_LOC))
+    out: list[Violation] = []
+    for path in _walk_python(root):
+        n = _loc(path)
+        if n > ceiling:
+            out.append(Violation(
+                "G7", _rel(root, path), 0,
+                f"{n} lines exceeds the {ceiling}-line per-file ceiling",
+            ))
+    return out
+
+
+def ratchet_violations(root: Path) -> list[Violation]:
+    """G8: recorded sizes may only shrink.
+
+    ``baseline.json`` holds ceilings.  A tree larger than a ceiling is a
+    regression.  Raising a ceiling requires an approval file under
+    ``approvals/``; without one this rule fails, which is what makes "we will
+    clean it up later" impossible to say twice.
+    """
+    baseline = load_baseline(root)
+    out: list[Violation] = []
+
+    core_budget = baseline.get("core_total_loc")
+    if core_budget is not None:
+        actual = sum(_loc(p) for d in KERNEL_DIRS
+                     for p in _walk_python(root / d) if (root / d).is_dir())
+        if actual > int(core_budget):
+            approved = _has_approval(root, "core_total_loc")
+            if not approved:
+                out.append(Violation(
+                    "G8", CORE_DIR, 0,
+                    f"kernel is {actual} lines, above the frozen budget "
+                    f"{core_budget}; lower the code or add an approval",
+                ))
+
+    for rel, ceiling in (baseline.get("file_loc") or {}).items():
+        path = root / rel
+        if not path.is_file():
+            continue
+        actual = _loc(path)
+        if actual > int(ceiling) and not _has_approval(root, rel):
+            out.append(Violation(
+                "G8", rel, 0,
+                f"{actual} lines, above the frozen ceiling {ceiling}",
+            ))
+    return out
+
+
+def _has_approval(root: Path, key: str) -> bool:
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", key)
+    return (root / "approvals" / f"{safe}.md").is_file()
+
+
+# --------------------------------------------------------------------------
+# G9 - every app has a real end-to-end smoke
+# --------------------------------------------------------------------------
+
+def app_smoke_violations(root: Path) -> list[Violation]:
+    """G9: each app must ship a real smoke entry point."""
+    out: list[Violation] = []
+    for app in _app_dirs(root):
+        if not (app / "smoke.py").is_file():
+            out.append(Violation("G9", _rel(root, app), 0,
+                                 "app has no smoke.py end-to-end check"))
+    return out
+
+
+# --------------------------------------------------------------------------
+# G10 - protected files are hash-locked
+# --------------------------------------------------------------------------
+
+def protected_hash_violations(root: Path) -> list[Violation]:
+    """G10: protected components may not change without an approval file."""
+    import hashlib
+
+    baseline = load_baseline(root)
+    out: list[Violation] = []
+    for rel, expected in (baseline.get("protected_sha256") or {}).items():
+        path = root / rel
+        if not path.is_file():
+            out.append(Violation("G10", rel, 0, "protected file is missing"))
+            continue
+        actual = hashlib.sha256(path.read_bytes()).hexdigest()
+        if actual != expected and not _has_approval(root, rel):
+            out.append(Violation(
+                "G10", rel, 0,
+                "protected file changed; restore it or add an approval",
+            ))
+    return out
+
+
+# --------------------------------------------------------------------------
+# G11 - defensive anti-patterns (the Codex relapse gate)
+# --------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class AntiPattern:
+    name: str
+    regex: re.Pattern[str]
+    why: str
+
+
+ANTI_PATTERNS: tuple[AntiPattern, ...] = (
+    AntiPattern(
+        "sys-path-hack",
+        re.compile(r"\bsys\.path\.(insert|append)\s*\("),
+        "reaching across package boundaries by mutating sys.path",
+    ),
+    AntiPattern(
+        "silent-except",
+        re.compile(r"except\s+Exception\s*:\s*(pass|\.\.\.)\s*$"),
+        "swallowing an exception hides a real failure",
+    ),
+    AntiPattern(
+        "bare-except",
+        re.compile(r"except\s*:\s*$"),
+        "a bare except also catches KeyboardInterrupt and SystemExit",
+    ),
+    AntiPattern(
+        "legacy-switch",
+        re.compile(r"\b(use_legacy|legacy_mode|compat_mode|enable_legacy)\b"),
+        "a compatibility switch keeps a dead path alive forever",
+    ),
+)
+
+#: Historical-defence identifiers.  A name like ``_legacy_projection`` is how a
+#: removed design keeps being executed "just in case".
+LEGACY_NAME_RE = re.compile(
+    r"\b\w*(_legacy|_compat|_deprecated|_fallback|_obsolete|_old)\w*\b", re.I
+)
+
+#: Files allowed to contain an anti-pattern, with the reason it is unavoidable.
+ANTIPATTERN_FILE_EXEMPTIONS: dict[str, str] = {}
+
+
+def defensive_antipattern_violations(root: Path) -> list[Violation]:
+    """G11: forbid the defensive patterns that let dead structure survive."""
+    out: list[Violation] = []
+    for path in _walk_python(root):
+        rel = _rel(root, path)
+        if rel in ANTIPATTERN_FILE_EXEMPTIONS:
+            continue
+        for lineno, line in enumerate(_read(path).splitlines(), 1):
+            code = line.split("#", 1)[0].rstrip()
+            if not code.strip():
+                continue
+            for pattern in ANTI_PATTERNS:
+                if pattern.regex.search(code):
+                    out.append(Violation(
+                        "G11", rel, lineno,
+                        f"{pattern.name}: {pattern.why}",
+                    ))
+            if LEGACY_NAME_RE.search(code) and not _is_quarantine_path(rel):
+                out.append(Violation(
+                    "G11", rel, lineno,
+                    "legacy/compat/fallback naming keeps a dead path alive",
+                ))
+    return out
+
+
+def _is_quarantine_path(rel: str) -> bool:
+    """Archived v1 material is exempt; it is explicitly not live code."""
+    return rel.startswith("archive/") or rel.startswith("v1/")
+
+
+# --------------------------------------------------------------------------
+# G12 - unreachable code
+# --------------------------------------------------------------------------
+
+_TERMINAL = (ast.Return, ast.Raise, ast.Continue, ast.Break)
+
+
+def unreachable_code_violations(root: Path) -> list[Violation]:
+    """G12: statements after a terminal statement can never run.
+
+    v1 shipped 100+ lines of an optimizer behind an unconditional ``raise``.
+    Nothing caught it because nothing looked.
+    """
+    out: list[Violation] = []
+    for path in _walk_python(root):
+        try:
+            tree = ast.parse(_read(path), filename=str(path))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            body = getattr(node, "body", None)
+            if not isinstance(body, list):
+                continue
+            for index, stmt in enumerate(body[:-1]):
+                if isinstance(stmt, _TERMINAL):
+                    nxt = body[index + 1]
+                    out.append(Violation(
+                        "G12", _rel(root, path), getattr(nxt, "lineno", 0),
+                        f"unreachable {type(nxt).__name__} after "
+                        f"{type(stmt).__name__}",
+                    ))
+    return out
+
+
+# --------------------------------------------------------------------------
+# G13 - one implementation per concern
+# --------------------------------------------------------------------------
+
+#: A concern may be implemented exactly once in the tree.  This is the rule
+#: that stops "reimplement it here instead of reusing it there".
+SINGLETON_CONCERNS: dict[str, re.Pattern[str]] = {
+    "sha256-digest": re.compile(r"def\s+\w*sha256\w*\s*\("),
+    "json-response-envelope": re.compile(r"def\s+\w*(json_response|_json|respond|reply)\s*\("),
+    "route-dispatcher": re.compile(r"def\s+do_(GET|POST)\s*\("),
+}
+
+
+def duplicate_implementation_violations(root: Path) -> list[Violation]:
+    """G13: each named concern may have exactly one implementation site.
+
+    Definitions are located through the AST, not by scanning raw text.  A code
+    generator legitimately contains sample definitions inside string literals;
+    counting those would make the rule unusable and tempt someone to disable it.
+    """
+    out: list[Violation] = []
+    for concern, rx in SINGLETON_CONCERNS.items():
+        hits: list[tuple[str, int]] = []
+        for path in _walk_python(root):
+            try:
+                tree = ast.parse(_read(path), filename=str(path))
+            except SyntaxError:
+                continue
+            for node in ast.walk(tree):
+                if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                if rx.search(f"def {node.name}("):
+                    hits.append((_rel(root, path), node.lineno))
+        if len(hits) > 1:
+            for rel, lineno in hits[1:]:
+                out.append(Violation(
+                    "G13", rel, lineno,
+                    f"{concern!r} already implemented at {hits[0][0]}:{hits[0][1]}; "
+                    f"reuse it instead of writing a second one",
+                ))
+    return out
+
+
+# --------------------------------------------------------------------------
+# G14 - change budget
+# --------------------------------------------------------------------------
+
+MAX_LAYERS_PER_CHANGE = 1
+
+
+def _layer_of(rel: str) -> str:
+    parts = rel.split("/")
+    if parts[0] in ("core", "gateway"):
+        return "kernel"
+    if parts[0] == "apps" and len(parts) > 1:
+        return f"app:{parts[1]}"
+    if parts[0] == "plugins" and len(parts) > 1:
+        return f"plugin:{parts[1]}"
+    if parts[0] == "guardrails":
+        return "guardrails"
+    return parts[0]
+
+
+def change_budget_violations(root: Path, changed_files: list[str]) -> list[Violation]:
+    """G14: one change may touch one architectural layer.
+
+    ``changed_files`` is supplied by the CI step from ``git diff``.
+    """
+    layers: dict[str, list[str]] = {}
+    for rel in changed_files:
+        if rel.startswith("docs/") or rel.startswith("guardrails/"):
+            continue
+        layers.setdefault(_layer_of(rel), []).append(rel)
+    if len(layers) <= MAX_LAYERS_PER_CHANGE:
+        return []
+    summary = "; ".join(f"{k} ({len(v)} files)" for k, v in sorted(layers.items()))
+    return [Violation(
+        "G14", ", ".join(sorted(layers)), 0,
+        f"this change spans {len(layers)} layers: {summary}. "
+        f"A change must touch one layer only.",
+    )]
+
+
+# --------------------------------------------------------------------------
+# G15 - every declared rule has a gate, and every gate can fail
+# --------------------------------------------------------------------------
+
+RULE_ID_RE = re.compile(r"^\|\s*(G\d+)\s*\|", re.M)
+
+
+def declared_rule_ids(root: Path) -> list[str]:
+    """Rule ids declared in the AGENTS.md rule table."""
+    agents = root / "AGENTS.md"
+    if not agents.is_file():
+        return []
+    return sorted(set(RULE_ID_RE.findall(_read(agents))))
+
+
+def rule_coverage_violations(root: Path) -> list[Violation]:
+    """G15: each declared rule must have a gate module and a negative fixture."""
+    out: list[Violation] = []
+    gates = root / "guardrails"
+    for rule in declared_rule_ids(root):
+        lowered = rule.lower()
+        has_gate = any(
+            p.name.startswith(f"test_{lowered}_") for p in gates.glob("test_*.py")
+        )
+        if not has_gate:
+            out.append(Violation(
+                "G15", "AGENTS.md", 0,
+                f"rule {rule} is declared but no guardrails/test_{lowered}_*.py exists",
+            ))
+        if not (gates / "negative" / rule).is_dir():
+            out.append(Violation(
+                "G15", "AGENTS.md", 0,
+                f"rule {rule} has no negative fixture, so it is unproven",
+            ))
+    return out
+
+
+# --------------------------------------------------------------------------
+# Registry
+# --------------------------------------------------------------------------
+
+#: rule id -> (function, needs negative fixture)
+RULES: dict[str, object] = {
+    "G1": kernel_plugin_name_violations,
+    "G2": kernel_adapter_file_violations,
+    "G3": app_cross_import_violations,
+    "G4": app_forbidden_core_import_violations,
+    "G5": app_opens_kernel_db_violations,
+    "G6": app_packaging_violations,
+    "G7": file_loc_ceiling_violations,
+    "G8": ratchet_violations,
+    "G9": app_smoke_violations,
+    "G10": protected_hash_violations,
+    "G11": defensive_antipattern_violations,
+    "G12": unreachable_code_violations,
+    "G13": duplicate_implementation_violations,
+    "G15": rule_coverage_violations,
+}
+
+#: Rules that operate on a supplied list rather than a static tree scan.
+CHANGE_RULES = {"G14": change_budget_violations}
+
+
+def scan(root: Path, rule: str) -> list[Violation]:
+    fn = RULES[rule]
+    return fn(Path(root))  # type: ignore[operator]
