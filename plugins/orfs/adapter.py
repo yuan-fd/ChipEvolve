@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,7 +20,11 @@ from pathlib import Path
 # The script's own directory is on sys.path because Python adds it for the main
 # script, so the ported modules import normally.  No sys.path surgery.
 from compatibility import apply_backports, stage_flow
-from toolchain import ToolchainConfig, orfs_root_for, toolchain_snapshot
+from toolchain import (
+    ToolchainConfig,
+    resolve_from_environment,
+    toolchain_snapshot,
+)
 from config import infer_clock, infer_top, write_design_files
 from digest import sha256_file
 from runner import (
@@ -57,32 +60,6 @@ def write_result(path: Path, payload: dict, started_at: str) -> None:
     }, indent=2), encoding="utf-8")
 
 
-def resolve_toolchain(task: dict) -> tuple[Path, Path, Path]:
-    """Locate ORFS, OpenROAD and Yosys.
-
-    These are configuration, not secrets: they come from the task, falling back
-    to the environment.  A missing tool is an error the platform reports, never
-    a reason to skip a stage quietly.
-    """
-    inputs = task.get("inputs") or {}
-    flow_home = Path(
-        inputs.get("flow_home") or os.environ.get("ORFS_FLOW_HOME", "")
-    ).expanduser()
-    openroad_bin = Path(
-        inputs.get("openroad_bin") or os.environ.get("OPENROAD_EXE", "")
-    ).expanduser()
-    yosys_bin = Path(
-        inputs.get("yosys_bin") or os.environ.get("YOSYS_EXE", "")
-    ).expanduser()
-
-    if not (flow_home / "Makefile").is_file():
-        raise FileNotFoundError(f"ORFS Makefile not found under {flow_home}")
-    for name, binary in (("OpenROAD", openroad_bin), ("Yosys", yosys_bin)):
-        if not binary.is_file() or not os.access(binary, os.X_OK):
-            raise FileNotFoundError(f"{name} executable not found: {binary}")
-    return flow_home, openroad_bin, yosys_bin
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--request", required=True)
@@ -108,8 +85,19 @@ def main() -> int:
         }, started_at)
         return exit_code
 
+    # One profile, built once: the environment the flow runs under and the
+    # snapshot that records it are the same object, so they cannot disagree.
+    # Resolution lives in the toolchain module, so "an explicit path wins over
+    # the environment" has one implementation rather than one per caller.
     try:
-        flow_home, openroad_bin, yosys_bin = resolve_toolchain(task)
+        toolchain = resolve_from_environment(
+            name=str(inputs.get("toolchain_name") or "orfs"),
+            orfs_root=inputs.get("orfs_root"),
+            openroad_bin=inputs.get("openroad_bin"),
+            yosys_bin=inputs.get("yosys_bin"),
+        )
+        toolchain.validate()
+        flow_home = toolchain.flow_home
         cores = cores_from_environment()
     except (FileNotFoundError, ValueError) as exc:
         return fail("configuration_error", f"{type(exc).__name__}: {exc}", 3)
@@ -117,8 +105,8 @@ def main() -> int:
     try:
         flow = run_flow(
             workdir=workdir, task=task, inputs=inputs, parameters=parameters,
-            flow_home=flow_home, openroad_bin=openroad_bin, yosys_bin=yosys_bin,
-            cores=cores, cancel_requested=lambda: False,
+            flow_home=flow_home, cores=cores, toolchain=toolchain,
+            cancel_requested=lambda: False,
         )
     except Exception as exc:  # noqa: BLE001 - reported with its type
         return fail("tool_error", f"{type(exc).__name__}: {exc}")
@@ -153,8 +141,7 @@ def main() -> int:
 
 def run_flow(
     *, workdir: Path, task: dict, inputs: dict, parameters: dict,
-    flow_home: Path, openroad_bin: Path, yosys_bin: Path, cores: int,
-    cancel_requested,
+    flow_home: Path, cores: int, toolchain: ToolchainConfig, cancel_requested,
 ) -> dict:
     """Prepare the design, run every stage, and record what happened."""
     rtl_path = Path(str(inputs["rtl_path"])).expanduser().resolve()
@@ -185,6 +172,11 @@ def run_flow(
     report("backport", "finished", status="succeeded",
            applied=len(backports))
 
+    # The flow runs under the profile's environment, not under whatever the
+    # adapter was started with: PATH order decides which build of a tool the
+    # flow picks up, and the snapshot records this composition.
+    environment = toolchain.build_environment()
+
     config_path = write_design_files(
         workdir=workdir, rtl_path=rtl_path, design=design, platform=platform,
         clock=clock, clock_period_ns=clock_period_ns,
@@ -214,12 +206,7 @@ def run_flow(
     # still needs to say what it was failing with, and it covers the generated
     # configuration because that file is an input the flow reads.
     snapshot = toolchain_snapshot(
-        ToolchainConfig(
-            name=str(inputs.get("toolchain_name") or "orfs"),
-            orfs_root=orfs_root_for(flow_home), openroad_bin=openroad_bin,
-            yosys_bin=yosys_bin,
-        ),
-        workdir=workdir,
+        toolchain, workdir=workdir,
         request={
             "platform": platform, "design": design, "target_stage": target_stage,
             "clock_period_ns": clock_period_ns, "or_seed": or_seed,
@@ -248,8 +235,9 @@ def run_flow(
         report(stage, "started")
         outcome, seconds = run_make(
             stage=stage, config_path=config_path, workdir=workdir,
-            flow_home=staged_flow, openroad_bin=openroad_bin, yosys_bin=yosys_bin,
-            cores=cores, timeout_seconds=timeout,
+            flow_home=staged_flow, openroad_bin=toolchain.openroad_bin,
+            yosys_bin=toolchain.yosys_bin, cores=cores, environment=environment,
+            timeout_seconds=timeout,
             cancel_requested=cancel_requested, on_line=None, log_path=log_path,
         )
 
@@ -261,8 +249,9 @@ def run_flow(
             report("gds", "started")
             gds_outcome, gds_seconds = run_make(
                 stage="gds", config_path=config_path, workdir=workdir,
-                flow_home=staged_flow, openroad_bin=openroad_bin,
-                yosys_bin=yosys_bin, cores=cores, timeout_seconds=timeout,
+                flow_home=staged_flow, openroad_bin=toolchain.openroad_bin,
+                yosys_bin=toolchain.yosys_bin, cores=cores,
+                environment=environment, timeout_seconds=timeout,
                 cancel_requested=cancel_requested, on_line=None,
                 log_path=log_path,
             )

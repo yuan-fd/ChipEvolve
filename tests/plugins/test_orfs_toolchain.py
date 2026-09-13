@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import stat
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -18,7 +19,6 @@ from toolchain import (
     command_lines,
     DEFAULT_INHERITED_ENVIRONMENT,
     file_record,
-    orfs_root_for,
     probe_version,
     resolve_from_environment,
     SYSTEM_PATH,
@@ -58,43 +58,26 @@ def test_the_flow_home_is_where_the_makefile_is(toolchain: ToolchainConfig):
     assert toolchain.flow_home == toolchain.orfs_root / "flow"
 
 
-def test_a_checkout_with_the_makefile_at_its_root_is_accepted(tmp_path: Path):
-    """ORFS keeps it under ``flow/``; guessing would be worse than accepting."""
-    root = tmp_path / "flat"
-    root.mkdir()
-    (root / "Makefile").write_text("all:\n\t@true\n", encoding="utf-8")
-    config = ToolchainConfig(name="flat", orfs_root=root,
-                             openroad_bin=tmp_path / "o", yosys_bin=tmp_path / "y")
-    assert config.flow_home == root
+def test_a_makefile_at_the_checkout_root_is_not_a_checkout(tmp_path: Path):
+    """There is exactly one layout, and a path that is not it is an error.
 
-
-def test_the_checkout_root_is_recovered_from_the_flow_directory(tmp_path: Path):
-    """The adapter is told the flow directory; the record must name the repo.
-
-    ``git`` probes and the recorded root describe the checkout, so a snapshot
-    that named ``.../OpenROAD-flow-scripts/flow`` would misdescribe what was
-    built.
+    Accepting a second layout would make the recorded ``orfs_root`` stop saying
+    which one a run used, so the failure names the file it looked for.
     """
-    root = tmp_path / "orfs"
-    (root / "flow").mkdir(parents=True)
-    (root / "flow" / "Makefile").write_text("all:\n\t@true\n", encoding="utf-8")
-    (root / ".git").mkdir()
-    assert orfs_root_for(root / "flow") == root
-
-
-def test_a_flow_directory_outside_a_checkout_is_left_alone(tmp_path: Path):
-    """Guessing a parent from the name alone would invent a repository."""
-    flow = tmp_path / "flow"
-    flow.mkdir()
-    (flow / "Makefile").write_text("all:\n\t@true\n", encoding="utf-8")
-    assert orfs_root_for(flow) == flow
-
-
-def test_a_flat_checkout_is_its_own_root(tmp_path: Path):
     flat = tmp_path / "flat"
     flat.mkdir()
     (flat / "Makefile").write_text("all:\n\t@true\n", encoding="utf-8")
-    assert orfs_root_for(flat) == flat
+    (flat / "bin").mkdir()
+    for name in ("o", "y"):
+        binary = flat / "bin" / name
+        binary.write_text("#!/bin/sh\n", encoding="utf-8")
+        binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
+    config = ToolchainConfig(name="flat", orfs_root=flat,
+                             openroad_bin=flat / "bin" / "o",
+                             yosys_bin=flat / "bin" / "y")
+    assert config.flow_home == flat / "flow"
+    with pytest.raises(FileNotFoundError, match="ORFS Makefile not found"):
+        config.validate()
 
 
 def test_a_profile_requires_absolute_paths(toolchain: ToolchainConfig):
@@ -105,12 +88,30 @@ def test_a_profile_requires_absolute_paths(toolchain: ToolchainConfig):
         broken.validate()
 
 
+def test_a_tool_that_cannot_be_executed_is_refused(toolchain: ToolchainConfig):
+    """Checked here, not left to ``make``.
+
+    A flow that starts and then fails on an unlaunchable tool reports the
+    failure at the wrong layer, hours later, as a stage error.
+    """
+    broken = replace(toolchain, yosys_bin=toolchain.klayout_bin
+                     or toolchain.orfs_root / "flow" / "Makefile")
+    with pytest.raises(FileNotFoundError, match="Yosys executable not found"):
+        broken.validate()
+
+
+def test_a_toolchain_name_with_whitespace_is_refused(toolchain: ToolchainConfig):
+    """The name is written into the flow's environment; it is an identifier."""
+    with pytest.raises(ValueError, match="invalid toolchain name"):
+        replace(toolchain, name="two words").validate()
+
+
 def test_a_profile_requires_a_makefile(tmp_path: Path):
     empty = tmp_path / "empty"
     empty.mkdir()
     config = ToolchainConfig(name="x", orfs_root=empty,
                              openroad_bin=tmp_path / "o", yosys_bin=tmp_path / "y")
-    with pytest.raises(FileNotFoundError, match="no Makefile"):
+    with pytest.raises(FileNotFoundError, match="ORFS Makefile not found"):
         config.validate()
 
 
@@ -118,7 +119,7 @@ def test_a_profile_requires_a_name(toolchain: ToolchainConfig):
     import dataclasses
 
     broken = dataclasses.replace(toolchain, name="")
-    with pytest.raises(ValueError, match="needs a name"):
+    with pytest.raises(ValueError, match="invalid toolchain name"):
         broken.validate()
 
 
@@ -384,16 +385,16 @@ def test_the_environment_is_used_when_nothing_is_given(
     tmp_path: Path, monkeypatch
 ):
     monkeypatch.setenv("ORFS_ROOT", str(tmp_path))
-    monkeypatch.setenv("OPENROAD_EXE", str(tmp_path / "o"))
-    monkeypatch.setenv("YOSYS_EXE", str(tmp_path / "y"))
+    monkeypatch.setenv("OPENROAD_BIN", str(tmp_path / "o"))
+    monkeypatch.setenv("YOSYS_BIN", str(tmp_path / "y"))
     config = resolve_from_environment(name="from-env")
     assert config.orfs_root == tmp_path.resolve()
 
 
 def test_a_missing_variable_is_an_error_not_a_default(monkeypatch):
     """Guessing a path would produce a profile that describes the wrong tools."""
-    monkeypatch.delenv("OPENROAD_EXE", raising=False)
-    with pytest.raises(ValueError, match="OPENROAD_EXE is not set"):
+    monkeypatch.delenv("OPENROAD_BIN", raising=False)
+    with pytest.raises(ValueError, match="OPENROAD_BIN is not set"):
         resolve_from_environment(name="x", orfs_root="/tmp",
                                  yosys_bin="/tmp/y")
 

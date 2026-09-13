@@ -468,18 +468,47 @@ Three decisions in it are deliberate rather than mechanical:
 * Environment **names** are recorded, never values: which variables were
   inherited is reproducibility, their contents can be credentials.
 
-The adapter is told the flow directory, and the snapshot has to name the
-checkout, so the layout rule lives in one place: ``orfs_root_for()`` is the
-inverse of ``ToolchainConfig.flow_home``.  A directory named ``flow`` that is
-**not** inside a checkout is returned unchanged, because guessing a parent from
-the name alone would attribute a result to a repository that does not exist.
+The adapter is told the checkout, and the flow's Makefile is at
+``<orfs_root>/flow/Makefile``.  There is exactly **one** layout: an earlier
+draft of this module also accepted a Makefile at the checkout root, and that
+leniency cost more than it bought -- the recorded ``orfs_root`` stopped saying
+which layout a run used, and it forced a helper whose only job was to invert the
+ambiguity.  Both are gone; a path that is not a checkout is an error naming the
+file it looked for.
+
+The environment the flow runs under and the snapshot that records it are now the
+**same object**, resolved once.  Before this, the plugin built a toolchain
+environment nobody used and let ``make`` inherit whatever the adapter happened to
+be started with -- so PATH order, which decides *which* build of a tool the flow
+picks up, could differ between the run and the record that described it.  Two
+tests prove the composed environment reaches the child and that the adapter's own
+environment is not passed through wholesale; mutating the wiring back to
+``env=None`` makes both fail.
+
+Reading v1 while porting also found four things this port had dropped or
+invented, all corrected here:
+
+* ``validate()`` in v1 checked that the tools are **executable**, not merely
+  present.  The port checked only that the file exists, so an unlaunchable tool
+  would have surfaced hours later as a stage error instead of a configuration
+  error.
+* v1 rejected a toolchain name containing whitespace.  The name is written into
+  the flow's environment and into the snapshot; it is an identifier.
+* The port invented ``OPENROAD_EXE`` / ``YOSYS_EXE`` / ``ORFS_FLOW_HOME`` as
+  environment variable names where v1 used ``OPENROAD_BIN`` / ``YOSYS_BIN`` /
+  ``ORFS_ROOT``.  That left two resolvers ("an explicit path wins over the
+  environment") in one plugin, disagreeing about the names.  Resolution now lives
+  only in ``toolchain.py``, with v1's names.
+* v1 fell back to ``~/OpenROAD-flow-scripts`` and ``~/bin/openroad`` when a
+  variable was unset.  That is deliberately **not** carried over: it substitutes
+  a toolchain nobody named, and the snapshot would then attribute a result to a
+  profile the operator never chose.  An unset variable is an error naming it.
 
 ## Next
 
 1. `plugins/orfs/` remaining knowledge: the three v1 modules deliberately
    deferred (`cell_coords.py`, `orfs_generated_design.py`,
-   `orfs_design_options.py`), and wiring the snapshot's environment into the
-   flow invocation.
+   `orfs_design_options.py`).
 2. More applications, one per capability the objective names: RTL Studio,
    Teaching Workbench, Knowledge Service, Extensions Console, Terminal Bench.
 3. Move `scripts/` to its own `research-toolchain` repository.

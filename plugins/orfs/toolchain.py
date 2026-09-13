@@ -82,25 +82,48 @@ class ToolchainConfig:
     environment: Mapping[str, str] = field(default_factory=dict)
 
     def validate(self) -> None:
-        if not self.name:
-            raise ValueError("a toolchain profile needs a name")
+        """Refuse a profile that cannot run, naming what is wrong.
+
+        The name is checked for whitespace because it is written into the flow's
+        environment and into the snapshot; it is an identifier, not prose.
+        Executability is checked here rather than left to ``make``, because a
+        flow that starts and then fails on an unlaunchable tool reports the
+        failure at the wrong layer, hours later, as a stage error.
+
+        Absolute paths are checked too.  A relative entry on PATH resolves
+        against the *child's* working directory, so the flow could otherwise
+        launch an executable out of its own attempt workspace.
+        """
+        if not self.name or any(char.isspace() for char in self.name):
+            raise ValueError(f"invalid toolchain name: {self.name!r}")
         for label, path in (("orfs_root", self.orfs_root),
                             ("openroad_bin", self.openroad_bin),
                             ("yosys_bin", self.yosys_bin)):
             if not Path(path).is_absolute():
                 raise ValueError(f"{label} must be an absolute path: {path}")
-        if not (Path(self.orfs_root) / "Makefile").is_file():
-            raise FileNotFoundError(f"no Makefile under {self.orfs_root}")
+        makefile = self.flow_home / "Makefile"
+        if not makefile.is_file():
+            raise FileNotFoundError(f"ORFS Makefile not found: {makefile}")
+        for label, binary in (("OpenROAD", self.openroad_bin),
+                              ("Yosys", self.yosys_bin),
+                              ("KLayout", self.klayout_bin)):
+            if binary is None:
+                continue
+            if not Path(binary).is_file() or not os.access(binary, os.X_OK):
+                raise FileNotFoundError(f"{label} executable not found: {binary}")
 
     @property
     def flow_home(self) -> Path:
-        """Where the flow's Makefile lives.
+        """Where the flow's Makefile lives: ``<orfs_root>/flow``.
 
-        ORFS keeps it under ``flow/``; a checkout that puts it at the root is
-        also accepted rather than guessed at.
+        There is exactly one layout.  An earlier version of this module also
+        accepted a checkout that kept the Makefile at its root, "rather than
+        guess" -- but accepting two layouts meant the recorded ``orfs_root`` no
+        longer said which one a run used, and it forced a helper whose only job
+        was to invert the ambiguity.  The real checkout is the checkout; a path
+        that is not one is an error naming it.
         """
-        candidate = Path(self.orfs_root) / "flow"
-        return candidate if (candidate / "Makefile").is_file() else Path(self.orfs_root)
+        return Path(self.orfs_root) / "flow"
 
     def build_environment(self, *, source: Mapping[str, str] | None = None,
                           extra: Mapping[str, str] | None = None) -> dict[str, str]:
@@ -280,6 +303,13 @@ def resolve_from_environment(
 
     An explicit path always wins, so a caller that knows where its toolchain is
     does not have to depend on the host environment agreeing.
+
+    A variable that is unset is an error, not a default.  The frozen
+    implementation fell back to ``~/OpenROAD-flow-scripts`` and
+    ``~/bin/openroad``; that is a silent substitution of a toolchain nobody
+    named, and the snapshot would then attribute the result to a profile the
+    operator never chose.  The variable names are v1's, so an operator's
+    existing environment keeps working.
     """
     def pick(explicit: str | Path | None, variable: str) -> Path:
         if explicit is not None:
@@ -294,33 +324,12 @@ def resolve_from_environment(
     root = pick(orfs_root, "ORFS_ROOT")
     return ToolchainConfig(
         name=name, orfs_root=root,
-        openroad_bin=pick(openroad_bin, "OPENROAD_EXE"),
-        yosys_bin=pick(yosys_bin, "YOSYS_EXE"),
+        openroad_bin=pick(openroad_bin, "OPENROAD_BIN"),
+        yosys_bin=pick(yosys_bin, "YOSYS_BIN"),
         klayout_bin=(Path(klayout_bin).expanduser().resolve()
                      if klayout_bin is not None
-                     else (Path(os.environ["KLAYOUT_EXE"]).expanduser().resolve()
-                           if os.environ.get("KLAYOUT_EXE") else None)),
+                     else (Path(os.environ["KLAYOUT_BIN"]).expanduser().resolve()
+                           if os.environ.get("KLAYOUT_BIN") else None)),
         extra_path=tuple(Path(item).expanduser().resolve() for item in extra_path),
         environment=dict(environment or {}),
     )
-
-
-def orfs_root_for(flow_home: str | Path) -> Path:
-    """The inverse of :attr:`ToolchainConfig.flow_home`.
-
-    A caller that only knows where the Makefile is -- the adapter, which is told
-    the flow directory and nothing else -- still has to name the checkout it
-    came from, because the recorded root and the ``git`` probes describe the
-    repository, not the subdirectory.  The layout rule lives here so there is
-    one place that knows that a ``flow/`` directory under a checkout means the
-    checkout is the parent.
-
-    A directory named ``flow`` that is not inside a checkout is returned
-    unchanged: guessing a parent from the name alone would attribute a result to
-    a repository that does not exist, and ``unknown`` from the commit probe is
-    the honest answer for a tree that is not under version control.
-    """
-    flow_home = Path(flow_home).expanduser().resolve()
-    if flow_home.name == "flow" and (flow_home.parent / ".git").exists():
-        return flow_home.parent
-    return flow_home

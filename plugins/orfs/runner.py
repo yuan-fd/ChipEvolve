@@ -18,7 +18,7 @@ import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 #: Execution order.  ``finish`` is the signoff stage.
 STAGES: tuple[str, ...] = ("synth", "floorplan", "place", "cts", "route", "finish")
@@ -210,11 +210,20 @@ def run_make(
     *,
     stage: str, config_path: Path, workdir: Path, flow_home: Path,
     openroad_bin: Path, yosys_bin: Path, cores: int, timeout_seconds: float,
+    environment: Mapping[str, str],
     cancel_requested: Callable[[], bool] | None = None,
     on_line: Callable[[], None] | None = None,
     log_path: Path,
 ) -> tuple[_Outcome, float]:
-    """Invoke one make target.  Returns (outcome, seconds)."""
+    """Invoke one make target under a named environment.  Returns (outcome, seconds).
+
+    The environment is a required argument, not an inherited default.  The
+    toolchain snapshot records the environment an attempt ran in; if the flow
+    inherited whatever the adapter happened to be started with, the snapshot
+    would describe a toolchain that did not run, and PATH order -- which decides
+    *which* build of a tool the flow uses -- would differ between the record and
+    the run.
+    """
     import time
 
     command = make_command(
@@ -223,7 +232,7 @@ def run_make(
     )
     started = time.monotonic()
     outcome = _run_guarded(
-        command, cwd=flow_home, log_path=log_path,
+        command, cwd=flow_home, log_path=log_path, environment=environment,
         timeout_seconds=timeout_seconds, cancel_requested=cancel_requested,
         on_line=on_line,
     )
@@ -288,6 +297,7 @@ class _Outcome:
 
 def _run_guarded(
     command: Sequence[str], *, cwd: Path, log_path: Path,
+    environment: Mapping[str, str],
     timeout_seconds: float, cancel_requested: Callable[[], bool] | None,
     on_line: Callable[[str], None] | None,
 ) -> _Outcome:
@@ -305,9 +315,9 @@ def _run_guarded(
     started = time.monotonic()
     with log_path.open("a", encoding="utf-8") as log:
         process = subprocess.Popen(
-            list(command), cwd=str(cwd), stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, text=True, bufsize=1,
-            start_new_session=(os.name == "posix"),
+            list(command), cwd=str(cwd), env=dict(environment),
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            bufsize=1, start_new_session=(os.name == "posix"),
         )
         try:
             for line in process.stdout or ():

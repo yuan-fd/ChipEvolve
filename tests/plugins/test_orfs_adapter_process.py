@@ -90,27 +90,44 @@ gds: | $(RESULT_DIR)
 
 @pytest.fixture()
 def stub_toolchain(tmp_path: Path) -> dict[str, Path]:
-    flow_home = tmp_path / "toolchain"
+    """A minimal ORFS checkout: ``<root>/flow/Makefile`` and the two tools.
+
+    The layout is the real one.  An earlier fixture made the flow home a
+    directory of its own, which is how this plugin acquired a second accepted
+    layout and a helper to invert it; neither exists upstream, and both are now
+    gone.  The tools deliberately live outside the flow directory, so a PATH
+    assertion tests the composition rather than a coincidence.
+    """
+    root = tmp_path / "orfs"
+    flow_home = root / "flow"
     (flow_home / "logs").mkdir(parents=True)
     (flow_home / "Makefile").write_text(STUB_MAKEFILE, encoding="utf-8")
+    binaries = root / "bin"
+    binaries.mkdir()
     for name in ("openroad", "yosys"):
-        binary = flow_home / name
+        binary = binaries / name
         binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
     return {
+        "root": root,
         "flow_home": flow_home,
-        "openroad_bin": flow_home / "openroad",
-        "yosys_bin": flow_home / "yosys",
+        "openroad_bin": binaries / "openroad",
+        "yosys_bin": binaries / "yosys",
     }
 
 
 def run_adapter(tmp_path: Path, toolchain: dict[str, Path],
                 *, inputs: dict | None = None,
-                create_layout: bool = True) -> tuple[dict, Path]:
+                create_layout: bool = True,
+                makefile: str | None = None,
+                adapter_environment: dict | None = None) -> tuple[dict, Path]:
     workspace = tmp_path / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)
     rtl = tmp_path / "counter.v"
     rtl.write_text(RTL, encoding="utf-8")
+
+    if makefile is not None:
+        (toolchain["flow_home"] / "Makefile").write_text(makefile, encoding="utf-8")
 
     if not create_layout:
         # Make the gds target fail so the adapter must report a failed export.
@@ -128,7 +145,7 @@ def run_adapter(tmp_path: Path, toolchain: dict[str, Path],
         "platform": "nangate45",
         "design": "counter",
         "clock_period_ns": 10.0,
-        "flow_home": str(toolchain["flow_home"]),
+        "orfs_root": str(toolchain["root"]),
         "openroad_bin": str(toolchain["openroad_bin"]),
         "yosys_bin": str(toolchain["yosys_bin"]),
         "stage_timeout_seconds": 60,
@@ -149,6 +166,7 @@ def run_adapter(tmp_path: Path, toolchain: dict[str, Path],
 
     environment = dict(os.environ)
     environment["PATH"] = os.environ.get("PATH", "")
+    environment.update(adapter_environment or {})
     completed = subprocess.run(
         [sys.executable, str(ADAPTER),
          "--request", str(request_path), "--result", str(result_path)],
@@ -395,3 +413,73 @@ def test_the_run_records_the_toolchain_that_produced_it(tmp_path, stub_toolchain
     # environment would be worse than one that omitted it.
     assert "environment_keys" in snapshot["toolchain"]
     assert "PATH" not in snapshot["toolchain"]["environment_keys"]
+
+
+# --------------------------------------------------------------------------
+# the environment the flow runs under
+# --------------------------------------------------------------------------
+
+#: Writes down what the flow itself could see.  A flow that silently inherited
+#: the adapter's environment would be indistinguishable from one that was given
+#: a composed one -- from the outside.
+ENVIRONMENT_PROBE_MAKEFILE = STUB_MAKEFILE.replace(
+    'synth: | $(RESULT_DIR)\n\techo "synth netlist" > $(RESULT_DIR)/1_synth.v',
+    'synth: | $(RESULT_DIR)\n'
+    '\techo "synth netlist" > $(RESULT_DIR)/1_synth.v\n'
+    '\techo "PATH=$$PATH" > $(WORK_HOME)/flow_environment.txt\n'
+    '\techo "TOOLCHAIN=$$OPENROAD_PLATFORM_TOOLCHAIN" >> $(WORK_HOME)/flow_environment.txt\n'
+    '\techo "LEAKED=$$OPENROAD_PLATFORM_LEAKED_MARKER" >> $(WORK_HOME)/flow_environment.txt',
+)
+
+
+def test_the_flow_runs_under_the_toolchains_own_environment(tmp_path, stub_toolchain):
+    """The snapshot must describe the toolchain that ran, not one observed.
+
+    ``build_environment`` composes PATH so the tool's own directory wins, and
+    records only the declared host variables.  A flow that inherited the
+    adapter's environment instead would use whichever build of the tool the
+    caller happened to have first on its PATH, while the snapshot named the
+    profile -- a record that contradicts the run it describes.
+    """
+    _, workspace = run_adapter(
+        tmp_path, stub_toolchain,
+        makefile=ENVIRONMENT_PROBE_MAKEFILE,
+        adapter_environment={"OPENROAD_PLATFORM_LEAKED_MARKER": "should-not-reach"},
+    )
+    probe = dict(
+        line.split("=", 1) for line in
+        (workspace / "flow_environment.txt").read_text(encoding="utf-8").splitlines()
+        if "=" in line
+    )
+
+    # The toolchain's own directory comes first, which is what decides which
+    # build of a tool the flow picks up.
+    assert probe["PATH"].split(os.pathsep)[0] == str(
+        stub_toolchain["openroad_bin"].parent)
+    assert probe["TOOLCHAIN"] == "orfs"
+    # The adapter's environment is not passed through wholesale.
+    assert probe["LEAKED"] == ""
+
+
+def test_the_composed_path_does_not_accumulate_duplicates(tmp_path, stub_toolchain):
+    """PATH order is precedence; a duplicate makes the record misleading.
+
+    The adapter is started with a deliberately doubled PATH.  If the flow
+    inherited it, the duplicates would survive into the run -- and a recorded
+    PATH with the same directory twice cannot be read as an order.
+    """
+    doubled = os.pathsep.join(["/usr/bin", "/bin", "/usr/bin", "/bin"])
+    _, workspace = run_adapter(
+        tmp_path, stub_toolchain, makefile=ENVIRONMENT_PROBE_MAKEFILE,
+        adapter_environment={"PATH": doubled})
+    path = next(
+        line.split("=", 1)[1] for line in
+        (workspace / "flow_environment.txt").read_text(encoding="utf-8").splitlines()
+        if line.startswith("PATH=")
+    )
+    entries = path.split(os.pathsep)
+    # The system directories are still reachable; they were deduplicated, not
+    # dropped.
+    assert "/usr/bin" in entries
+    assert "/bin" in entries
+    assert len(entries) == len(set(entries))
