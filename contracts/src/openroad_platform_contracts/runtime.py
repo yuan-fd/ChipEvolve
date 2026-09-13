@@ -12,6 +12,7 @@ from enum import Enum
 from typing import Any, Mapping
 
 from .version import (
+    instantiate,
     ContractError,
     SCHEMA_VERSION,
     known_payload,
@@ -162,6 +163,6 @@ class Event:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "Event":
-        result = cls(**known_payload(cls, payload))
+        result = instantiate(cls, known_payload(cls, payload))
         result.validate()
         return result

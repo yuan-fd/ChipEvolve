@@ -7,7 +7,14 @@ name = "openroad-platform-gateway"
 version = "0.1.0"
 description = "Integration entry point: identity, routing, navigation"
 requires-python = ">=3.9"
-dependencies = []
+dependencies = [
+  "openroad-platform-contracts",
+  "openroad-platform-runtime",
+  "openroad-platform-registry",
+  "openroad-platform-evaluator",
+  "openroad-platform-provenance",
+  "openroad-platform-identity",
+]
 
 [project.scripts]
 openroad-platform-gateway = "openroad_platform_gateway.__main__:main"

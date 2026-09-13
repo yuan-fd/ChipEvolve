@@ -211,13 +211,31 @@ never claims that from a synthesis run.
 only be lowered.  G1, G2 and G13 are zero across all of it, and `contracts` is
 now scanned by them too: a contract that names a tool has stopped being generic.
 
+## The platform is wired end to end
+
+`core/client` is the only door an application may use to reach the kernel, and
+the entry point now hosts the kernel's own HTTP surface on the same router that
+proxies applications.  One dispatcher for the whole platform, where the previous
+one had three in three styles.
+
+**The first app.** `apps/evidence_console/` reads runs, metrics and provenance
+through the client.  It opens no database, imports nothing but the client, and
+runs as its own process with its own smoke.  Its one interesting behaviour is
+honesty about absence: a metric that cites no artifact is reported as
+``unsourced`` beside the sourced ones, because the kernel records it and a
+reader should not have to check each number to find out.
+
+Contract tests prove the door works: an application registers, submits a task, a
+worker runs it, and the application reads the resulting artifacts, metrics,
+timeline and graph back -- all through HTTP, never by touching the store.
+
 ## Next
 
 1. `plugins/orfs/` remaining knowledge: the admitted-flow compatibility patch and
    the toolchain snapshot, both of which have exact byte-level provenance.
-2. `core/client` and the kernel service: the typed way applications reach the
-   runtime, so no application needs the store in-process.
-3. The first app.
+2. More applications, one per capability the objective names.
+3. A worker entry point, so runs progress without an operator calling the
+   runtime directly.
 
 ## v1 knowledge that must be carried across by hand
 

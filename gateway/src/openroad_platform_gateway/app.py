@@ -1,13 +1,13 @@
 """The integration entry point.
 
-This is the whole of what "the platform is just the entry point" means in code.
-It authenticates, it knows where each app lives, and it forwards.  It has no
-domain logic of any kind: no task submission, no scoring, no EDA, no database of
-its own.
+This is what "the platform is just the entry point" means in code.  It serves
+the kernel's own surface, and it routes everything else to the application that
+owns it.  It holds no domain logic, opens no database of its own, and knows no
+capability by name.
 
-Its entire configuration is a list of apps.  Adding a capability is adding a
-line to that list, not editing this file -- which is the property the previous
-platform lacked when its entry point grew to six thousand lines.
+It is also the component that grew to six thousand lines in the previous
+platform, so its thinness is asserted rather than intended: `test_gateway.py`
+fails if this package opens a database or imports a kernel-internals package.
 """
 
 from __future__ import annotations
@@ -15,22 +15,30 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
-from dataclasses import dataclass, field
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
+from urllib.parse import urlencode
 
-#: How long the gateway waits on a downstream app before reporting it unhealthy.
+from .router import HttpError, Request, Response, Router, make_handler, serve
+
+#: How long the entry point waits on a downstream application.
 PROBE_TIMEOUT_SECONDS = 2.0
 
-#: A response body larger than this is not forwarded.  The gateway is a doorway,
-#: not a buffer, and an unbounded copy is a way for one app to exhaust it.
+#: A proxied response larger than this is refused.  The entry point is a
+#: doorway, not a buffer.
 MAX_PROXY_BYTES = 8 * 1024 * 1024
+
+#: Prefix under which an application is mounted.
+APP_PREFIX = "/app"
+
+#: Prefix under which the kernel serves its own surface.
+KERNEL_PREFIX = "/kernel"
 
 
 @dataclass(frozen=True)
 class AppRegistration:
-    """One downstream application, as the gateway needs to know it."""
+    """One downstream application, as the entry point needs to know it."""
 
     name: str
     base_url: str
@@ -50,15 +58,13 @@ class AppRegistration:
 @dataclass(frozen=True)
 class GatewayConfig:
     apps: tuple[AppRegistration, ...] = ()
-    #: Paths served by the gateway itself, before any app is considered.
-    public_paths: tuple[str, ...] = ("/health", "/", "/apps")
 
     @classmethod
     def from_mapping(cls, payload: Mapping[str, Any]) -> "GatewayConfig":
         unknown = sorted(set(payload) - {"apps"})
         if unknown:
             raise ValueError(f"unknown gateway config keys: {', '.join(unknown)}")
-        apps = []
+        apps: list[AppRegistration] = []
         seen: set[str] = set()
         for item in payload.get("apps", ()):
             app = AppRegistration(**item)
@@ -82,17 +88,18 @@ class GatewayConfig:
                 "name": app.name,
                 "title": app.title or app.name.replace("_", " ").title(),
                 "description": app.description,
-                "path": f"/app/{app.name}/",
+                "path": f"{APP_PREFIX}/{app.name}/",
             }
             for app in self.apps
         ]
 
 
-def probe(app: AppRegistration, timeout: float = PROBE_TIMEOUT_SECONDS) -> dict[str, Any]:
-    """Ask one app whether it is alive.
+def probe(app: AppRegistration,
+          timeout: float = PROBE_TIMEOUT_SECONDS) -> dict[str, Any]:
+    """Ask one application whether it is alive.
 
-    A failure here is reported, never retried into a fake success: the entry
-    point's job is to tell the truth about what is reachable.
+    A failure is reported, never retried into a fake success: the entry point's
+    job is to tell the truth about what is reachable.
     """
     try:
         with urllib.request.urlopen(app.health_url(), timeout=timeout) as response:
@@ -102,81 +109,96 @@ def probe(app: AppRegistration, timeout: float = PROBE_TIMEOUT_SECONDS) -> dict[
         return {"name": app.name, "reachable": False, "error": str(exc)}
 
 
-def make_handler(config: GatewayConfig):
+def build_router(config: GatewayConfig, kernel: Any | None = None) -> Router:
+    """Assemble the entry point's routes.
+
+    ``kernel`` is a KernelApi or None.  Registering it here keeps both surfaces
+    on one dispatcher, which is why the platform has exactly one.
+    """
     apps = {app.name: app for app in config.apps}
+    router = Router()
 
-    class Handler(BaseHTTPRequestHandler):
-        server_version = "openroad-platform-gateway/0.1"
+    if kernel is not None:
+        kernel.register(router)
 
-        def do_GET(self) -> None:  # noqa: N802
-            path = self.path.split("?", 1)[0]
+    def health(request: Request) -> Response:
+        return Response.json({
+            "service": "gateway",
+            "status": "ok",
+            "kernel": "attached" if kernel is not None else "absent",
+            "apps": [probe(app) for app in config.apps],
+        })
 
-            if path == "/health":
-                self._send_json(200, {
-                    "service": "gateway",
-                    "status": "ok",
-                    "apps": [probe(app) for app in config.apps],
-                })
-                return
+    def navigation(request: Request) -> Response:
+        return Response.json({"apps": config.nav()})
 
-            if path in ("/", "/apps"):
-                self._send_json(200, {"apps": config.nav()})
-                return
+    def proxy(request: Request) -> Response:
+        name = request.params["name"]
+        app = apps.get(name)
+        if app is None:
+            raise HttpError(404, f"unknown app {name!r}")
+        tail = request.params.get("rest") or ""
+        path = "/" + tail if tail else "/"
+        if request.query:
+            path += "?" + urlencode(
+                [(key, value) for key, values in request.query.items()
+                 for value in values]
+            )
+        return _forward(app, path, method=request.method, body=request.body)
 
-            if path.startswith("/app/"):
-                name, _, rest = path[len("/app/"):].partition("/")
-                app = apps.get(name)
-                if app is None:
-                    self._send_json(404, {"error": f"unknown app {name!r}"})
-                    return
-                self._proxy(app, "/" + rest)
-                return
-
-            self._send_json(404, {"error": "not found"})
-
-        # -- helpers ------------------------------------------------------
-
-        def _proxy(self, app: AppRegistration, path: str) -> None:
-            target = app.base_url.rstrip("/") + path
-            try:
-                with urllib.request.urlopen(
-                    target, timeout=PROBE_TIMEOUT_SECONDS
-                ) as response:
-                    body = response.read(MAX_PROXY_BYTES + 1)
-                    status = response.status
-                    content_type = response.headers.get(
-                        "Content-Type", "application/octet-stream"
-                    )
-            except urllib.error.HTTPError as exc:
-                self._send_json(exc.code, {"error": str(exc)})
-                return
-            except (urllib.error.URLError, OSError) as exc:
-                # A downstream app being down is 502, not 500: the entry point
-                # is fine, the thing behind it is not.
-                self._send_json(502, {"error": f"{app.name} unreachable: {exc}"})
-                return
-            if len(body) > MAX_PROXY_BYTES:
-                self._send_json(502, {"error": f"{app.name} response too large"})
-                return
-            self.send_response(status)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def _send_json(self, status: int, payload: Any) -> None:
-            body = json.dumps(payload).encode("utf-8")
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def log_message(self, *args: Any) -> None:
-            pass
-
-    return Handler
+    router.get("/health", health)
+    router.get("/", navigation)
+    router.get("/apps", navigation)
+    router.get(f"{APP_PREFIX}/{{name}}", proxy)
+    # A tail route owns everything below the app's prefix; that is the app's
+    # namespace, not the kernel's.
+    router.get(f"{APP_PREFIX}/{{name}}/{{rest...}}", proxy)
+    router.post(f"{APP_PREFIX}/{{name}}/{{rest...}}", proxy)
+    return router
 
 
-def serve(config: GatewayConfig, *, host: str, port: int) -> None:
-    ThreadingHTTPServer((host, port), make_handler(config)).serve_forever()
+def _forward(app: AppRegistration, path: str, *, method: str,
+             body: Any = None) -> Response:
+    url = app.base_url.rstrip("/") + path
+    data = None
+    headers = {"Accept": "application/json"}
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    request = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(request,
+                                    timeout=PROBE_TIMEOUT_SECONDS) as response:
+            raw = response.read(MAX_PROXY_BYTES + 1)
+            content_type = response.headers.get("Content-Type", "application/json")
+            status = response.status
+    except urllib.error.HTTPError as exc:
+        raise HttpError(exc.code, _detail(exc)) from exc
+    except (urllib.error.URLError, OSError) as exc:
+        # A downstream app being down is 502, not 500: the entry point is fine,
+        # the thing behind it is not.
+        raise HttpError(502, f"{app.name} is unreachable: {exc}") from exc
+    if len(raw) > MAX_PROXY_BYTES:
+        raise HttpError(502, f"{app.name} returned an oversized response")
+    try:
+        return Response.json(json.loads(raw), status=status)
+    except json.JSONDecodeError:
+        return Response(status=status, body=raw,
+                        headers={"Content-Type": content_type})
+
+
+def _detail(exc: urllib.error.HTTPError) -> str:
+    try:
+        payload = json.loads(exc.read())
+        if isinstance(payload, Mapping) and payload.get("error"):
+            return str(payload["error"])
+    except Exception:  # noqa: BLE001 - the upstream reason is best-effort
+        pass
+    return f"upstream returned HTTP {exc.code}"
+
+
+__all__ = (
+    "APP_PREFIX", "AppRegistration", "GatewayConfig", "KERNEL_PREFIX",
+    "MAX_PROXY_BYTES", "PROBE_TIMEOUT_SECONDS", "build_router", "make_handler",
+    "probe", "serve",
+)

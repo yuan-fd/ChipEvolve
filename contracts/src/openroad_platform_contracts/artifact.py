@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping
 
 from .version import (
+    instantiate,
     ContractError,
     SCHEMA_VERSION,
     primitive,
@@ -155,6 +156,6 @@ class Metric:
         from .version import known_payload
         value = known_payload(cls, payload)
         value["context"] = dict(value.get("context") or {})
-        result = cls(**value)
+        result = instantiate(cls, value)
         result.validate()
         return result

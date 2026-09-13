@@ -29,6 +29,7 @@ from enum import Enum
 from typing import Any, Mapping
 
 from .version import (
+    instantiate,
     ContractError,
     SCHEMA_VERSION,
     known_payload,
@@ -111,7 +112,7 @@ class ProgressReport:
                 except ValueError as exc:
                     raise ContractError(f"invalid progress {key}") from exc
         value["detail"] = dict(value.get("detail") or {})
-        result = cls(**value)
+        result = instantiate(cls, value)
         result.validate()
         return result
 

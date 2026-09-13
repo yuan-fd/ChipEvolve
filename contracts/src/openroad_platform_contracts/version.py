@@ -73,6 +73,21 @@ def primitive(value: Any) -> Any:
     return value
 
 
+def instantiate(cls: type, value: Mapping[str, Any]):
+    """Construct a contract, reporting a malformed payload as such.
+
+    A missing or unexpected field is the caller's error, not the server's.
+    Letting the constructor raise ``TypeError`` turns a 400 into a 500 and
+    tells the caller nothing about what was wrong.
+    """
+    try:
+        return cls(**value)
+    except TypeError as exc:
+        raise ContractError(
+            f"{cls.__name__} payload does not match its fields: {exc}"
+        ) from exc
+
+
 def known_payload(cls: type, payload: Mapping[str, Any]) -> dict[str, Any]:
     """Reject unknown fields instead of ignoring them.
 
@@ -107,6 +122,6 @@ class Contract:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]):
         value = known_payload(cls, payload)
-        result = cls(**value)
+        result = instantiate(cls, value)
         result.validate()
         return result

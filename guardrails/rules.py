@@ -642,32 +642,62 @@ def unreachable_code_violations(root: Path) -> list[Violation]:
 #: against a format, it does not compute a digest, so counting it as a second
 #: implementation would be a false positive.  It still catches every real
 #: duplicate the v1 tree contained.
-SINGLETON_CONCERNS: dict[str, re.Pattern[str]] = {
-    "sha256-digest": re.compile(
+@dataclass(frozen=True)
+class Concern:
+    """One thing the platform implements once.
+
+    ``per_file`` distinguishes "one implementation" from "one implementation
+    site".  A dispatcher is one thing that happens to need a method per HTTP
+    verb -- ``do_GET`` and ``do_POST`` in one class are two halves of one
+    dispatcher, not two dispatchers.  A digest, by contrast, is one function;
+    two of them in one file is still duplication.
+    """
+
+    pattern: re.Pattern[str]
+    per_file: bool = False
+
+
+SINGLETON_CONCERNS: dict[str, Concern] = {
+    "sha256-digest": Concern(re.compile(
         r"def\s+(?!(?:validate|check|assert|require|is)_)\w*sha256\w*\s*\("
+    )),
+    "json-response-envelope": Concern(
+        re.compile(r"def\s+\w*(json_response|_json|respond|reply)\s*\(")
     ),
-    "json-response-envelope": re.compile(r"def\s+\w*(json_response|_json|respond|reply)\s*\("),
-    "route-dispatcher": re.compile(r"def\s+do_(GET|POST)\s*\("),
+    "route-dispatcher": Concern(
+        re.compile(r"def\s+do_(GET|POST)\s*\("), per_file=True
+    ),
 }
 
 
 def _is_test_path(rel: str) -> bool:
+    """True when a file is test scaffolding rather than shipped code.
+
+    ``smoke.py`` counts because G9 defines it as an app's end-to-end check:
+    a smoke that stands up a stub and drives it is test code, and its stub
+    must not be mistaken for a second implementation of a platform concern.
+    """
     parts = rel.split("/")
-    return "tests" in parts or "fixtures" in parts
+    if "tests" in parts or "fixtures" in parts:
+        return True
+    return parts[-1] == "smoke.py"
 
 
 def _concern_zone(rel: str) -> str:
     """Which independently-authored unit a file belongs to.
 
-    A plugin is a separate program: it speaks the JSON adapter protocol and may
-    be written in any language, so it must not be forced to import the
-    platform's code.  That means a plugin is allowed its own digest.  It is not
-    allowed two, which is why the rule is applied per zone rather than to the
-    tree as a whole.
+    A plugin and an app are each separate programs.  A plugin speaks the JSON
+    adapter protocol and may be written in any language; an app is its own
+    process with its own database and its own HTTP surface.  Neither may be
+    forced to import the platform's code, so each is allowed its own digest
+    and its own request dispatcher.  Neither is allowed two, which is why the
+    rule is applied per zone rather than to the tree as a whole.
     """
     parts = rel.split("/")
     if parts[0] == "plugins" and len(parts) > 1:
         return f"plugin:{parts[1]}"
+    if parts[0] == "apps" and len(parts) > 1:
+        return f"app:{parts[1]}"
     return "platform"
 
 
@@ -679,7 +709,8 @@ def duplicate_implementation_violations(root: Path) -> list[Violation]:
     counting those would make the rule unusable and tempt someone to disable it.
     """
     out: list[Violation] = []
-    for concern, rx in SINGLETON_CONCERNS.items():
+    for concern, spec in SINGLETON_CONCERNS.items():
+        rx = spec.pattern
         hits_by_zone: dict[str, list[tuple[str, int]]] = {}
         for path in _walk_python(root):
             rel = _rel(root, path)
@@ -699,6 +730,10 @@ def duplicate_implementation_violations(root: Path) -> list[Violation]:
                     hits_by_zone.setdefault(_concern_zone(rel), []).append(
                         (rel, node.lineno)
                     )
+                    if spec.per_file:
+                        # One site per file is enough: the remaining methods
+                        # of the same dispatcher are the same concern.
+                        break
         for zone, hits in hits_by_zone.items():
             if len(hits) < 2:
                 continue

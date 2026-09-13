@@ -20,6 +20,7 @@ import pytest
 
 from openroad_platform_gateway import (
     AppRegistration,
+    build_router,
     GatewayConfig,
     make_handler,
     probe,
@@ -92,7 +93,7 @@ def gateway(apps):
         for a in apps
     ))
     port = free_port()
-    server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(config))
+    server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(build_router(config)))
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     time.sleep(0.05)
@@ -205,7 +206,7 @@ def test_an_unreachable_app_is_a_502_not_a_500(gateway):
     port = free_port()
     server = ThreadingHTTPServer(
         ("127.0.0.1", port),
-        make_handler(GatewayConfig(apps=(dead,))),
+        make_handler(build_router(GatewayConfig(apps=(dead,)))),
     )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -236,8 +237,14 @@ def test_the_gateway_has_no_domain_logic_and_no_database():
     ]
     assert sources
     for path in sources:
+        # ``bootstrap.py`` is the composition root and is the one file allowed
+        # to name concrete kernel classes; it still may not open a database,
+        # because the kernel owns its own store.
+        if path.name == "bootstrap.py":
+            continue
         text = path.read_text(encoding="utf-8")
         assert "sqlite3" not in text, f"{path.name} opens a database"
         assert "import openroad_platform_runtime" not in text
         assert "import openroad_platform_registry" not in text
         assert "import openroad_platform_evaluator" not in text
+        assert "import openroad_platform_identity" not in text

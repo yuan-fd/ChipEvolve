@@ -1,0 +1,16 @@
+{
+  "_comment": [
+    "The applications the entry point integrates. Adding a capability here is a",
+    "line of configuration, not an edit to the entry point -- which is the",
+    "property the previous platform lacked when its entry point grew to 5,993",
+    "lines and named ten plugins inline."
+  ],
+  "apps": [
+    {
+      "name": "evidence_console",
+      "base_url": "http://127.0.0.1:8810",
+      "title": "Evidence Console",
+      "description": "Read runs, metrics and provenance recorded by the kernel."
+    }
+  ]
+}

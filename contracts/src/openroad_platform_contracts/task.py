@@ -14,6 +14,7 @@ from typing import Any, Mapping
 from .runtime import RuntimeStatus
 from .progress import DEFAULT_PROGRESS_MARKER
 from .version import (
+    instantiate,
     ContractError,
     SCHEMA_VERSION,
     known_payload,
@@ -72,7 +73,7 @@ class TaskSpec:
     def from_dict(cls, payload: Mapping[str, Any]) -> "TaskSpec":
         value = known_payload(cls, payload)
         value["expected_artifacts"] = tuple(value.get("expected_artifacts", ()))
-        result = cls(**value)
+        result = instantiate(cls, value)
         result.validate()
         return result
 
@@ -197,7 +198,7 @@ class PluginManifest:
             value[name] = tuple(value.get(name, ()))
         value["artifact_rules"] = tuple(value.get("artifact_rules", ()))
         value["requirements"] = RuntimeRequirements.from_dict(value.get("requirements"))
-        result = cls(**value)
+        result = instantiate(cls, value)
         result.validate()
         return result
 
@@ -256,6 +257,6 @@ class PluginResult:
             raise ContractError("invalid PluginResult status") from exc
         value["metrics"] = tuple(value.get("metrics", ()))
         value["artifacts"] = tuple(value.get("artifacts", ()))
-        result = cls(**value)
+        result = instantiate(cls, value)
         result.validate()
         return result
