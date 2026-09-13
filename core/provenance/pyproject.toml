@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=59.4"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openroad-platform-provenance"
+version = "0.1.0"
+description = "Provenance kernel: read models and lineage over durable run state"
+requires-python = ">=3.9"
+dependencies = ["openroad-platform-contracts", "openroad-platform-runtime"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["openroad_platform_provenance*"]

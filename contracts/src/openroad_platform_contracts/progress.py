@@ -1,24 +1,24 @@
 """The progress envelope: how a plugin reports stages without the kernel
 knowing any stage names.
 
-v1's runtime contained this:
+The previous runtime carried a regular expression listing six hardcoded stage
+names belonging to one vendor's tool, together with that vendor's marker
+prefix.  That is a control plane which has memorised one tool's internals: it
+cannot host a second tool without being edited, and editing it is how vendor
+knowledge accumulates in a layer that is supposed to have none.
 
-    START = re.compile(r"^\\[orfs-stage-start\\] "
-                       r"(synth|floorplan|place|cts|route|finish)$")
+The fix is not a better regular expression.  It is to move the vocabulary into
+a contract.  An adapter emits one JSON object per line, prefixed by the marker
+its manifest declares:
 
-That is a control plane that has memorised one tool's internals.  The fix is
-not a better regex; it is to move the vocabulary into a contract.
-
-An adapter emits one JSON object per line, prefixed by the marker its manifest
-declares:
-
-    [progress] {"stage": "synth", "phase": "started"}
-    [progress] {"stage": "synth", "phase": "finished",
+    [progress] {"stage": "<any-label>", "phase": "started"}
+    [progress] {"stage": "<any-label>", "phase": "finished",
                 "status": "succeeded", "seconds": 12.5}
 
-The kernel understands the *envelope* and nothing else.  ``synth`` is opaque
-data that travels to the event store and out to whoever renders it.  A plugin
-running a completely different toolchain uses the same contract.
+The kernel understands the *envelope* and nothing else.  The stage label is
+opaque data that travels to the event store and out to whoever renders it.  A
+plugin running a completely different toolchain uses the same contract, and no
+kernel file needs to change.
 """
 
 from __future__ import annotations

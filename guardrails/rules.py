@@ -31,7 +31,11 @@ GATEWAY_DIR = "gateway"
 
 #: Directories that make up the platform kernel.  Nothing here may know a
 #: concrete plugin, tool, or vendor name.
-KERNEL_DIRS = (CORE_DIR, GATEWAY_DIR)
+#:
+#: ``contracts`` is included deliberately.  It is the shared language every
+#: layer depends on, so a vendor name there would propagate everywhere -- and
+#: a contract that mentions a tool has stopped being generic.
+KERNEL_DIRS = (CORE_DIR, CONTRACTS_DIR, GATEWAY_DIR)
 
 SKIP_DIR_NAMES = {
     ".git", "__pycache__", ".pytest_cache", "node_modules", ".venv",
@@ -412,8 +416,14 @@ def ratchet_violations(root: Path) -> list[Violation]:
 
     core_budget = baseline.get("core_total_loc")
     if core_budget is not None:
-        actual = sum(_loc(p) for d in KERNEL_DIRS
-                     for p in _walk_python(root / d) if (root / d).is_dir())
+        # The budget covers shipped kernel code, not its tests.  Counting
+        # tests would make the ceiling a moving target that grows every time
+        # someone adds a case, which is the opposite of a ratchet.
+        actual = sum(
+            _loc(p) for d in KERNEL_DIRS
+            for p in _walk_python(root / d)
+            if (root / d).is_dir() and not _is_test_path(_rel(root, p))
+        )
         if actual > int(core_budget):
             approved = _has_approval(root, "core_total_loc")
             if not approved:

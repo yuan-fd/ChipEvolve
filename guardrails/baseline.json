@@ -2,10 +2,21 @@
   "_comment": [
     "Frozen size ceilings. These may only be lowered.",
     "Raising a value requires an approval file under approvals/ explaining why.",
+    "The kernel is complete: contracts, runtime, registry, evaluator,",
+    "provenance, identity, and the gateway. Any growth is a design decision",
+    "that needs a written reason.",
     "See AGENTS.md and guardrails/rules.py (G7, G8, G10)."
   ],
   "max_file_loc": 1500,
-  "core_total_loc": 7000,
-  "file_loc": {},
+  "core_total_loc": 4952,
+  "file_loc": {
+    "core/identity/src/openroad_platform_identity/auth.py": 407,
+    "core/provenance/src/openroad_platform_provenance/index.py": 339,
+    "core/registry/src/openroad_platform_registry/registry.py": 300,
+    "core/runtime/src/openroad_platform_runtime/adapter.py": 370,
+    "core/runtime/src/openroad_platform_runtime/guardian.py": 319,
+    "core/runtime/src/openroad_platform_runtime/runtime.py": 558,
+    "core/runtime/src/openroad_platform_runtime/store.py": 737
+  },
   "protected_sha256": {}
 }

@@ -180,14 +180,44 @@ Also carried across: `analysis/flow_error.log` recording which stage failed, and
 the four milestones, including `functionally_verified: False` -- the platform
 never claims that from a synthesis run.
 
+**Identity.** `core/identity/`: accounts, hashed sessions, resource ownership,
+  and per-feature allowances, ported from v1's `AuthStore`.  The parts kept are
+  the security-shaped ones: a login for an unknown user still pays the full
+  PBKDF2 cost, so response time does not enumerate accounts; digests are compared
+  with `hmac.compare_digest`; session tokens are stored only as hashes; and
+  ownership cannot be reassigned, so a later caller cannot take over an earlier
+  caller's experiment.
+
+**Provenance.** `core/provenance/`: read models and lineage.  Applications may
+  not open the kernel database, so this is how evidence reaches a screen.  Every
+  metric can name the artifact it was read from, the attempt that produced it and
+  the run that owns the attempt.  An unsourced metric is **shown with
+  `complete: false` rather than dropped** -- the store contains it, and hiding
+  that would be worse than displaying it.
+
+## The kernel is complete
+
+| Package | Lines | Owns |
+| --- | ---: | --- |
+| `contracts` | 1,348 | the shared language; imports nothing |
+| `core/runtime` | 2,239 | attempts, leases, workspaces, adapter protocol, protected boundary invocation |
+| `core/registry` | 324 | discovery and enforced admission |
+| `core/evaluator` | 291 | the protected boundary; validates and pins a verdict |
+| `core/provenance` | 359 | read models and lineage |
+| `core/identity` | 427 | users, sessions, ownership, allowances |
+| `gateway` | 225 | the integration entry point |
+
+**4,952 lines** against a frozen budget of 4,952 in `baseline.json`, which may
+only be lowered.  G1, G2 and G13 are zero across all of it, and `contracts` is
+now scanned by them too: a contract that names a tool has stopped being generic.
+
 ## Next
 
-1. `core/provenance` — the cross-run artifact graph.  Events, artifacts and
-   metrics already live in the runtime store; this is the read model.
-2. `core/identity` — extract auth from v1's API service.
-3. `plugins/orfs/` remaining knowledge: the admitted-flow compatibility patch and
+1. `plugins/orfs/` remaining knowledge: the admitted-flow compatibility patch and
    the toolchain snapshot, both of which have exact byte-level provenance.
-4. Apps, starting with the one that is already a real app.
+2. `core/client` and the kernel service: the typed way applications reach the
+   runtime, so no application needs the store in-process.
+3. The first app.
 
 ## v1 knowledge that must be carried across by hand
 
