@@ -510,8 +510,15 @@ def unreachable_code_violations(root: Path) -> list[Violation]:
 
 #: A concern may be implemented exactly once in the tree.  This is the rule
 #: that stops "reimplement it here instead of reusing it there".
+#:
+#: The digest pattern excludes validators: ``validate_sha256`` checks a string
+#: against a format, it does not compute a digest, so counting it as a second
+#: implementation would be a false positive.  It still catches every real
+#: duplicate the v1 tree contained.
 SINGLETON_CONCERNS: dict[str, re.Pattern[str]] = {
-    "sha256-digest": re.compile(r"def\s+\w*sha256\w*\s*\("),
+    "sha256-digest": re.compile(
+        r"def\s+(?!(?:validate|check|assert|require|is)_)\w*sha256\w*\s*\("
+    ),
     "json-response-envelope": re.compile(r"def\s+\w*(json_response|_json|respond|reply)\s*\("),
     "route-dispatcher": re.compile(r"def\s+do_(GET|POST)\s*\("),
 }

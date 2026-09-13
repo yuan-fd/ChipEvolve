@@ -42,10 +42,13 @@ class ArtifactDeclaration:
     required: bool = True
     media_type: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    #: Only the platform sets this.  An adapter that could register a
+    #: reserved kind could forge the platform's own bookkeeping.
+    allow_reserved: bool = False
 
     def validate(self) -> None:
         validate_identifier("kind", self.kind)
-        if self.kind in RESERVED_ARTIFACT_KINDS:
+        if self.kind in RESERVED_ARTIFACT_KINDS and not self.allow_reserved:
             raise ContractError(
                 f"artifact kind {self.kind!r} is reserved by the platform"
             )

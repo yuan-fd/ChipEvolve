@@ -15,9 +15,7 @@ Design notes carried over from v1 because they were right:
 
 from __future__ import annotations
 
-import hashlib
 import json
-import os
 import sqlite3
 import threading
 import uuid
@@ -25,6 +23,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
+
+from .digest import sha256
 
 from openroad_contracts import (
     Artifact,
@@ -566,13 +566,12 @@ class RuntimeStore:
                         raise RuntimeStoreError(
                             f"declared artifact is missing: {store_key!r}"
                         )
-                    data = path.read_bytes()
                     artifact = Artifact(
                         artifact_id=_new_id("art"),
                         kind=str(declaration["kind"]),
                         store_key=store_key,
-                        sha256=hashlib.sha256(data).hexdigest(),
-                        size_bytes=len(data),
+                        sha256=sha256(path),
+                        size_bytes=path.stat().st_size,
                         media_type=declaration.get("media_type"),
                         metadata=dict(declaration.get("metadata") or {}),
                     )
