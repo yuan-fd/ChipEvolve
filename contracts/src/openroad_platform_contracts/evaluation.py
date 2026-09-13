@@ -69,9 +69,13 @@ class Verdict:
             )
         for metric in self.metrics:
             metric.validate()
-            if metric.source_artifact_id is None:
+            # A plugin cannot know the artifact id the platform will assign,
+            # so either an id or a workspace-relative store key is accepted.
+            # What is not accepted is a number with no source at all.
+            if (metric.source_artifact_id is None
+                    and not metric.context.get("source_artifact_store_key")):
                 raise ContractError(
-                    f"metric {metric.name!r} has no source artifact; "
+                    f"metric {metric.name!r} cites no source artifact; "
                     f"an unsourced metric is not evidence"
                 )
         for artifact in self.artifacts:

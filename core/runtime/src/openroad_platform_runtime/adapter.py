@@ -83,7 +83,11 @@ class ProcessAdapter:
         cancel_requested: Callable[[], bool] | None = None,
         on_line: Callable[[str], None] | None = None,
         environment: Mapping[str, str] | None = None,
+        allow_reserved_artifacts: bool = False,
     ) -> AdapterExecution:
+        # ``allow_reserved_artifacts`` is the one authority the platform
+        # grants to itself when it runs its own evaluator.  It is an explicit
+        # argument so that no ordinary capability can acquire it by accident.
         manifest.validate()
         task.validate()
         if task.plugin_id != manifest.plugin_id:
@@ -126,6 +130,7 @@ class ProcessAdapter:
             artifacts = self._validate_artifacts(
                 root, manifest, task, result,
                 require_expected=result.status is RuntimeStatus.SUCCEEDED,
+                allow_reserved=allow_reserved_artifacts,
             )
         except AdapterProtocolError as exc:
             result = protocol_failure(started_at, ended_at, outcome.returncode,
@@ -232,6 +237,7 @@ class ProcessAdapter:
         result: PluginResult,
         *,
         require_expected: bool = True,
+        allow_reserved: bool = False,
     ) -> tuple[dict[str, Any], ...]:
         return validate_artifact_declarations(
             root, manifest,
@@ -243,6 +249,7 @@ class ProcessAdapter:
             ],
             expected_kinds=task.expected_artifacts,
             require_expected=require_expected,
+            allow_reserved=allow_reserved,
         )
 
 

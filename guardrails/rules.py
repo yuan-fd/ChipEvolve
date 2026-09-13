@@ -176,14 +176,16 @@ def kernel_plugin_name_violations(root: Path) -> list[Violation]:
                 marker = line.find("#")
                 code = line if marker < 0 else line[:marker]
                 comment = "" if marker < 0 else line[marker:]
-                in_docstring = lineno in prose_lines
-                # Code and string literals are always in scope; comments and
-                # docstrings are in scope only for unambiguous tokens.
-                scopes = [(code, True)]
-                if in_docstring:
-                    scopes = [(line, True)]
+                # Code and string literals are checked for every token.
+                # Prose -- a comment or a docstring -- is checked only for
+                # unambiguous vendor names, so an English sentence is not
+                # mistaken for a dependency on a tool called "make".
+                if lineno in prose_lines:
+                    scopes = [(line, False)]
                 else:
-                    scopes.append((comment, False))
+                    scopes = [(code, True)]
+                    if comment:
+                        scopes.append((comment, False))
                 for segment, allow_ambiguous in scopes:
                     if not segment:
                         continue

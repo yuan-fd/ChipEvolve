@@ -74,17 +74,39 @@ stdout, so no assertion races the scheduler.
 **87 tests pass on the aarch64 Linux target**, including the 9 that need
 `/proc` and are skipped on the development laptop.
 
+**Runtime, complete.** `core/runtime/`: durable store; process guardian;
+  bounded adapter protocol; orchestration; the generic progress observer.  A
+  capability cannot lie about its own result -- a claimed success with a
+  non-zero exit code, or an exit_code that disagrees with the process, becomes
+  a protocol error rather than a stored success.
+
+**Registry, real.** `core/registry/`: discovery from `plugins/*/` is the only
+  way a capability becomes known, `./` adapter entries are contained to the
+  plugin's own directory, and admission is *enforced* -- a plugin with no intake
+  evidence is listed and refuses to resolve, by name and with a reason.
+  `admitted` needs a green/yellow license **and** a pinned commit.
+
+**Evaluator boundary.** `core/evaluator/`: the kernel owns the boundary, a
+  plugin owns the domain.  The evaluator runs through the same adapter protocol
+  as anything else and its answer is refused unless it is traceable -- every
+  metric must cite an artifact that exists in the evaluated workspace, and the
+  evaluator's identity is pinned by manifest hash so two runs are only
+  comparable when the same evaluator produced both.
+
+**The path works end to end.** `plugins/example/` is discovered from a
+  directory, admitted from its own evidence, executed as a separate process, and
+  its artifacts, metrics and stage events become durable evidence.  The kernel
+  never learns the word "example-reporter", and a test asserts that.
+
 ## Next
 
-1. `core/adapter.py` — bounded process adapter: request/result envelope, path
-   containment, artifact declaration validation.
-2. `core/runtime/runtime.py` — orchestration: submit, lease, execute, validate,
-   register, evaluate, record. Plus the generic progress observer.
-3. `core/registry` — discover manifests under `plugins/*/`, admission gate.
-4. `core/evaluator` — the boundary only; domain parsers become a plugin.
-5. Port the ~4,200 lines of ORFS integration knowledge, behaviour as tests
-   first.
-6. Apps, starting with the one that is already a real app.
+1. `core/provenance` — cross-run artifact graph and read models. (events,
+   artifacts and metrics already live in the runtime store)
+2. `core/identity` — extract auth from v1's API service.
+3. `gateway/` — the entry point: SSO, routing, navigation.
+4. Port the ~4,200 lines of ORFS integration knowledge into
+   `plugins/<name>/`, behaviour encoded as tests first.
+5. Apps, starting with the one that is already a real app.
 
 ## v1 knowledge that must be carried across by hand
 
@@ -112,6 +134,9 @@ Not guessed, not paraphrased — read from v1 and re-derived as tests:
   64.6% of the package) as `_LEGACY_MODULES`. The team's own verdict.
 - `apps/api/app.py`: 5,993 lines, 111 dispatcher branches, 18 SQLite databases,
   87 commits. It grew 49.6% *after* being labelled LEGACY.
+- Gate calibration: G1 fires **1,119 times** on v1's kernel-equivalent packages;
+  G13 fires **147 times**. Both are zero in v2.
+- v2 size: ~7,500 lines including tests, against 102,852 in v1.
 
 ## How to run
 
