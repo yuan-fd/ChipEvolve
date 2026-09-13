@@ -157,6 +157,54 @@ def test_a_minimum_die_size_emits_both_rectangles(tmp_path):
     assert "CORE_UTILIZATION" not in text
 
 
+def test_an_out_of_range_value_is_refused_through_the_real_argument(tmp_path):
+    """The explicit argument is not a bypass.
+
+    The frozen implementation validated only the tuning dictionary and then used
+    the explicit arguments unchecked when it was absent, so a caller could pass
+    an out-of-range utilization straight through the gate.  Merging the defaults
+    into the validated set closes that.
+    """
+    rtl = write_rtl(tmp_path)
+    with pytest.raises(ValueError, match="below its lower bound"):
+        write_design_files(
+            workdir=tmp_path, rtl_path=rtl, design="top", platform="nangate45",
+            clock="clk", clock_period_ns=10.0, core_utilization_pct=1.0,
+            place_density=0.6,
+        )
+    with pytest.raises(ValueError, match="calibrated range for asap7"):
+        write_design_files(
+            workdir=tmp_path, rtl_path=rtl, design="top", platform="asap7",
+            clock="clk", clock_period_ns=10.0, core_utilization_pct=76.0,
+            place_density=0.6,
+        )
+
+
+def test_an_unknown_tuning_parameter_is_refused(tmp_path):
+    """A mistyped parameter must be reported, not silently ignored."""
+    rtl = write_rtl(tmp_path)
+    with pytest.raises(ValueError, match="unsupported ORFS tuning parameters"):
+        write_design_files(
+            workdir=tmp_path, rtl_path=rtl, design="top", platform="nangate45",
+            clock="clk", clock_period_ns=10.0, core_utilization_pct=40.0,
+            place_density=0.6, flow_parameters={"make_it_faster": 1},
+        )
+
+
+def test_tuned_parameters_reach_the_config_through_the_allowlist(tmp_path):
+    """Names come from the parameter table, not from upper-casing a key."""
+    rtl = write_rtl(tmp_path)
+    config = write_design_files(
+        workdir=tmp_path, rtl_path=rtl, design="top", platform="nangate45",
+        clock="clk", clock_period_ns=10.0, core_utilization_pct=40.0,
+        place_density=0.6,
+        flow_parameters={"cts_cluster_size": 20, "gpl_timing_driven": 1},
+    )
+    text = config.read_text(encoding="utf-8")
+    assert "export CTS_CLUSTER_SIZE = 20" in text
+    assert "export GPL_TIMING_DRIVEN = 1" in text
+
+
 def test_nangate45_gets_its_own_pdn_template(tmp_path):
     rtl = write_rtl(tmp_path)
     config = write_design_files(

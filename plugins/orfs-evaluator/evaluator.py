@@ -29,6 +29,7 @@ import os
 from pathlib import Path
 from typing import Any, Mapping
 
+from digest import sha256_file
 from stage_json import extract_metrics_from_log_dir
 
 #: ORFS writes these at the end of a completed flow.  Their presence is the
@@ -49,15 +50,6 @@ CLAIM_BOUNDARY = (
     "terminal metrics parse, setup and reported hold timing pass, and DRC is zero; "
     "it does not prove RTL functional correctness or silicon signoff."
 )
-
-
-def sha256_file(path: Path) -> str:
-    """The plugin's single digest implementation."""
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _valid_sha(value: str) -> bool:

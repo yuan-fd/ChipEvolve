@@ -21,6 +21,7 @@ from pathlib import Path
 # The script's own directory is on sys.path because Python adds it for the main
 # script, so the ported modules import normally.  No sys.path surgery.
 from config import infer_clock, infer_top, write_design_files
+from digest import sha256_file
 from runner import (
     STAGES,
     FlowResult,
@@ -46,16 +47,6 @@ def report(stage: str, phase: str, **extra) -> None:
     print(PROGRESS_MARKER + " " + json.dumps(
         {"stage": stage, "phase": phase, **extra}
     ), flush=True)
-
-
-def sha256_file(path: Path) -> str:
-    import hashlib
-
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def write_result(path: Path, payload: dict, started_at: str) -> None:

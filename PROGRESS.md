@@ -162,6 +162,38 @@ Knowledge carried across, each with a test:
 - Only one place-density policy is written, because ORFS treats
   `PLACE_DENSITY` and `PLACE_DENSITY_LB_ADDON` as alternatives.
 
+`plugins/orfs/parameters.py` adds the tuning allowlist: thirteen named
+parameters with their kind, stage, bounds, quantization step and the ORFS script
+that consumes each one.
+
+The table's most important property is what is **absent** from it.  The clock
+period and the SDC constraints are deliberately not searchable, because a QoR
+comparison in which the design target can move is not a comparison: "better
+timing" would sometimes mean "an easier design", and no downstream statistic
+could recover the meaning.
+
+Other recorded behaviour:
+
+- Per-platform calibrated bounds, narrower than the global ones.  SKY130HD's
+  utilization lower bound is 20 rather than 30 because the reviewed upstream
+  anchor uses 20; a gate that rejected it would refuse the official starting
+  configuration of the study being reproduced.
+- `place_density` and `place_density_lb_addon` are *alternative policies*, not
+  two knobs, so setting both is refused rather than leaving an inactive
+  contradictory value in the evidence.
+- `detail_placement_padding` may not exceed `global_placement_padding`.
+- The addon dimension has no quantization step: it is continuous upstream, and
+  imposing a grid here would silently collapse several distinct proposals into
+  the same run.
+- `parameter_source_evidence` records whether each parameter's declared consumer
+  script exists and actually mentions the variable -- catching "we set it and the
+  tool ignored it" without running the flow.
+
+One gap in the frozen implementation was closed: it validated only the tuning
+dictionary and then used the explicit arguments unchecked when it was absent, so
+an out-of-range utilization could pass straight through the gate.  The effective
+set is now what gets validated.
+
 The adapter is exercised as a **real process** against a stub Makefile, so the
 whole chain is testable without a toolchain: configuration written, stages run
 in order, each gated on the artifact it should have produced, evidence collected

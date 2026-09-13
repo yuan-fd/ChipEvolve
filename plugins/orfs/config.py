@@ -19,6 +19,8 @@ import re
 import shutil
 from pathlib import Path
 
+from parameters import orfs_parameter_config_lines, validate_orfs_parameters
+
 #: Port names tried in order when the RTL does not make the clock obvious.
 CLOCK_CANDIDATES = ("clk", "clock", "i_clk", "clk_i", "sys_clk", "clk_in")
 
@@ -123,11 +125,25 @@ def write_design_files(
     Sources are copied into the workspace rather than referenced in place: the
     operator's ORFS tree is shared and must never be written to by a run.
     """
-    tuning = dict(flow_parameters or {})
     clock_period_native = clock_period_in_platform_units(clock_period_ns, platform)
-    core_utilization_pct = float(
-        tuning.get("core_utilization_pct", core_utilization_pct)
-    )
+
+    # Validate the *effective* set, not just ``flow_parameters``.  The frozen
+    # implementation validated only the tuning dict and then used the explicit
+    # arguments unchecked when it was absent, so a caller could pass an
+    # out-of-range utilization straight through the gate.  Merging them first
+    # closes that without changing the result for any valid input.
+    tuning = dict(flow_parameters or {})
+    # ``core_utilization_pct`` and ``place_density`` are defaults the caller
+    # supplies, not independent requests.  Choosing the addon policy supersedes
+    # the density default rather than contradicting it, so the default is only
+    # folded in when the caller did not choose the alternative.
+    using_addon = "place_density_lb_addon" in tuning
+    if not using_addon:
+        tuning.setdefault("place_density", place_density)
+    tuning.setdefault("core_utilization_pct", core_utilization_pct)
+    tuning = validate_orfs_parameters(tuning, platform=platform)
+
+    core_utilization_pct = float(tuning["core_utilization_pct"])
     place_density = float(tuning.get("place_density", place_density))
 
     config_dir = workdir / "designs" / platform / design
@@ -170,14 +186,12 @@ def write_design_files(
             f"{size - margin:g} {size - margin:g}",
         ))
 
-    # Everything else the caller tuned.  ``place_density_lb_addon`` is
-    # deliberately included: it is the alternative policy, and when it is
-    # present it is the one ORFS actually uses -- dropping it here would
-    # silently fall back to the default density.
-    for name, value in sorted(tuning.items()):
-        if name in {"core_utilization_pct", "place_density"}:
-            continue
-        lines.append(f"export {name.upper()} = {value}")
+    # Everything else the caller tuned, through the real allowlist so the
+    # names and value shapes come from the parameter table rather than from
+    # upper-casing a key.
+    extra = {name: value for name, value in tuning.items()
+             if name not in {"core_utilization_pct", "place_density"}}
+    lines.extend(orfs_parameter_config_lines(extra, platform=platform))
 
     config_path = config_dir / "config.mk"
     config_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
