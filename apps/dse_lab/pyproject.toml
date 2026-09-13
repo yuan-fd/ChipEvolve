@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=59.4"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openroad-app-dse_lab"
+version = "0.1.0"
+description = "DSE Lab"
+requires-python = ">=3.9"
+dependencies = [
+  "openroad-platform-contracts",
+]
+
+[project.scripts]
+openroad-app-dse_lab = "openroad_app_dse_lab.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["openroad_app_dse_lab*"]

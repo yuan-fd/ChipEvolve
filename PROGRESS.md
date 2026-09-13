@@ -306,6 +306,37 @@ silent child and makes no timing assumption.
 Measured result: 3 consecutive runs, all 10 guardian tests passing, ~5s each, on
 a host at load 51.
 
+A second test in the same file had the same mistake in a quieter form: it used a
+10-second deadline while asserting about *output capture*.  On the loaded host
+the deadline fired before bash had printed anything, so a capture test failed
+looking like a capture bug.  A deadline in a test exists to stop a hang, not to
+assert that something is fast; the deadlines there are now generous enough that
+they cannot fire, and the reasoning is in the test.
+
+## The second app
+
+`apps/dse_lab/` is the write path: it composes parameter sweeps, submits them,
+and compares the measured evidence.  `evidence_console` reads; this submits.
+Between them the two apps exercise both directions of the kernel API, each as
+its own process with its own database and its own smoke.
+
+Three boundaries it keeps, each a rule of the architecture rather than a
+preference:
+
+* **It owns its own database and nothing else.**  Sweep definitions live there;
+  every run, artifact and metric belongs to the kernel and is read back through
+  the client.  A test asserts that the app's database contains exactly two
+  tables (`sweeps`, `points`) and one run id, not a copy of the evidence.
+* **It does not validate parameters.**  The allowlist and the bounds live in the
+  plugin that consumes them.  A console that re-implemented them would be a
+  second source of truth, and the two would disagree the first time a bound
+  changed.  An invalid point is submitted, the kernel refuses it, and the
+  refusal is reported as a result.
+* **It asserts nothing about quality.**  A failed point and a point with
+  unsourced metrics are both shown, and neither is dropped.  A sweep that
+  silently omits its failures flatters whichever policy produced fewer of them.
+  The comparison carries a claim boundary saying so.
+
 `plugins/orfs/reference_designs.py` carries the pinned source-bundle recipes --
 six registered designs plus the fixed-clock recipe the paper comparison used.
 This is the benchmark identity, so three properties are enforced rather than

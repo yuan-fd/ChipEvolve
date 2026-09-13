@@ -11,6 +11,12 @@
       "base_url": "http://127.0.0.1:8810",
       "title": "Evidence Console",
       "description": "Read runs, metrics and provenance recorded by the kernel."
+    },
+    {
+      "name": "dse_lab",
+      "base_url": "http://127.0.0.1:8820",
+      "title": "DSE Lab",
+      "description": "Submit a parameter sweep and compare the measured evidence."
     }
   ]
 }

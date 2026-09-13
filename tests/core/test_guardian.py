@@ -176,12 +176,17 @@ def test_cancellation_works_without_any_process_output(tmp_path: Path):
 
 
 def test_output_is_captured_and_streamed(tmp_path: Path):
+    # The deadline here exists only to stop a hang; it is not an assertion about
+    # speed.  Measured on the build host at load 74, starting bash took up to
+    # 13.9 seconds, so any deadline short enough to feel like a fast test is
+    # also short enough to fire before the child has printed anything -- and the
+    # failure would then look like a capture bug.
     guardian = ProcessGuardian(poll_interval=0.02, terminate_grace=1.0)
     seen: list[str] = []
     outcome = guardian.run(
         ["bash", "-c", "echo first; echo second"],
         log_path=tmp_path / "out.log",
-        timeout_seconds=10,
+        timeout_seconds=300,
         on_line=seen.append,
     )
     assert outcome.returncode == 0
@@ -206,7 +211,9 @@ def test_a_failing_observer_does_not_destroy_the_run(tmp_path: Path):
     outcome = guardian.run(
         ["bash", "-c", "echo data"],
         log_path=tmp_path / "obs.log",
-        timeout_seconds=10,
+        # Same reasoning as above: the deadline guards against a hang, and a
+        # short one would make a capture failure look like an observer failure.
+        timeout_seconds=300,
         on_line=exploding_observer,
     )
     assert outcome.returncode == 0
