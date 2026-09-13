@@ -612,8 +612,23 @@ def _is_test_path(rel: str) -> bool:
     return "tests" in parts or "fixtures" in parts
 
 
+def _concern_zone(rel: str) -> str:
+    """Which independently-authored unit a file belongs to.
+
+    A plugin is a separate program: it speaks the JSON adapter protocol and may
+    be written in any language, so it must not be forced to import the
+    platform's code.  That means a plugin is allowed its own digest.  It is not
+    allowed two, which is why the rule is applied per zone rather than to the
+    tree as a whole.
+    """
+    parts = rel.split("/")
+    if parts[0] == "plugins" and len(parts) > 1:
+        return f"plugin:{parts[1]}"
+    return "platform"
+
+
 def duplicate_implementation_violations(root: Path) -> list[Violation]:
-    """G13: each named concern may have exactly one implementation site.
+    """G13: within one independently-authored unit, a concern is implemented once.
 
     Definitions are located through the AST, not by scanning raw text.  A code
     generator legitimately contains sample definitions inside string literals;
@@ -621,13 +636,13 @@ def duplicate_implementation_violations(root: Path) -> list[Violation]:
     """
     out: list[Violation] = []
     for concern, rx in SINGLETON_CONCERNS.items():
-        hits: list[tuple[str, int]] = []
+        hits_by_zone: dict[str, list[tuple[str, int]]] = {}
         for path in _walk_python(root):
+            rel = _rel(root, path)
             # A test double is not a second implementation of a platform
-            # concern.  A fake app must define do_GET because the HTTP
-            # server requires it; counting that would make the rule
-            # unusable and tempt someone to switch it off.
-            if _is_test_path(_rel(root, path)):
+            # concern.  A fake app must define do_GET because the HTTP server
+            # requires it; counting that would make the rule unusable.
+            if _is_test_path(rel):
                 continue
             try:
                 tree = ast.parse(_read(path), filename=str(path))
@@ -637,13 +652,18 @@ def duplicate_implementation_violations(root: Path) -> list[Violation]:
                 if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     continue
                 if rx.search(f"def {node.name}("):
-                    hits.append((_rel(root, path), node.lineno))
-        if len(hits) > 1:
+                    hits_by_zone.setdefault(_concern_zone(rel), []).append(
+                        (rel, node.lineno)
+                    )
+        for zone, hits in hits_by_zone.items():
+            if len(hits) < 2:
+                continue
+            first = hits[0]
             for rel, lineno in hits[1:]:
                 out.append(Violation(
                     "G13", rel, lineno,
-                    f"{concern!r} already implemented at {hits[0][0]}:{hits[0][1]}; "
-                    f"reuse it instead of writing a second one",
+                    f"{concern!r} already implemented at {first[0]}:{first[1]} "
+                    f"within {zone}; reuse it instead of writing a second one",
                 ))
     return out
 

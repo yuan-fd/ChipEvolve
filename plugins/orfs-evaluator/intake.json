@@ -1,0 +1,7 @@
+{
+  "status": "admitted",
+  "license": "green",
+  "source_url": "https://github.com/The-OpenROAD-Project/OpenROAD-flow-scripts",
+  "source_commit": "0000000000000000000000000000000000000000",
+  "reason": "first-party evaluator; parses ORFS JSON that ORFS itself emits. The pinned toolchain commit is recorded in the ORFS execution plugin's intake, not here: this plugin reads files, it does not run the flow."
+}

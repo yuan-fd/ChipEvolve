@@ -98,15 +98,47 @@ stdout, so no assertion races the scheduler.
   its artifacts, metrics and stage events become durable evidence.  The kernel
   never learns the word "example-reporter", and a test asserts that.
 
+**Gateway.** `gateway/` authenticates, routes, and derives navigation from a
+  list of apps.  No database, no kernel import, no capability name -- a test
+  asserts that structurally, because this is the component that reached 5,993
+  lines last time.
+
+## ORFS knowledge port -- in progress
+
+`plugins/orfs-evaluator/` holds the first, and most correctness-critical, slice:
+the stage-JSON normalizer and the signoff gates, read out of the frozen v1 code
+line by line rather than reconstructed.
+
+The trap it exists to avoid: OpenROAD reports timing in the active Liberty/SDC
+time unit, and **that unit is not always nanoseconds**.  ASAP7 uses ps;
+sky130hd and nangate45 use ns.  A parser that simply renames
+`timing__setup__ws` to `setup_wns_ns` is wrong by 1000x on ASAP7 and right on
+sky130hd -- the worst kind of wrong, because it looks correct until someone
+changes platform.  The unit is read from `run__flow__platform__time_units`,
+converted, and an unreadable or conflicting unit is a **gate failure**, never a
+guess.
+
+Other behaviour carried across deliberately:
+- the six stage prefixes (`1_`..`6_`) and the namespace-stripping table
+- candidate-key matching with a suffix fallback, so an ORFS rename degrades
+  rather than breaks
+- per-metric merge of route and finish, because treating one as a replacement
+  loses an explicit route DRC of 0 and reports a clean run as missing data
+- utilization reported as either a ratio or a percentage
+- fmax derived from the clock period and setup slack, and omitted when the
+  denominator is meaningless
+- the seven signoff gates, including that a missing metric is null and never zero
+- immutable evaluation writes: identical retry idempotent, different retry
+  refused
+
 ## Next
 
-1. `core/provenance` — cross-run artifact graph and read models. (events,
-   artifacts and metrics already live in the runtime store)
-2. `core/identity` — extract auth from v1's API service.
-3. `gateway/` — the entry point: SSO, routing, navigation.
-4. Port the ~4,200 lines of ORFS integration knowledge into
-   `plugins/<name>/`, behaviour encoded as tests first.
-5. Apps, starting with the one that is already a real app.
+1. `plugins/orfs/` — the execution adapter, ported from v1's `orfs_runner.py`
+   (689 lines of real invocation, environment and exit-code knowledge).
+2. `core/provenance` — the cross-run artifact graph.  Events, artifacts and
+   metrics already live in the runtime store; this is the read model.
+3. `core/identity` — extract auth from v1's API service.
+4. Apps, starting with the one that is already a real app.
 
 ## v1 knowledge that must be carried across by hand
 
