@@ -1,0 +1,7 @@
+{
+  "status": "admitted",
+  "license": "green",
+  "source_url": "https://example.invalid/openroad-platform/plugins/example",
+  "source_commit": "0000000000000000000000000000000000000000",
+  "reason": "first-party example; MIT, no external source"
+}

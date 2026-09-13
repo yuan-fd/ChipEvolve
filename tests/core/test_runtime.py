@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from openroad_contracts import (
+from openroad_platform_contracts import (
     ArtifactDeclaration,
     EvaluationRequest,
     Metric,
@@ -24,14 +24,14 @@ from openroad_contracts import (
     Verdict,
     VerdictStatus,
 )
-from openroad_core_runtime import (
+from openroad_platform_runtime import (
     InvalidTransition,
     RuntimeStore,
     RuntimeStoreError,
     WorkflowRuntime,
 )
-from openroad_core_runtime.guardian import ProcessGuardian
-from openroad_core_runtime.adapter import ProcessAdapter
+from openroad_platform_runtime.guardian import ProcessGuardian
+from openroad_platform_runtime.adapter import ProcessAdapter
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "fake_adapter.py"
 
@@ -224,7 +224,7 @@ def test_the_runtime_refuses_an_adapter_that_forges_evaluator_authority(tmp_path
 
 
 def test_an_adapter_may_not_declare_the_runtime_receipt_kind(tmp_path):
-    from openroad_contracts import ContractError
+    from openroad_platform_contracts import ContractError
 
     with pytest.raises(ContractError, match="reserved"):
         ArtifactDeclaration(kind="runtime_protocol_receipt", path="x.json").validate()

@@ -12,13 +12,13 @@ from pathlib import Path
 
 import pytest
 
-from openroad_contracts import (
+from openroad_platform_contracts import (
     AttemptStatus,
     Metric,
     RuntimeStatus,
     TaskSpec,
 )
-from openroad_core_runtime.store import (
+from openroad_platform_runtime.store import (
     InvalidTransition,
     RuntimeStore,
     RuntimeStoreError,

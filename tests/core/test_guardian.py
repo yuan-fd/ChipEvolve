@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from openroad_core_runtime.guardian import ProcessGuardian
+from openroad_platform_runtime.guardian import ProcessGuardian
 
 pytestmark = pytest.mark.skipif(
     os.name != "posix" or not Path("/proc").is_dir(),

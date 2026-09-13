@@ -31,7 +31,7 @@ version = "0.1.0"
 description = "{title}"
 requires-python = ">=3.9"
 dependencies = [
-  "openroad-contracts",
+  "openroad-platform-contracts",
 ]
 
 [project.scripts]
@@ -45,7 +45,7 @@ include = ["openroad_app_{name}*"]
 MAIN = '''"""{title} - process entry point.
 
 This module starts the app's own server.  It does not import another app, and
-it does not import kernel internals: only `openroad_contracts` and the core
+it does not import kernel internals: only `openroad_platform_contracts` and the core
 client are allowed (G3, G4).
 """
 
@@ -160,7 +160,7 @@ README = """# {title}
 
 Independent application. One process, one database, one UI, one smoke.
 
-- Imports permitted: `openroad_contracts`, `openroad_core_client` only (G3, G4).
+- Imports permitted: `openroad_platform_contracts`, `openroad_platform_client` only (G3, G4).
 - It must never open a kernel database directly (G5).
 - Smoke: `python3 apps/{name}/smoke.py`
 

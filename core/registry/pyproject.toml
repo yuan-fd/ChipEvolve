@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=59.4"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openroad-platform-registry"
+version = "0.1.0"
+description = "Plugin discovery and admission for the platform kernel"
+requires-python = ">=3.9"
+dependencies = ["openroad-platform-contracts"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["openroad_platform_registry*"]

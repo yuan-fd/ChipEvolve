@@ -26,7 +26,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from .digest import sha256
 
-from openroad_contracts import (
+from openroad_platform_contracts import (
     Artifact,
     AttemptStatus,
     Event,

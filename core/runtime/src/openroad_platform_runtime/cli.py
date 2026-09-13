@@ -15,7 +15,7 @@ from .store import RuntimeStore
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="openroad-runtime")
+    parser = argparse.ArgumentParser(prog="openroad-platform-runtime")
     parser.add_argument("--db", required=True, help="runtime database path")
     sub = parser.add_subparsers(dest="command", required=True)
 

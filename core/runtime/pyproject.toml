@@ -3,15 +3,15 @@ requires = ["setuptools>=59.4"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "openroad-core-runtime"
+name = "openroad-platform-runtime"
 version = "0.1.0"
 description = "Runtime kernel: durable run state, process supervision, protected evaluation boundary"
 requires-python = ">=3.9"
-dependencies = ["openroad-contracts"]
+dependencies = ["openroad-platform-contracts"]
 
 [project.scripts]
-openroad-runtime = "openroad_core_runtime.cli:main"
+openroad-platform-runtime = "openroad_platform_runtime.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["openroad_core_runtime*"]
+include = ["openroad_platform_runtime*"]

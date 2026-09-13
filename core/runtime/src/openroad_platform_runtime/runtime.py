@@ -16,7 +16,7 @@ The two v1 defects this file exists to fix are fixed structurally, not patched:
 * The old runtime hardcoded one tool's six stage names in a regular expression.
   That is replaced by the generic ``ProgressObserver`` reading the progress
   contract.  The kernel learned the *shape* of a progress report and forgot the
-  vocabulary; see ``openroad_contracts.progress``.
+  vocabulary; see ``openroad_platform_contracts.progress``.
 
 The old code is preserved verbatim in the archived v1 tree for anyone comparing
 behaviour.  It is deliberately not quoted here: a kernel that must name a vendor
@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
-from openroad_contracts import (
+from openroad_platform_contracts import (
     AttemptStatus,
     EvaluationRequest,
     Metric,

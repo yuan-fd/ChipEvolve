@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from openroad_contracts import (
+from openroad_platform_contracts import (
     ArtifactDeclaration,
     AttemptStatus,
     ContractError,

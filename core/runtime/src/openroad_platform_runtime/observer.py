@@ -6,7 +6,7 @@ regular expression listing six hardcoded stage names belonging to one vendor.
 Adding a second tool meant editing the kernel.
 
 Here the observer reads the generic envelope from
-``openroad_contracts.progress`` and the stage vocabulary stays inside the
+``openroad_platform_contracts.progress`` and the stage vocabulary stays inside the
 plugin, travelling through as opaque data.  The kernel knows the shape of a
 report and nothing about what is being reported.
 
@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from openroad_contracts import (
+from openroad_platform_contracts import (
     ContractError,
     ProgressPhase,
     decode_progress_line,

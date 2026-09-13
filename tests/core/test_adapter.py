@@ -12,14 +12,14 @@ from pathlib import Path
 
 import pytest
 
-from openroad_contracts import PluginManifest, RuntimeRequirements, TaskSpec
-from openroad_core_runtime.adapter import (
+from openroad_platform_contracts import PluginManifest, RuntimeRequirements, TaskSpec
+from openroad_platform_runtime.adapter import (
     LOG_FILENAME,
     ProcessAdapter,
     REQUEST_FILENAME,
     RESULT_FILENAME,
 )
-from openroad_core_runtime.guardian import ProcessGuardian
+from openroad_platform_runtime.guardian import ProcessGuardian
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "fake_adapter.py"
 
@@ -106,7 +106,7 @@ def test_the_adapter_only_sees_an_allowlisted_environment(adapter, tmp_path, mon
     )
     # The plugin's own declared variable and the platform identity are present;
     # an unrelated host secret is not reachable through the protocol.
-    from openroad_core_runtime.adapter import ProcessAdapter as PA
+    from openroad_platform_runtime.adapter import ProcessAdapter as PA
 
     env = PA._environment(manifest(environment={"DECLARED_BY_PLUGIN": "yes"}))
     assert env["DECLARED_BY_PLUGIN"] == "yes"

@@ -79,47 +79,128 @@ def _loc(path: Path) -> int:
 #: Concrete capability / tool / vendor identifiers.  A thin control plane may
 #: not know any of these.  Add to this list, never remove from it: removing an
 #: entry silently re-opens a hole.
+#:
+#: These are unambiguous: none of them is an ordinary English word, so a hit is
+#: always a reference to the thing itself, in code or in prose.
 FORBIDDEN_KERNEL_TOKENS: tuple[str, ...] = (
-    # plugin ids observed in v1
     "orfs", "orfs_agent", "orfs-agent", "a2_orfo", "a2-orfo",
     "rtlscout", "rtl_scout", "agenticpd", "edacraft", "implcraft",
     "dplevolve", "orassistant", "posteda", "closer_bench", "statetune",
     "taiwei", "sky130", "nangate45", "asap7",
-    # concrete EDA tool binaries
     "openroad", "yosys", "verilator", "klayout", "iverilog", "opensta",
-    "magic", "netgen", "make",
+    "netgen",
 )
 
-#: Tokens that are legitimate inside a *generic* control plane.  Each entry is
-#: a deliberate carve-out with a reason.
-KERNEL_TOKEN_ALLOWLIST: dict[str, str] = {
-    # the platform's own identity strings
-    "openroad_platform": "platform package namespace",
-    "openroad-platform": "platform project name",
+#: Tool names that are also ordinary English words.  "make" is a build tool and
+#: a verb; "magic" is a layout tool and a noun.  Checking these in prose produces
+#: false positives, and a gate that cries wolf gets switched off -- the same way
+#: v1's flaky timeout test taught people to ignore a red safety suite.
+#:
+#: They are therefore checked only where they would actually couple the kernel
+#: to a tool: in code and in string literals.  A comment that says "make the
+#: path relative" is not a dependency.
+AMBIGUOUS_KERNEL_TOKENS: tuple[str, ...] = ("make", "magic")
+
+#: The platform's own namespace.  The project is named after the tool it
+#: orchestrates, so the kernel will inevitably contain that token -- in its own
+#: package names.  That is the platform naming itself, which is not the failure
+#: mode this rule exists to catch.  Every other appearance is.
+PLATFORM_NAMESPACE_PREFIXES: tuple[str, ...] = (
+    "openroad_platform",
+    "openroad-platform",
+)
+
+#: Identifiers are matched whole, so ``openroad-platform-runtime`` is seen as one
+#: identifier and can be exempted by prefix rather than split on the hyphen into
+#: a bare vendor token.
+_IDENTIFIER_RE = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]*")
+
+_TOKEN_RE = {
+    t: re.compile(rf"(?<![A-Za-z0-9_]){re.escape(t)}(?![A-Za-z0-9_])", re.I)
+    for t in FORBIDDEN_KERNEL_TOKENS + AMBIGUOUS_KERNEL_TOKENS
 }
 
-_TOKEN_RE = {t: re.compile(rf"(?<![A-Za-z0-9_]){re.escape(t)}(?![A-Za-z0-9_])", re.I)
-             for t in FORBIDDEN_KERNEL_TOKENS}
+
+def _is_platform_namespace(identifier: str) -> bool:
+    lowered = identifier.lower()
+    return any(lowered.startswith(prefix) for prefix in PLATFORM_NAMESPACE_PREFIXES)
+
+
+def _enclosing_identifier(line: str, start: int, end: int) -> str:
+    for match in _IDENTIFIER_RE.finditer(line):
+        if match.start() <= start and end <= match.end():
+            return match.group(0)
+    return line[start:end]
+
+
+def _docstring_lines(tree: ast.AST) -> set[int]:
+    """Line numbers occupied by a module, class, or function docstring."""
+    lines: set[int] = set()
+    owners = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+    for node in ast.walk(tree):
+        if not isinstance(node, owners):
+            continue
+        body = getattr(node, "body", None)
+        if not body:
+            continue
+        first = body[0]
+        if (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
+                and isinstance(first.value.value, str)):
+            constant = first.value
+            end = getattr(constant, "end_lineno", None) or constant.lineno
+            lines.update(range(constant.lineno, end + 1))
+    return lines
 
 
 def kernel_plugin_name_violations(root: Path) -> list[Violation]:
-    """G1: kernel source must not mention a concrete plugin/tool/vendor."""
+    """G1: kernel source must not mention a concrete plugin, tool, or vendor.
+
+    Unambiguous vendor tokens are checked everywhere, prose included: a kernel
+    that must name a vendor to explain itself is still coupled to that vendor.
+    Tokens that are also ordinary English words are checked only in code and
+    string literals, so the rule stays precise enough to be trusted.
+    """
     out: list[Violation] = []
     for d in KERNEL_DIRS:
         base = root / d
         if not base.is_dir():
             continue
         for path in _walk_python(base):
-            for lineno, line in enumerate(_read(path).splitlines(), 1):
-                code = line.split("#", 1)[0]
-                for token, rx in _TOKEN_RE.items():
-                    if token in KERNEL_TOKEN_ALLOWLIST:
+            text = _read(path)
+            try:
+                tree = ast.parse(text, filename=str(path))
+            except SyntaxError:
+                continue
+            prose_lines = _docstring_lines(tree)
+            for lineno, line in enumerate(text.splitlines(), 1):
+                marker = line.find("#")
+                code = line if marker < 0 else line[:marker]
+                comment = "" if marker < 0 else line[marker:]
+                in_docstring = lineno in prose_lines
+                # Code and string literals are always in scope; comments and
+                # docstrings are in scope only for unambiguous tokens.
+                scopes = [(code, True)]
+                if in_docstring:
+                    scopes = [(line, True)]
+                else:
+                    scopes.append((comment, False))
+                for segment, allow_ambiguous in scopes:
+                    if not segment:
                         continue
-                    if rx.search(code):
-                        out.append(Violation(
-                            "G1", _rel(root, path), lineno,
-                            f"kernel names concrete token {token!r}",
-                        ))
+                    for token, rx in _TOKEN_RE.items():
+                        if not allow_ambiguous and token in AMBIGUOUS_KERNEL_TOKENS:
+                            continue
+                        for match in rx.finditer(segment):
+                            identifier = _enclosing_identifier(
+                                segment, match.start(), match.end()
+                            )
+                            if _is_platform_namespace(identifier):
+                                continue
+                            out.append(Violation(
+                                "G1", _rel(root, path), lineno,
+                                f"kernel names concrete token {token!r} "
+                                f"in identifier {identifier!r}",
+                            ))
     return out
 
 
@@ -203,8 +284,8 @@ def app_cross_import_violations(root: Path) -> list[Violation]:
 
 #: The only import surfaces an app may use to reach the platform.
 APP_ALLOWED_PLATFORM_IMPORTS = (
-    "openroad_contracts",   # the shared language
-    "openroad_core_client",  # the typed client for the kernel service
+    "openroad_platform_contracts",   # the shared language
+    "openroad_platform_client",  # the typed client for the kernel service
 )
 
 

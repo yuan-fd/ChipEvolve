@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-from openroad_contracts import (
+from openroad_platform_contracts import (
     ArtifactDeclaration,
     ContractError,
     PluginManifest,
