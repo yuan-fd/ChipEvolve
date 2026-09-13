@@ -27,7 +27,10 @@ from runner import (
     can_export_gds,
     collect_artifacts,
     cores_from_environment,
-    run_stage,
+    results_dir as results_of,
+    run_make,
+    stage_outcome,
+    write_flow_error,
     write_plan,
 )
 
@@ -208,43 +211,65 @@ def run_flow(
 
     for stage in run_stages:
         report(stage, "started")
-        stage_result, failure = run_stage(
+        outcome, seconds = run_make(
             stage=stage, config_path=config_path, workdir=workdir,
             flow_home=flow_home, openroad_bin=openroad_bin, yosys_bin=yosys_bin,
             cores=cores, timeout_seconds=timeout,
             cancel_requested=cancel_requested, on_line=None, log_path=log_path,
         )
+
+        # A missing layout is exported as part of this stage, *before* the gate
+        # is evaluated -- the finish gate requires the layout, and the export is
+        # a make target of its own.  Gating first would deadlock: the gate would
+        # fail, the run would stop, and the export would never be attempted.
+        if stage == "finish" and can_export_gds(workdir, platform, design):
+            report("gds", "started")
+            gds_outcome, gds_seconds = run_make(
+                stage="gds", config_path=config_path, workdir=workdir,
+                flow_home=flow_home, openroad_bin=openroad_bin,
+                yosys_bin=yosys_bin, cores=cores, timeout_seconds=timeout,
+                cancel_requested=cancel_requested, on_line=None,
+                log_path=log_path,
+            )
+            result.gds_exported = (
+                gds_outcome.returncode == 0 and not gds_outcome.timed_out
+                and not gds_outcome.cancelled
+            )
+            report("gds", "finished", seconds=gds_seconds,
+                   status="succeeded" if result.gds_exported else "failed")
+
+        stage_result, failure = stage_outcome(
+            stage=stage, outcome=outcome, seconds=seconds, workdir=workdir,
+            platform=platform, design=design, log_path=log_path,
+        )
         if stage_result is None:
             report(stage, "finished", status="failed")
             result.failed_stage = stage
             result.failure_message = failure
+            write_flow_error(workdir, stage, failure or "failed")
             break
         result.stages.append(stage_result)
-        status = stage_result.status
-        report(stage, "finished", status=status, seconds=stage_result.seconds)
-        if status != "succeeded":
+        report(stage, "finished", status=stage_result.status,
+               seconds=stage_result.seconds)
+        if stage_result.status != "succeeded":
             result.failed_stage = stage
             result.failure_message = failure
+            write_flow_error(workdir, stage, failure or stage_result.status)
             break
 
-    if result.succeeded and can_export_gds(workdir, platform, design):
-        # ``make finish`` does not always write the layout; the dedicated target
-        # does.  A missing GDS is a real failure of the signoff gate, so it is
-        # exported rather than reported as absent.
-        report("gds", "started")
-        gds_result, failure = run_stage(
-            stage="gds", config_path=config_path, workdir=workdir,
-            flow_home=flow_home, openroad_bin=openroad_bin, yosys_bin=yosys_bin,
-            cores=cores, timeout_seconds=timeout,
-            cancel_requested=cancel_requested, on_line=None, log_path=log_path,
-        )
-        result.gds_exported = gds_result is not None and gds_result.status == "succeeded"
-        report("gds", "finished",
-               status="succeeded" if result.gds_exported else "failed")
-        if not result.gds_exported:
-            result.failed_stage = "gds"
-            result.failure_message = failure or "gds export failed"
-
+    completed = {s.stage for s in result.stages if s.status == "succeeded"}
+    layout = results_of(workdir, platform, design) / "6_final.gds"
+    result.milestones = {
+        "synthesizable": "synth" in completed,
+        # The platform never claims functional verification: that is a
+        # separate capability with its own evidence, and asserting it here
+        # would turn "it synthesized" into "it works".
+        "functionally_verified": False,
+        "implementation_valid": (
+            target_stage == "finish" and result.succeeded
+        ),
+        "gds_complete": layout.is_file() and layout.stat().st_size > 0,
+    }
     (workdir / "run_result.json").write_text(
         json.dumps(result.to_dict(), indent=2), encoding="utf-8"
     )

@@ -86,6 +86,9 @@ class FlowResult:
     gds_exported: bool = False
     failed_stage: str | None = None
     failure_message: str | None = None
+    #: Explicit statements of what was and was not achieved.  They exist so a
+    #: reader does not have to infer "implementation valid" from a status.
+    milestones: dict[str, bool] = field(default_factory=dict)
 
     @property
     def succeeded(self) -> bool:
@@ -104,6 +107,7 @@ class FlowResult:
             "gds_exported": self.gds_exported,
             "failed_stage": self.failed_stage,
             "failure_message": self.failure_message,
+            "milestones": dict(self.milestones),
         }
 
 
@@ -201,20 +205,15 @@ def failure_detail(log_path: Path) -> str | None:
     )
 
 
-def run_stage(
+def run_make(
     *,
     stage: str, config_path: Path, workdir: Path, flow_home: Path,
     openroad_bin: Path, yosys_bin: Path, cores: int, timeout_seconds: float,
     cancel_requested: Callable[[], bool] | None = None,
-    on_line: Callable[[str], None] | None = None,
+    on_line: Callable[[], None] | None = None,
     log_path: Path,
-) -> tuple[StageResult | None, str | None]:
-    """Run one stage.  Returns (result, failure_message).
-
-    A non-zero exit or a timeout is reported with the log's own error line,
-    truncated, so the failure travels with its cause instead of needing a
-    second investigation.
-    """
+) -> tuple[_Outcome, float]:
+    """Invoke one make target.  Returns (outcome, seconds)."""
     import time
 
     command = make_command(
@@ -227,8 +226,19 @@ def run_stage(
         timeout_seconds=timeout_seconds, cancel_requested=cancel_requested,
         on_line=on_line,
     )
-    seconds = time.monotonic() - started
+    return outcome, time.monotonic() - started
 
+
+def stage_outcome(
+    *, stage: str, outcome: "_Outcome", seconds: float,
+    workdir: Path, platform: str, design: str, log_path: Path,
+) -> tuple[StageResult | None, str | None]:
+    """Turn a make outcome plus the stage gate into a stage result.
+
+    The gate runs after the caller has had the chance to export a missing
+    layout, because the finish stage's gate requires the layout and the export
+    is a make target of its own.
+    """
     if outcome.cancelled:
         return None, f"make {stage} was cancelled"
     if outcome.timed_out:
@@ -241,10 +251,22 @@ def run_stage(
         return StageResult(stage, "failed", outcome.returncode, seconds,
                            detail=(detail[:300] if detail else None)), message
 
-    gate = stage_gate(workdir, _platform_of(config_path), _design_of(config_path), stage)
+    gate = stage_gate(workdir, platform, design, stage)
     if gate:
         return StageResult(stage, "failed", 0, seconds, detail=gate), gate
     return StageResult(stage, "succeeded", 0, seconds), None
+
+
+def write_flow_error(workdir: Path, stage: str, message: str) -> Path:
+    """Record which stage failed and why, beside the raw log.
+
+    The evaluator and any operator read this instead of having to infer the
+    failure from a truncated log tail.
+    """
+    path = workdir / "analysis" / "flow_error.log"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"stage={stage}\n{message}\n", encoding="utf-8")
+    return path
 
 
 def _platform_of(config_path: Path) -> str:

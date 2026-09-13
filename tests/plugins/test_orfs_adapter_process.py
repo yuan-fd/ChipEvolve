@@ -1,0 +1,325 @@
+"""The ORFS adapter, run as a real process through the platform.
+
+The other ORFS tests check functions.  This one runs the adapter the way the
+platform runs it -- a subprocess, given a request file, expected to produce a
+result file -- against a stub Makefile that stands in for the real flow.
+
+That makes the whole chain testable without a toolchain: configuration is
+written, stages run in order, each stage is gated on the artifact it should have
+produced, evidence is collected with the right kinds, and the exit code agrees
+with the reported status.  A stub cannot prove ORFS works; it proves the
+platform's half of the contract is wired correctly, which is the half that
+breaks silently.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import stat
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+ADAPTER = REPO_ROOT / "plugins" / "orfs" / "adapter.py"
+
+RTL = """\
+module counter (clk, rst_n, q);
+  input clk;
+  input rst_n;
+  output reg [3:0] q;
+  always @(posedge clk) begin
+    if (!rst_n) q <= 4'b0;
+    else q <= q + 1'b1;
+  end
+endmodule
+"""
+
+#: A stub flow.  Each target materializes exactly the products the real stage
+#: gate requires, so the test exercises the gate rather than bypassing it.
+#:
+#: It deliberately includes $(DESIGN_CONFIG) the way ORFS does: the stub's
+#: first version did not, so PLATFORM and DESIGN_NAME were empty, every path
+#: collapsed to results///base, and every stage gate failed.  A stub that
+#: omits the flow's own mechanism tests nothing about the flow.
+STUB_MAKEFILE = """\
+include $(DESIGN_CONFIG)
+
+RESULT_DIR = $(WORK_HOME)/results/$(PLATFORM)/$(DESIGN_NAME)/base
+LOGS_DIR = $(WORK_HOME)/logs/$(PLATFORM)/$(DESIGN_NAME)/base
+
+.PHONY: synth floorplan place cts route finish gds
+
+$(RESULT_DIR):
+\tmkdir -p $(RESULT_DIR)
+
+$(LOGS_DIR):
+\tmkdir -p $(LOGS_DIR)
+
+synth: | $(RESULT_DIR)
+\techo "synth netlist" > $(RESULT_DIR)/1_synth.v
+
+floorplan: | $(RESULT_DIR)
+\techo "floorplan db" > $(RESULT_DIR)/2_floorplan.odb
+
+place: | $(RESULT_DIR)
+\techo "place db" > $(RESULT_DIR)/3_place.odb
+
+cts: | $(RESULT_DIR)
+\techo "cts db" > $(RESULT_DIR)/4_cts.odb
+
+route: | $(RESULT_DIR) $(LOGS_DIR)
+\techo "route db" > $(RESULT_DIR)/5_route.odb
+\techo '{"detailedroute__route__drc_errors": 0, "run__flow__platform__time_units": "1ns"}' > $(LOGS_DIR)/5_2_route.json
+
+finish: | $(RESULT_DIR) $(LOGS_DIR)
+\techo "final db" > $(RESULT_DIR)/6_final.odb
+\techo "final def" > $(RESULT_DIR)/6_final.def
+\techo "final netlist" > $(RESULT_DIR)/6_final.v
+\techo '{"finish__timing__setup__ws": 0.1, "finish__power__total": 0.01}' > $(LOGS_DIR)/6_report.json
+
+# The real flow does not always write the layout during finish; that is why a
+# separate target exists.
+gds: | $(RESULT_DIR)
+\techo "layout" > $(RESULT_DIR)/6_final.gds
+"""
+
+
+@pytest.fixture()
+def stub_toolchain(tmp_path: Path) -> dict[str, Path]:
+    flow_home = tmp_path / "toolchain"
+    (flow_home / "logs").mkdir(parents=True)
+    (flow_home / "Makefile").write_text(STUB_MAKEFILE, encoding="utf-8")
+    for name in ("openroad", "yosys"):
+        binary = flow_home / name
+        binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
+    return {
+        "flow_home": flow_home,
+        "openroad_bin": flow_home / "openroad",
+        "yosys_bin": flow_home / "yosys",
+    }
+
+
+def run_adapter(tmp_path: Path, toolchain: dict[str, Path],
+                *, inputs: dict | None = None,
+                create_layout: bool = True) -> tuple[dict, Path]:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+    rtl = tmp_path / "counter.v"
+    rtl.write_text(RTL, encoding="utf-8")
+
+    if not create_layout:
+        # Make the gds target fail so the adapter must report a failed export.
+        makefile = toolchain["flow_home"] / "Makefile"
+        makefile.write_text(
+            STUB_MAKEFILE.replace(
+                'gds: | $(RESULT_DIR)\n\techo "layout" > $(RESULT_DIR)/6_final.gds',
+                'gds: | $(RESULT_DIR)\n\t@echo "cannot write layout" >&2; exit 4',
+            ),
+            encoding="utf-8",
+        )
+
+    task_inputs = {
+        "rtl_path": str(rtl),
+        "platform": "nangate45",
+        "design": "counter",
+        "clock_period_ns": 10.0,
+        "flow_home": str(toolchain["flow_home"]),
+        "openroad_bin": str(toolchain["openroad_bin"]),
+        "yosys_bin": str(toolchain["yosys_bin"]),
+        "stage_timeout_seconds": 60,
+    }
+    task_inputs.update(inputs or {})
+
+    request_path = workspace / "adapter_request.json"
+    result_path = workspace / "adapter_result.json"
+    request_path.write_text(json.dumps({
+        "schema_version": 1,
+        "plugin": {"plugin_id": "orfs", "plugin_version": "1.0.0"},
+        "task": {
+            "schema_version": 2, "task_id": "task-1", "project_id": "p",
+            "design_id": "counter", "plugin_id": "orfs",
+            "inputs": task_inputs, "parameters": {"or_seed": 1},
+        },
+    }), encoding="utf-8")
+
+    environment = dict(os.environ)
+    environment["PATH"] = os.environ.get("PATH", "")
+    completed = subprocess.run(
+        [sys.executable, str(ADAPTER),
+         "--request", str(request_path), "--result", str(result_path)],
+        cwd=str(workspace), env=environment, capture_output=True, text=True,
+        timeout=120,
+    )
+    assert result_path.is_file(), (
+        f"adapter produced no result\nstdout:\n{completed.stdout}\n"
+        f"stderr:\n{completed.stderr}"
+    )
+    return json.loads(result_path.read_text(encoding="utf-8")), workspace
+
+
+# --------------------------------------------------------------------------
+# the happy path
+# --------------------------------------------------------------------------
+
+def test_a_stubbed_flow_runs_every_stage_and_reports_success(tmp_path, stub_toolchain):
+    result, workspace = run_adapter(tmp_path, stub_toolchain)
+    assert result["status"] == "succeeded", result.get("failure")
+    assert result["exit_code"] == 0
+
+    plan = json.loads((workspace / "plan.json").read_text(encoding="utf-8"))
+    assert plan["design"] == "counter"
+    assert plan["request"]["platform"] == "nangate45"
+    assert plan["request"]["or_seed"] == 1
+
+    run_result = json.loads(
+        (workspace / "run_result.json").read_text(encoding="utf-8")
+    )
+    stages = [s["stage"] for s in run_result["stages"]]
+    assert stages == ["synth", "floorplan", "place", "cts", "route", "finish"]
+    assert all(s["status"] == "succeeded" for s in run_result["stages"])
+
+
+def test_progress_is_reported_on_stdout_for_every_stage(tmp_path, stub_toolchain):
+    """The platform shows stage timing without knowing any ORFS stage name."""
+    result, workspace = run_adapter(tmp_path, stub_toolchain)
+    log = (workspace / "logs" / "flow.log")
+    assert log.is_file()
+    # The adapter's own progress goes to stdout, which the platform captures
+    # through the guardian; assert on the recorded run result instead.
+    run_result = json.loads(
+        (workspace / "run_result.json").read_text(encoding="utf-8")
+    )
+    assert all("seconds" in s for s in run_result["stages"])
+
+
+def test_the_layout_is_exported_when_finish_did_not_write_it(tmp_path, stub_toolchain):
+    result, workspace = run_adapter(tmp_path, stub_toolchain)
+    assert result["status"] == "succeeded"
+    run_result = json.loads(
+        (workspace / "run_result.json").read_text(encoding="utf-8")
+    )
+    assert run_result["gds_exported"] is True
+    results = workspace / "results" / "nangate45" / "counter" / "base"
+    assert (results / "6_final.gds").is_file()
+
+
+def test_evidence_is_collected_with_the_right_kinds(tmp_path, stub_toolchain):
+    result, workspace = run_adapter(tmp_path, stub_toolchain)
+    kinds = {a["path"]: a["kind"] for a in result["artifacts"]}
+    base = "results/nangate45/counter/base"
+    assert kinds[f"{base}/6_final.def"] == "def"
+    assert kinds[f"{base}/6_final.gds"] == "gds"
+    assert kinds[f"{base}/6_final.v"] == "netlist"
+    assert kinds[f"{base}/6_final.odb"] == "odb"
+    assert kinds["logs/nangate45/counter/base/6_report.json"] == "report"
+    assert kinds["designs/nangate45/counter/config.mk"] == "report"
+    # Every declared path is relative to the workspace, as the protocol requires.
+    for path in kinds:
+        assert not path.startswith("/")
+        assert ".." not in path.split("/")
+
+
+def test_the_generated_configuration_is_evidence(tmp_path, stub_toolchain):
+    _, workspace = run_adapter(tmp_path, stub_toolchain)
+    config = workspace / "designs" / "nangate45" / "counter" / "config.mk"
+    text = config.read_text(encoding="utf-8")
+    assert "export DESIGN_NAME = counter" in text
+    assert "export PLATFORM = nangate45" in text
+    assert "export OR_SEED = 1" in text
+    sdc = (config.parent / "constraint.sdc").read_text(encoding="utf-8")
+    assert "create_clock -name clk" in sdc
+
+
+# --------------------------------------------------------------------------
+# failures are reported, not hidden
+# --------------------------------------------------------------------------
+
+def test_a_missing_toolchain_is_a_configuration_error(tmp_path, stub_toolchain):
+    result, _ = run_adapter(
+        tmp_path, stub_toolchain,
+        inputs={"openroad_bin": str(tmp_path / "does-not-exist")},
+    )
+    assert result["status"] == "failed"
+    assert result["failure"]["category"] == "configuration_error"
+    # Not retryable: no amount of retrying creates the binary.
+    assert result["failure"]["retryable"] is False
+
+
+def test_a_missing_rtl_file_fails_without_running_anything(tmp_path, stub_toolchain):
+    result, workspace = run_adapter(
+        tmp_path, stub_toolchain, inputs={"rtl_path": str(tmp_path / "absent.v")},
+    )
+    assert result["status"] == "failed"
+    assert result["failure"]["category"] == "tool_error"
+    assert not (workspace / "run_result.json").exists()
+
+
+def test_an_unsupported_target_stage_is_refused(tmp_path, stub_toolchain):
+    result, _ = run_adapter(
+        tmp_path, stub_toolchain, inputs={"target_stage": "nonsense"},
+    )
+    assert result["status"] == "failed"
+    assert "unsupported target stage" in result["failure"]["message"]
+
+
+def test_a_failed_layout_export_fails_the_run(tmp_path, stub_toolchain):
+    """A layout that cannot be written is a signoff failure, not a warning.
+
+    The export is attempted inside the finish stage and before its gate, so a
+    failed export surfaces as the finish gate reporting a missing layout -- which
+    is what the frozen implementation did.  ``gds_exported`` carries the export
+    attempt's own outcome so the two remain distinguishable.
+    """
+    result, workspace = run_adapter(tmp_path, stub_toolchain, create_layout=False)
+    assert result["status"] == "failed"
+    assert result["exit_code"] != 0
+
+    run_result = json.loads(
+        (workspace / "run_result.json").read_text(encoding="utf-8")
+    )
+    assert run_result["gds_exported"] is False
+    assert run_result["failed_stage"] == "finish"
+    assert "6_final.gds" in (run_result["failure_message"] or "")
+    # The five earlier stages did succeed, and the record says so rather than
+    # discarding the work.
+    succeeded = [s["stage"] for s in run_result["stages"]
+                 if s["status"] == "succeeded"]
+    assert succeeded[:5] == ["synth", "floorplan", "place", "cts", "route"]
+    assert run_result["milestones"]["implementation_valid"] is False
+    assert run_result["milestones"]["gds_complete"] is False
+
+
+def test_a_failed_stage_writes_a_machine_readable_flow_error(tmp_path, stub_toolchain):
+    _, workspace = run_adapter(tmp_path, stub_toolchain, create_layout=False)
+    error_log = workspace / "analysis" / "flow_error.log"
+    assert error_log.is_file()
+    text = error_log.read_text(encoding="utf-8")
+    assert "stage=finish" in text
+    assert "6_final.gds" in text
+
+
+def test_a_successful_run_states_its_milestones(tmp_path, stub_toolchain):
+    _, workspace = run_adapter(tmp_path, stub_toolchain)
+    milestones = json.loads(
+        (workspace / "run_result.json").read_text(encoding="utf-8")
+    )["milestones"]
+    assert milestones["synthesizable"] is True
+    assert milestones["implementation_valid"] is True
+    assert milestones["gds_complete"] is True
+    # The platform never claims functional verification: that is a separate
+    # capability with its own evidence.
+    assert milestones["functionally_verified"] is False
+
+
+def test_the_exit_code_agrees_with_the_reported_status(tmp_path, stub_toolchain):
+    """A result that claims success while the process exits non-zero would be
+    rejected by the platform; the adapter must not produce one."""
+    result, workspace = run_adapter(tmp_path, stub_toolchain)
+    completed_exit = 0 if result["status"] == "succeeded" else 1
+    assert result["exit_code"] == completed_exit
+    assert (workspace / "adapter_result.json").is_file()

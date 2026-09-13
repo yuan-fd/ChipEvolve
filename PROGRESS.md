@@ -162,6 +162,24 @@ Knowledge carried across, each with a test:
 - Only one place-density policy is written, because ORFS treats
   `PLACE_DENSITY` and `PLACE_DENSITY_LB_ADDON` as alternatives.
 
+The adapter is exercised as a **real process** against a stub Makefile, so the
+whole chain is testable without a toolchain: configuration written, stages run
+in order, each gated on the artifact it should have produced, evidence collected
+with the right kinds, exit code agreeing with the reported status.
+
+Reading v1's `run()` corrected a design error that functions alone could not
+show.  The layout export happens **inside the finish stage and before its gate**,
+because the finish gate requires the layout and the export is a make target of
+its own.  Gating first deadlocks: the gate fails, the run stops, and the export
+is never attempted.  The test fixture then had the same class of bug -- its stub
+Makefile did not `include $(DESIGN_CONFIG)` the way ORFS does, so `PLATFORM` and
+`DESIGN_NAME` were empty, every path collapsed to `results///base`, and every
+gate failed.
+
+Also carried across: `analysis/flow_error.log` recording which stage failed, and
+the four milestones, including `functionally_verified: False` -- the platform
+never claims that from a synthesis run.
+
 ## Next
 
 1. `core/provenance` — the cross-run artifact graph.  Events, artifacts and
