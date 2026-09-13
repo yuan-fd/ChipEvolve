@@ -513,11 +513,33 @@ ANTI_PATTERNS: tuple[AntiPattern, ...] = (
     ),
 )
 
-#: Historical-defence identifiers.  A name like ``_legacy_projection`` is how a
+#: Historical-defence name segments.  A name like ``_legacy_projection`` is how a
 #: removed design keeps being executed "just in case".
-LEGACY_NAME_RE = re.compile(
-    r"\b\w*(_legacy|_compat|_deprecated|_fallback|_obsolete|_old)\w*\b", re.I
-)
+#:
+#: Matching is by underscore-separated segment, not by substring: a substring
+#: rule flags ``flow_compatibility.json`` -- a real artifact name -- and a gate
+#: that cries wolf gets switched off.
+LEGACY_NAME_SEGMENTS = frozenset({
+    "legacy", "compat", "deprecated", "obsolete",
+})
+#:
+#: ``fallback`` and ``old`` are deliberately absent.  A fallback *value* and
+#: an old value in a swap are ordinary code; only a fallback *path* is the
+#: anti-pattern, and no identifier-level rule can tell those apart.  v1's
+#: actual offenders all used "legacy" (include_legacy 308, legacy 97,
+#: legacy_root 74), so the narrower list loses almost no detection and
+#: removes the false positives that would get the gate switched off.
+
+
+def legacy_name_hits(code: str) -> list[str]:
+    """Identifiers whose underscore-separated segments name a dead path."""
+    hits = []
+    for match in _IDENTIFIER_RE.finditer(code):
+        identifier = match.group(0)
+        segments = [seg for seg in identifier.lower().split("_") if seg]
+        if any(seg in LEGACY_NAME_SEGMENTS for seg in segments):
+            hits.append(identifier)
+    return hits
 
 #: Files allowed to contain an anti-pattern, with the reason it is unavoidable.
 ANTIPATTERN_FILE_EXEMPTIONS: dict[str, str] = {}
@@ -530,7 +552,17 @@ def defensive_antipattern_violations(root: Path) -> list[Violation]:
         rel = _rel(root, path)
         if rel in ANTIPATTERN_FILE_EXEMPTIONS:
             continue
-        for lineno, line in enumerate(_read(path).splitlines(), 1):
+        text = _read(path)
+        try:
+            prose_lines = _docstring_lines(ast.parse(text, filename=str(path)))
+        except SyntaxError:
+            prose_lines = set()
+        for lineno, line in enumerate(text.splitlines(), 1):
+            # Prose explaining an anti-pattern is not the anti-pattern.  A
+            # docstring that says "the old runtime did X" is documentation,
+            # not a retained dead path.
+            if lineno in prose_lines:
+                continue
             code = line.split("#", 1)[0].rstrip()
             if not code.strip():
                 continue
@@ -540,11 +572,13 @@ def defensive_antipattern_violations(root: Path) -> list[Violation]:
                         "G11", rel, lineno,
                         f"{pattern.name}: {pattern.why}",
                     ))
-            if LEGACY_NAME_RE.search(code) and not _is_quarantine_path(rel):
-                out.append(Violation(
-                    "G11", rel, lineno,
-                    "legacy/compat/fallback naming keeps a dead path alive",
-                ))
+            if not _is_quarantine_path(rel):
+                for identifier in legacy_name_hits(code):
+                    out.append(Violation(
+                        "G11", rel, lineno,
+                        f"identifier {identifier!r} names a dead path; "
+                        f"delete the old path or raise the conflict",
+                    ))
     return out
 
 

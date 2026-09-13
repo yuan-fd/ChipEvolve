@@ -131,13 +131,44 @@ Other behaviour carried across deliberately:
 - immutable evaluation writes: identical retry idempotent, different retry
   refused
 
+`plugins/orfs/` holds the execution slice: the design configuration writer and
+the stage runner, both read out of the frozen v1 `orfs_runner.py` / `orfs_config.py`.
+
+Knowledge carried across, each with a test:
+
+- The exact `make` invocation: `DESIGN_CONFIG`, `DESIGN_HOME`, `WORK_HOME`,
+  `OPENROAD_EXE`, `YOSYS_EXE`, `NUM_CORES`, with `EQUIVALENCE_CHECK=0` and
+  `LEC_CHECK=0` because enabling them would change the runtime a candidate is
+  scored on and make runs incomparable.
+- Parallelism is bounded 1..64 and an out-of-range value is an **error**, not a
+  clamp: silently clamping would make recorded resource usage differ from what
+  the operator asked for.
+- Per-stage artifact gates.  Synthesis accepts either `1_synth.odb` or
+  `1_synth.v`, because older admitted revisions end there and newer ones also
+  write the database; requiring the database rejects a valid flow.
+- `finish` additionally requires `6_final.def`, `6_final.v` and `6_final.gds`.
+- A missing layout triggers the dedicated `gds` target rather than being
+  reported as absent.
+- The floorplan policy: `CORE_UTILIZATION` normally, or **both** `DIE_AREA` and
+  `CORE_AREA` when a minimum die size is requested.  `DIE_AREA` alone disables
+  ORFS's utilisation-based sizing and still leaves `initialize_floorplan` with no
+  area, so every generated sky130/asap7/gf180 task stopped at floorplan.
+- The clock period is written in the platform's Liberty unit: **ASAP7 is ps**, so
+  a 10 ns request is written as 10000.  This is the exact counterpart of the
+  parser's conversion on the way back out.
+- The nangate45 PDN template is applied only to nangate45; it names that
+  platform's metal layers, so using it elsewhere would silently produce a wrong
+  power network instead of an error.
+- Only one place-density policy is written, because ORFS treats
+  `PLACE_DENSITY` and `PLACE_DENSITY_LB_ADDON` as alternatives.
+
 ## Next
 
-1. `plugins/orfs/` — the execution adapter, ported from v1's `orfs_runner.py`
-   (689 lines of real invocation, environment and exit-code knowledge).
-2. `core/provenance` — the cross-run artifact graph.  Events, artifacts and
+1. `core/provenance` — the cross-run artifact graph.  Events, artifacts and
    metrics already live in the runtime store; this is the read model.
-3. `core/identity` — extract auth from v1's API service.
+2. `core/identity` — extract auth from v1's API service.
+3. `plugins/orfs/` remaining knowledge: the admitted-flow compatibility patch and
+   the toolchain snapshot, both of which have exact byte-level provenance.
 4. Apps, starting with the one that is already a real app.
 
 ## v1 knowledge that must be carried across by hand

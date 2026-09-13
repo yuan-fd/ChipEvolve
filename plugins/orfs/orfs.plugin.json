@@ -1,0 +1,28 @@
+{
+  "schema_version": 2,
+  "plugin_id": "orfs",
+  "plugin_version": "1.0.0",
+  "adapter_entry": ["python3", "./adapter.py"],
+  "capabilities": ["eda.rtl_to_gds"],
+  "supported_arch": ["aarch64", "x86_64", "arm64"],
+  "input_schema": {
+    "type": "object",
+    "required": ["rtl_path", "platform"]
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["status", "artifacts"]
+  },
+  "required_tools": ["make", "python3"],
+  "default_timeout_seconds": 7200,
+  "artifact_rules": [
+    {"kind": "report", "required": true},
+    {"kind": "log", "required": false},
+    {"kind": "odb", "required": false},
+    {"kind": "def", "required": false},
+    {"kind": "gds", "required": false},
+    {"kind": "netlist", "required": false}
+  ],
+  "progress_marker": "[progress]",
+  "environment": {}
+}

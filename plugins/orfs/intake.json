@@ -1,0 +1,7 @@
+{
+  "status": "admitted",
+  "license": "green",
+  "source_url": "https://github.com/The-OpenROAD-Project/OpenROAD-flow-scripts",
+  "source_commit": "e7a0725758c0abde2b69e2cdba783435238748ef",
+  "reason": "ORFS is Apache-2.0 and is executed as an external toolchain, not vendored. The pinned commit is the one the frozen platform measured against; the paired OpenROAD commit is 4630b597e7da45019e0e17f19bc58f9128bdbc03. The toolchain paths are supplied per task and are not redistributed here."
+}
