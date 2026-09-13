@@ -13,6 +13,7 @@ are worth calling out because getting them wrong is silent:
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -688,3 +689,78 @@ def test_a_platform_name_that_is_not_usable_is_refused(tmp_path):
             design="top", platform="../../etc", clock="clk",
             clock_period_ns=10.0, core_utilization_pct=40.0, place_density=0.6,
         )
+
+
+# --------------------------------------------------------------------------
+# the design's identity
+# --------------------------------------------------------------------------
+
+def manifest_of(workdir: Path) -> dict:
+    return json.loads(
+        (workdir / "design_input_manifest.json").read_text(encoding="utf-8"))
+
+
+def test_the_design_input_manifest_records_what_was_staged(tmp_path):
+    """The evaluator hashes this file for the design's identity.
+
+    It has to describe the bytes the flow will actually read, so the hashes are
+    of the staged copies, and the order is the order they were given in -- a
+    bundle is ordered, and two orders are two different elaborations.
+    """
+    source = tmp_path / "bundle"
+    top, sub = write_bundle(source)
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    write_design_files(
+        workdir=workdir, rtl_files=(top, sub), rtl_root=source, design="top",
+        rtl_include_dirs=(source / "include",), platform="asap7", clock="clk",
+        clock_period_ns=1.468, core_utilization_pct=40.0, place_density=0.6,
+        synth_hdl_frontend="slang",
+        design_options={"remove_abc_buffers": 1},
+    )
+    manifest = manifest_of(workdir)
+    assert manifest["kind"] == "ordered-rtl-bundle"
+    assert manifest["top"] == "top"
+    assert manifest["platform"] == "asap7"
+    assert manifest["source_order"] == ["rtl/top.v", "rtl/sub.v"]
+    assert manifest["synth_hdl_frontend"] == "slang"
+    assert manifest["design_options"] == {"remove_abc_buffers": 1}
+
+    staged = workdir / "designs" / "src" / "top" / "rtl" / "top.v"
+    record = manifest["sources"][0]
+    assert record["path"] == "rtl/top.v"
+    assert record["size_bytes"] == staged.stat().st_size
+    assert record["sha256"] == hashlib.sha256(
+        staged.read_bytes()).hexdigest()
+
+    headers = manifest["include_dirs"][0]["headers"]
+    assert [header["path"] for header in headers] == ["include/defs.vh"]
+
+
+def test_an_edited_source_changes_the_design_identity(tmp_path):
+    """Two runs whose sources differ are two different designs.
+
+    The identity is what makes "the same experiment" mean something, so it must
+    move when a byte of the design moves.
+    """
+    source = tmp_path / "bundle"
+    top, _ = write_bundle(source)
+    first = tmp_path / "first"
+    first.mkdir()
+    write_design_files(
+        workdir=first, rtl_files=(top,), rtl_root=source, design="top",
+        platform="sky130hd", clock="clk", clock_period_ns=10.0,
+        core_utilization_pct=40.0, place_density=0.6)
+    before = manifest_of(first)
+
+    top.write_text(top.read_text(encoding="utf-8") + "\n// a change\n",
+                   encoding="utf-8")
+    second = tmp_path / "second"
+    second.mkdir()
+    write_design_files(
+        workdir=second, rtl_files=(top,), rtl_root=source, design="top",
+        platform="sky130hd", clock="clk", clock_period_ns=10.0,
+        core_utilization_pct=40.0, place_density=0.6)
+    after = manifest_of(second)
+
+    assert before["sources"][0]["sha256"] != after["sources"][0]["sha256"]

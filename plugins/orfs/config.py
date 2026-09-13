@@ -15,6 +15,8 @@ which case emit **both** rectangles.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import shutil
 from pathlib import Path
@@ -193,6 +195,23 @@ def _stage_rtl(
     return staged_sources, staged_dirs
 
 
+def _file_record(path: Path, *, relative_to: Path) -> dict:
+    """Identify one staged file.
+
+    The hash is of the *staged* bytes, which is what the flow will read.  Hashing
+    the operator's original would describe a file the run never opened.
+    """
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return {
+        "path": str(path.relative_to(relative_to)),
+        "size_bytes": path.stat().st_size,
+        "sha256": digest.hexdigest(),
+    }
+
+
 def _identifier(value: str, label: str) -> str:
     """A name that is safe to interpolate into the generated Tcl.
 
@@ -338,6 +357,33 @@ def write_design_files(
     extra = {name: value for name, value in tuning.items()
              if name not in {"core_utilization_pct", "place_density"}}
     lines.extend(orfs_parameter_config_lines(extra, platform=platform))
+
+    # What was materialized, recorded as it was materialized.  The evaluator
+    # hashes this for the design's identity when a task carries no bundle
+    # fingerprint, and it is the only place the *staged* bytes of every source
+    # are written down together: a design whose sources changed between two runs
+    # must not compare as the same design.
+    staged_root = workdir / "designs" / "src" / design
+    (workdir / "design_input_manifest.json").write_text(json.dumps({
+        "schema_version": 1,
+        "kind": "ordered-rtl-bundle",
+        "top": design,
+        "platform": platform,
+        "source_order": [str(item.relative_to(staged_root)) for item in sources],
+        "sources": [_file_record(item, relative_to=staged_root) for item in sources],
+        "include_dirs": [
+            {"path": str(item.relative_to(staged_root)),
+             "headers": [
+                 _file_record(header, relative_to=staged_root)
+                 for header in sorted(item.rglob("*"))
+                 if header.is_file()
+                 and header.suffix.lower() in INCLUDE_SUFFIXES
+             ]}
+            for item in include_dirs
+        ],
+        "synth_hdl_frontend": synth_hdl_frontend,
+        "design_options": dict(design_options or {}),
+    }, indent=2, sort_keys=True), encoding="utf-8")
 
     config_path = config_dir / "config.mk"
     config_path.write_text("\n".join(lines) + "\n", encoding="utf-8")

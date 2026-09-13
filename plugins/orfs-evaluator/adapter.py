@@ -70,19 +70,28 @@ def inside(root: Path, candidate: Path, *, relative_to: Path | None = None) -> P
 
 
 def locate_inputs(workspace: Path) -> tuple[Path, Path, dict, dict]:
-    """Find the plan and run result an ORFS attempt left behind.
+    """Find the plan and run result the executing adapter left behind.
 
-    The layout is the one the v1 evaluator read, which is what the frozen
-    adapter produces.
+    The implementation directory is the evaluated workspace itself, because that
+    is where the adapter writes: the kernel hands the evaluator the attempt
+    workspace and the adapter owns its root.  An earlier version of this function
+    looked for ``orfs/implementation`` under it -- a nesting the frozen platform
+    produced and nothing in v2 creates, so *every* evaluation abstained with "no
+    ORFS implementation directory" and every run was recorded as unmeasured.
+
+    There is one layout, and a workspace that is not it is named as such rather
+    than searched for.
     """
-    implementation = workspace / "orfs" / "implementation"
-    if not implementation.is_dir():
-        raise FileNotFoundError(
-            f"no ORFS implementation directory under {workspace}"
-        )
+    implementation = Path(workspace).resolve()
+    for name in ("plan.json", "run_result.json"):
+        if not (implementation / name).is_file():
+            raise FileNotFoundError(
+                f"no ORFS attempt under {implementation}: {name} is missing"
+            )
     plan = read_json(inside(workspace, implementation / "plan.json"))
     run_result = read_json(inside(workspace, implementation / "run_result.json"))
-    return implementation, inside(workspace, implementation / "plan.json"), plan, run_result
+    return (implementation, inside(workspace, implementation / "plan.json"),
+            plan, run_result)
 
 
 def build_verdict(workspace: Path, request_task: dict) -> dict:
@@ -176,12 +185,22 @@ def main() -> int:
     args = parser.parse_args()
 
     started_at = now()
-    request_path = Path(args.request)
-    result_path = Path(args.result)
-    workspace = result_path.parent
+    # Resolved, and taken from the input the kernel declares rather than from
+    # where this process happened to be launched: every path this adapter reports
+    # is relative to the evaluated workspace, and a relative one would resolve
+    # against whatever directory the caller used.
+    request_path = Path(args.request).expanduser().resolve()
+    result_path = Path(args.result).expanduser().resolve()
 
     request = read_json(request_path)
     task = request["task"]
+    declared = (task.get("inputs") or {}).get("workspace")
+    if not declared:
+        raise SystemExit(
+            "the request must name the workspace being evaluated: "
+            "task.inputs.workspace"
+        )
+    workspace = Path(str(declared)).expanduser().resolve()
 
     try:
         verdict = build_verdict(workspace, task)

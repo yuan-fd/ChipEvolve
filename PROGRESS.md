@@ -605,13 +605,50 @@ tomorrow. Both directions are tested, including the one it was blind to --
 an approval for less than the component actually is -- and an unreadable grant
 fails closed rather than passing by accident.
 
+## The two halves were not wired to each other
+
+`synth` proved the execution chain.  Running the full flow and then the protected
+evaluator over it found the defect that mattered most, and nothing but a real run
+could have found it:
+
+**The evaluator abstained on every run.**  It looked for the implementation under
+``orfs/implementation`` -- the nesting the frozen platform produced -- and the v2
+adapter writes at the workspace root, because the kernel hands the evaluator the
+attempt workspace and the adapter owns its root.  So every evaluation returned
+``incomplete: no ORFS implementation directory``, every run was recorded as
+unmeasured, and the plugin's own tests passed the whole time: they built the same
+nesting the evaluator was looking for.  A fixture that agrees with the code it
+tests proves nothing about the system.
+
+**The design identity did not exist.**  The evaluator hashes
+``design_input_manifest.json`` when a task carries no bundle fingerprint.  The
+adapter declared that file as evidence (it is in ``EVIDENCE_FILES``) and never
+wrote it.  The manifest is the design's identity -- ordered sources, the
+``sha256`` of every *staged* byte, include directories, synthesis frontend,
+recipe options -- and it now has one implementation, in the function that
+materializes the design, because that is the only place that knows the staged
+copy.  The evaluator's fallback has something to hash, and two runs whose sources
+differ no longer compare as the same design.
+
+The evaluator also stopped deriving its workspace from ``--result``: the kernel
+*declares* the workspace it is evaluating, so the adapter reads
+``task.inputs.workspace`` and refuses a request that omits it, rather than
+resolving against whatever directory the caller happened to use.
+
+**What a real run now produces**, on nangate45 for a counter: six stages in 71 s
+of flow time, a signoff layout, and an admissible verdict with nine metrics --
+``setup_wns_ns`` 7.82 against a 10 ns period, ``power_W`` 1.18e-05,
+``drc_errors`` 0 -- each citing a file that exists in the evaluated workspace.
+The whole path is repeatable as an opt-in test.
+
 ## Next
 
-1. Run the full flow (`finish`) for one real reference design, and the protected
-   evaluator over its real reports -- `synth` proves the chain, not the metrics.
-2. More applications, one per capability the objective names: RTL Studio,
+1. More applications, one per capability the objective names: RTL Studio,
    Teaching Workbench, Knowledge Service, Extensions Console, Terminal Bench.
-3. Move `scripts/` to its own `research-toolchain` repository.
+2. Move `scripts/` to its own `research-toolchain` repository.
+3. A real ASAP7 run, to exercise the picosecond path against a real report
+   rather than a fixture.  Every other unit conversion is now covered by real
+   evidence; that one is still argued from the table.
 
 ## v1 knowledge that must be carried across by hand
 
@@ -653,7 +690,7 @@ reader does not have to re-derive the decision -- or, worse, port it by default.
   87 commits. It grew 49.6% *after* being labelled LEGACY.
 - Gate calibration: G1 fires **1,119 times** on v1's kernel-equivalent packages;
   G13 fires **147 times**. Both are zero in v2.
-- v2 size: 22442 Python lines including tests, against 102,852 in v1.
+- v2 size: 23693 Python lines including tests, against 102,852 in v1.
 
 ## How to run
 

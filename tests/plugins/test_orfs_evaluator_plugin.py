@@ -39,8 +39,15 @@ def build_workspace(
     workspace: Path, *, time_unit: str = "1ns", scale: float = 1.0,
     setup_ws: float = 0.1, drc: int = 0,
 ) -> Path:
-    """An ORFS-shaped attempt workspace, as the execution adapter would leave it."""
-    implementation = workspace / "orfs" / "implementation"
+    """An ORFS-shaped attempt workspace, as the execution adapter leaves it.
+
+    The files sit at the workspace root because that is where the adapter writes:
+    the kernel hands the evaluator the attempt workspace, and the adapter owns
+    its root.  An earlier version of this fixture nested everything under
+    ``orfs/implementation``, which nothing in v2 creates -- so the fixture passed
+    while every real evaluation abstained.
+    """
+    implementation = workspace
     logs = implementation / "logs" / PLATFORM / DESIGN / "base"
     results = implementation / "results" / PLATFORM / DESIGN / "base"
     logs.mkdir(parents=True, exist_ok=True)
@@ -133,7 +140,10 @@ def request_for(workspace: Path) -> EvaluationRequest:
         ),
         task=TaskSpec(
             task_id="orfs-run-1", project_id="p", design_id=DESIGN,
-            plugin_id="orfs", inputs={}, labels={},
+            plugin_id="orfs",
+            # The kernel tells the evaluator which workspace it is evaluating;
+            # the adapter reads this rather than guessing from its own argv.
+            inputs={"workspace": str(workspace)}, labels={},
         ),
         workspace=str(workspace),
         attempt_id="attempt-1",
@@ -230,8 +240,7 @@ def test_a_nonzero_drc_is_rejected(tmp_path):
 
 def test_a_missing_final_artifact_is_rejected(tmp_path):
     workspace = build_workspace(tmp_path / "workspace")
-    implementation = workspace / "orfs" / "implementation"
-    (implementation / "results" / PLATFORM / DESIGN / "base" / "6_final.gds").unlink()
+    (workspace / "results" / PLATFORM / DESIGN / "base" / "6_final.gds").unlink()
     outcome = evaluator_from_registry(tmp_path).evaluate_with_evidence(
         request_for(workspace)
     )
@@ -247,7 +256,8 @@ def test_a_workspace_with_no_orfs_evidence_abstains_rather_than_guessing(tmp_pat
         request_for(workspace)
     )
     assert outcome.verdict.status is VerdictStatus.INCOMPLETE
-    assert "no ORFS implementation directory" in outcome.verdict.reason
+    assert "no ORFS attempt under" in outcome.verdict.reason
+    assert "plan.json is missing" in outcome.verdict.reason
 
 
 # --------------------------------------------------------------------------
