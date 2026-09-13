@@ -121,7 +121,8 @@ def run_adapter(tmp_path: Path, toolchain: dict[str, Path],
                 create_layout: bool = True,
                 makefile: str | None = None,
                 adapter_environment: dict | None = None,
-                bundle: bool = False) -> tuple[dict, Path]:
+                bundle: bool = False,
+                relative_args: bool = False) -> tuple[dict, Path]:
     workspace = tmp_path / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)
     rtl = tmp_path / "counter.v"
@@ -172,9 +173,13 @@ def run_adapter(tmp_path: Path, toolchain: dict[str, Path],
     environment = dict(os.environ)
     environment["PATH"] = os.environ.get("PATH", "")
     environment.update(adapter_environment or {})
+    # A relative call is a supported one: the platform has always passed
+    # absolute paths, but nothing enforced it, and ``make`` resolves a relative
+    # path against the directory it runs in rather than the caller's.
+    named = (lambda path: path.name) if relative_args else str
     completed = subprocess.run(
         [sys.executable, str(ADAPTER),
-         "--request", str(request_path), "--result", str(result_path)],
+         "--request", named(request_path), "--result", named(result_path)],
         cwd=str(workspace), env=environment, capture_output=True, text=True,
         timeout=120,
     )
@@ -600,3 +605,29 @@ def test_naming_both_a_file_and_a_bundle_is_refused(tmp_path, stub_toolchain):
         inputs=make_bundle(tmp_path))
     assert result["status"] == "failed"
     assert "not both" in result["failure"]["message"]
+
+
+def test_a_relative_result_path_still_writes_absolute_paths(tmp_path, stub_toolchain):
+    """The workspace is written into the generated configuration.
+
+    A relative path there is resolved by ``make`` against the directory it runs
+    in -- the *staged flow*, not the workspace -- so a relative ``--result``
+    produced a config naming sources that do not exist beside the Makefile.
+    Running the real toolchain is what made this visible: the stub never reads
+    ``VERILOG_FILES``, so it succeeded either way.
+    """
+    result, workspace = run_adapter(tmp_path, stub_toolchain, relative_args=True)
+    assert result["status"] == "succeeded", result.get("failure")
+
+    config = (workspace / "designs" / "nangate45" / "counter" / "config.mk").read_text(
+        encoding="utf-8")
+    sources = next(
+        line.split("= ", 1)[1].split() for line in config.splitlines()
+        if line.startswith("export VERILOG_FILES = ")
+    )
+    assert sources
+    for entry in sources:
+        assert entry.startswith("/"), entry
+    # The staged flow is where make runs, so nothing it reads may be relative to
+    # anywhere else.
+    assert (workspace / "orfs-flow" / "Makefile").is_file()

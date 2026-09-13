@@ -98,8 +98,15 @@ def main() -> int:
     args = parser.parse_args()
 
     started_at = now()
-    request_path = Path(args.request)
-    result_path = Path(args.result)
+    # Resolved, not used as given.  The attempt workspace is written into the
+    # generated configuration, and a relative path there is resolved by ``make``
+    # against the directory it runs in -- the *staged flow*, not the workspace.
+    # A relative ``--result`` therefore produced a config naming sources that do
+    # not exist beside the Makefile, and ``make`` stopped with a missing-target
+    # error that said nothing about the real cause.  Found by running the real
+    # toolchain: no stub could show it, because the stub resolves nothing.
+    request_path = Path(args.request).expanduser().resolve()
+    result_path = Path(args.result).expanduser().resolve()
     workdir = result_path.parent
 
     request = json.loads(request_path.read_text(encoding="utf-8"))

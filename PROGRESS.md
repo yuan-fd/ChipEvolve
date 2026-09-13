@@ -536,13 +536,51 @@ invented, all corrected here:
   a toolchain nobody named, and the snapshot would then attribute a result to a
   profile the operator never chose.  An unset variable is an error naming it.
 
+## The first real run
+
+Everything above this point was proven against stubs.  The `<yunpeng-ARM>` host
+has the real toolchain, so the adapter was run for real: nangate45, a counter,
+`target_stage=synth`, through `plugins/orfs/adapter.py` exactly as the platform
+invokes it.
+
+It worked -- `1_synth.odb` at 416 KB in 7.9 s of flow time, 10 artifacts
+registered with the right kinds, the backport correctly reporting nothing to
+apply, and a snapshot naming OpenROAD `26Q1-1961-g63ed2e0fe5`, Yosys 0.63 and
+ORFS commit `51ad1231`.  The milestones stayed honest: `synthesizable` true,
+`functionally_verified` false, `implementation_valid` false, `gds_complete`
+false.
+
+**It also failed first, and that is the point.**  The first run stopped in 19 ms
+with ``scripts/variables.mk:23: *** PLATFORM variable not set.``  That message
+names neither the real problem nor the real file.  The cause was one line: the
+adapter took ``workdir = result_path.parent`` without resolving it, so a relative
+``--result`` wrote relative paths into ``config.mk``.  Two consequences, both
+invisible to a stub:
+
+* ``make`` resolves a relative ``DESIGN_CONFIG`` against the directory it runs
+  in.  It does not report a missing include; it *re-executes* looking for a rule
+  to build the missing file, and the failure surfaces later, from
+  ``variables.mk``, naming the **operator's** ORFS tree rather than the staged
+  one.  With an absolute config the error becomes precise, and shows the second
+  consequence.
+* ``export VERILOG_FILES = designs/src/...`` was then resolved against the staged
+  flow, so synthesis could not find a source that exists one directory up.
+
+No stub could have shown this, because the stub Makefile never reads
+``VERILOG_FILES``; it succeeded either way.  The fix is at the boundary --
+resolve the request and result paths -- and it is now asserted directly (the
+generated ``VERILOG_FILES`` entries must be absolute), with the assertion
+mutation-checked.  The run itself is repeatable as an opt-in test:
+``tests/plugins/test_orfs_real_toolchain.py``, skipped unless the toolchain is
+named, because it copies the flow tree (1.6 GB here) and runs real synthesis.
+
 ## Next
 
-1. More applications, one per capability the objective names: RTL Studio,
+1. Run the full flow (`finish`) for one real reference design, and the protected
+   evaluator over its real reports -- `synth` proves the chain, not the metrics.
+2. More applications, one per capability the objective names: RTL Studio,
    Teaching Workbench, Knowledge Service, Extensions Console, Terminal Bench.
-2. Move `scripts/` to its own `research-toolchain` repository.
-3. Re-run one real reference design against a real toolchain -- the bundle path
-   is now provable in principle and has never been executed end to end.
+3. Move `scripts/` to its own `research-toolchain` repository.
 
 ## v1 knowledge that must be carried across by hand
 
@@ -570,7 +608,7 @@ reader does not have to re-derive the decision -- or, worse, port it by default.
 
 | v1 module | Lines | Why it is not here |
 | --- | ---: | --- |
-| `orfs_generated_design.py` | 430 | Exists to bridge ORFS design *discovery* for the upstream AutoTuner, which hard-codes `flow/designs/<pdk>/<design>`. Its only real consumer in v1 is `official_autotuner.py`. v2 stages a per-attempt flow and passes `DESIGN_CONFIG` explicitly, so nothing needs the bridge, and D4 sends optimizers out of the product path. **Returns if** a plugin that ignores `DESIGN_HOME` is added. |
+| `orfs_generated_design.py` | 430 | Exists to bridge ORFS design *discovery* for the upstream AutoTuner, which hard-codes `flow/designs/<pdk>/<design>`. Its only real consumer in v1 is `official_autotuner.py`, and D4 sends optimizers out of the product path. It is also the one module that writes **inside the shared toolchain checkout** -- it installs `flow/designs/<pdk>/opv2_<top>_<hash>/` there -- which is exactly what v2's per-attempt staging exists to prevent, and three such directories are sitting in the operator's tree right now. **Returns if** a plugin that ignores `DESIGN_HOME` is added. |
 | `orfs_design_options.py` | 38 | *Was* in this category by association -- it is imported by `generated_design` -- but `orfs_config.py` imports it too, on the product path, and five of the six reference recipes carry options. Ported as `design_options.py`; the bundle that carried them could not spend them. |
 | `parsers/cell_coords.py` | 238 | The placement-density grid format. v1 consumers are `pipeline.py`, `diagnosis.py`, `reporter.py` and `apps/api/app.py`; v2 has no diagnosis or layout-visualization capability. **Returns if** an app renders the density grid. |
 
@@ -584,7 +622,7 @@ reader does not have to re-derive the decision -- or, worse, port it by default.
   87 commits. It grew 49.6% *after* being labelled LEGACY.
 - Gate calibration: G1 fires **1,119 times** on v1's kernel-equivalent packages;
   G13 fires **147 times**. Both are zero in v2.
-- v2 size: 22218 Python lines including tests, against 102,852 in v1.
+- v2 size: 22442 Python lines including tests, against 102,852 in v1.
 
 ## How to run
 
