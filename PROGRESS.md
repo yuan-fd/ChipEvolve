@@ -450,11 +450,39 @@ Two more corrections, both because the tests were right:
 * The worker's cycle caught only two exception types, so a run naming an unknown
   plugin took the whole cycle down with it.
 
+**The toolchain snapshot.** `plugins/orfs/toolchain.py` records which tools
+produced a measurement, and the adapter writes it into every attempt workspace
+before the flow starts -- a run that fails still has to say what it was failing
+with.  It is registered as evidence like any other file, so "the same
+experiment" has a referent instead of being a phrase.
+
+Three decisions in it are deliberate rather than mechanical:
+
+* The worktree status is **recorded, not enforced**: a dirty checkout is written
+  down as dirty.  The reference-design loader does refuse a dirty tree, because
+  there the checkout changes which sources were built.  Same fact, different
+  question, different answer.
+* A missing file still produces a record naming it -- ``sha256: null`` beside a
+  path says "this was expected and is not there", where omitting the key says
+  nothing at all.
+* Environment **names** are recorded, never values: which variables were
+  inherited is reproducibility, their contents can be credentials.
+
+The adapter is told the flow directory, and the snapshot has to name the
+checkout, so the layout rule lives in one place: ``orfs_root_for()`` is the
+inverse of ``ToolchainConfig.flow_home``.  A directory named ``flow`` that is
+**not** inside a checkout is returned unchanged, because guessing a parent from
+the name alone would attribute a result to a repository that does not exist.
+
 ## Next
 
-1. `plugins/orfs/` remaining knowledge: the admitted-flow compatibility patch and
-   the toolchain snapshot, both of which have exact byte-level provenance.
-2. More applications, one per capability the objective names.
+1. `plugins/orfs/` remaining knowledge: the three v1 modules deliberately
+   deferred (`cell_coords.py`, `orfs_generated_design.py`,
+   `orfs_design_options.py`), and wiring the snapshot's environment into the
+   flow invocation.
+2. More applications, one per capability the objective names: RTL Studio,
+   Teaching Workbench, Knowledge Service, Extensions Console, Terminal Bench.
+3. Move `scripts/` to its own `research-toolchain` repository.
 
 ## v1 knowledge that must be carried across by hand
 
@@ -484,12 +512,13 @@ Not guessed, not paraphrased — read from v1 and re-derived as tests:
   87 commits. It grew 49.6% *after* being labelled LEGACY.
 - Gate calibration: G1 fires **1,119 times** on v1's kernel-equivalent packages;
   G13 fires **147 times**. Both are zero in v2.
-- v2 size: ~7,500 lines including tests, against 102,852 in v1.
+- v2 size: 21,410 Python lines including tests, against 102,852 in v1.
 
 ## How to run
 
 ```
 cd v2
-.venv/bin/python -m pytest -q          # 54 tests, ~0.2s
+.venv/bin/python -m pytest -q          # the whole suite, ~70s
+.venv/bin/python -m pytest guardrails -q  # the fifteen gates, ~0.6s
 python3 tools/new_app.py <name>        # scaffold a compliant app
 ```

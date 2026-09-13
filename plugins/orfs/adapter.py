@@ -21,6 +21,7 @@ from pathlib import Path
 # The script's own directory is on sys.path because Python adds it for the main
 # script, so the ported modules import normally.  No sys.path surgery.
 from compatibility import apply_backports, stage_flow
+from toolchain import ToolchainConfig, orfs_root_for, toolchain_snapshot
 from config import infer_clock, infer_top, write_design_files
 from digest import sha256_file
 from runner import (
@@ -207,6 +208,36 @@ def run_flow(
         or_seed=or_seed, target_stage=target_stage,
     )
     report("prepare", "finished", status="succeeded")
+
+    # The snapshot is what lets a stored result be attributed to a toolchain and
+    # a request.  It is written before the flow runs, because a run that fails
+    # still needs to say what it was failing with, and it covers the generated
+    # configuration because that file is an input the flow reads.
+    snapshot = toolchain_snapshot(
+        ToolchainConfig(
+            name=str(inputs.get("toolchain_name") or "orfs"),
+            orfs_root=orfs_root_for(flow_home), openroad_bin=openroad_bin,
+            yosys_bin=yosys_bin,
+        ),
+        workdir=workdir,
+        request={
+            "platform": platform, "design": design, "target_stage": target_stage,
+            "clock_period_ns": clock_period_ns, "or_seed": or_seed,
+            "core_utilization_pct": parameters.get("core_utilization_pct"),
+            "place_density": parameters.get("place_density"),
+            "flow_parameters": dict(parameters.get("flow_parameters") or {}),
+        },
+        rtl_path=rtl_path, rtl_files=list(inputs.get("rtl_files") or []),
+        generated_config=config_path,
+        sdc_path=(Path(str(inputs["sdc_path"]))
+                  if inputs.get("sdc_path") else None),
+        fast_route_tcl=(Path(str(inputs["fast_route_tcl_path"]))
+                        if inputs.get("fast_route_tcl_path") else None),
+    )
+    (workdir / "toolchain_snapshot.json").write_text(
+        json.dumps(snapshot, indent=2), encoding="utf-8")
+    report("snapshot", "finished", status="succeeded",
+           fingerprint=snapshot["toolchain"]["fingerprint"])
 
     result = FlowResult()
     run_stages = STAGES[:STAGES.index(target_stage) + 1]

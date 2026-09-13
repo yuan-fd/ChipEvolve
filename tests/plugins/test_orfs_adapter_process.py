@@ -365,3 +365,33 @@ def test_the_exit_code_agrees_with_the_reported_status(tmp_path, stub_toolchain)
     completed_exit = 0 if result["status"] == "succeeded" else 1
     assert result["exit_code"] == completed_exit
     assert (workspace / "adapter_result.json").is_file()
+
+
+def test_the_run_records_the_toolchain_that_produced_it(tmp_path, stub_toolchain):
+    """A result nobody can attribute is a result nobody can reproduce.
+
+    The snapshot is registered as evidence like any other file, and it names
+    the request it belongs to, so "the same experiment" has a referent.
+    """
+    result, workspace = run_adapter(tmp_path, stub_toolchain)
+    kinds = {a["path"]: a["kind"] for a in result["artifacts"]}
+    assert kinds["toolchain_snapshot.json"] == "report"
+
+    snapshot = json.loads(
+        (workspace / "toolchain_snapshot.json").read_text(encoding="utf-8")
+    )
+    assert snapshot["toolchain"]["fingerprint"]
+    assert snapshot["request"] == {
+        "platform": "nangate45", "design": "counter", "target_stage": "finish",
+        "clock_period_ns": 10.0, "or_seed": 1,
+        "core_utilization_pct": None, "place_density": None,
+        "flow_parameters": {},
+    }
+    # The generated configuration is an input the flow reads, so it is hashed
+    # into the snapshot rather than merely named.
+    assert snapshot["files"]["generated_config"]["sha256"]
+    assert snapshot["files"]["rtl"]["sha256"]
+    # Environment *names* are recorded, not values: a snapshot that leaked the
+    # environment would be worse than one that omitted it.
+    assert "environment_keys" in snapshot["toolchain"]
+    assert "PATH" not in snapshot["toolchain"]["environment_keys"]

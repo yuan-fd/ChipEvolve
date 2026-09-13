@@ -56,6 +56,7 @@ EVIDENCE_FILES: tuple[str, ...] = (
     "plan.json",
     "design_input_manifest.json",
     "flow_compatibility.json",
+    "toolchain_snapshot.json",
     "logs/flow.log",
     "analysis/flow_error.log",
 )
