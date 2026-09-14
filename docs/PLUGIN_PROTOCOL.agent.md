@@ -154,7 +154,8 @@ Object: `{"kind": str, "path": str, "required": bool, "media_type": str|null, "m
 | F3 | File MUST exist with size > 0. A zero-byte file counts as absent. |
 | F4 | When `status == "succeeded"`, every manifest rule with `required: true` MUST have a matching declared artifact that satisfies F3. Missing ⇒ `required artifact kinds missing: ...`. A `failed` result is NOT held to this: partial evidence is still evidence. |
 | F5 | The platform hashes the file from disk after the process exits. A declared hash is not read. |
-| F6 | Artifact paths are stored as workspace-relative keys. |
+| F6 | Artifact paths are stored as workspace-relative keys. The bytes are copied into a content-addressed object store at that moment; the workspace copy is scratch afterwards, and identical bytes from another attempt share the one object. |
+| F7 | The reserved kind `runtime_input_manifest` may not be declared by an adapter, only by the platform. |
 
 ---
 
@@ -256,13 +257,16 @@ validate their shape.
 
 ### Staged inputs (`staged_inputs`)
 
-Optional list. Each entry: `{"source": <absolute host path>, "destination":
-<relative workspace path>, "required": <bool, default true>}`.
+Optional list. Each entry: `{"destination": <relative workspace path>,
+"source": <absolute host path> | "artifact_id": <id>, "required": <bool,
+default true>}`. Exactly one of `source` / `artifact_id` is given.
 
-The platform copies each `source` to `destination` inside the workspace **before**
-the process starts, and digests the copy. The adapter reads the file at
-`destination` relative to its working directory; it MUST NOT search the host for
-it, and MUST NOT assume the source path is reachable.
+The platform copies the bytes to `destination` inside the workspace **before**
+the process starts, and digests the copy. For an `artifact_id` the bytes come
+from the platform's content-addressed store and are verified against that
+artifact's record as they land; a mismatch fails the attempt. The adapter reads
+the file at `destination` relative to its working directory; it MUST NOT search
+the host for it, and MUST NOT assume the source path is reachable.
 
 The platform writes `input_manifest.json` at the workspace root when the list is
 non-empty:

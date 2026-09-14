@@ -224,7 +224,8 @@ durable storage.
     "parameters": { "...": "its tuning knobs" },
     "staged_inputs": [
       {"source": "/data/gcd/netlist.v", "destination": "design/netlist.v",
-       "required": true}
+       "required": true},
+      {"artifact_id": "art-1f0c...", "destination": "previous/report.json"}
     ],
     "timeout_seconds": 3600,
     "max_attempts": 1,
@@ -257,8 +258,18 @@ data = Path("design/netlist.v").read_bytes()     # always relative to cwd
 | Field | Meaning |
 | --- | --- |
 | `source` | Absolute host path. Relative paths are refused: they would resolve against whichever worker picked the run up. |
+| `artifact_id` | Bytes the platform already holds, from an earlier run's artifact. The digest is checked as the bytes are placed, so a reference that does not verify fails the attempt instead of feeding the plugin the wrong file. |
 | `destination` | Relative path inside the attempt workspace. `..` and absolute paths are refused. Two inputs may not claim the same destination. |
 | `required` | Default `true`. A required input that is not a readable file is refused **at submission**, before a run exists. An optional one that is absent is recorded as absent and the attempt proceeds. |
+
+Exactly one of `source` and `artifact_id` is given. Neither is a filesystem
+detail the plugin has to care about: whichever was used, the file is at
+`destination` before the process starts.
+
+`artifact_id` is how one experiment consumes what another produced. Nothing has
+to know where the platform put the bytes, and a run that cites an artifact is
+making a claim the platform can check rather than an assertion it has to take on
+trust.
 
 **What the platform records, and why it matters to you.** The platform measures
 each staged file with SHA-256 and writes `input_manifest.json` in the workspace:
@@ -351,19 +362,28 @@ An artifact is a file the plugin produced, named relative to the workspace.
   zero-byte report has not reported anything. A result that reports `failed` is
   not held to this — a run that failed has no obligation to have produced its
   outputs, and partial evidence is still evidence.
-- Two artifact kinds are reserved by the platform — `runtime_protocol_receipt`
-  and `protected_evaluation`. A plugin **declaring** one in its result is
-  refused. Listing one in the manifest's `artifact_rules` is allowed and grants
-  nothing: the evaluator has to list `protected_evaluation`, because otherwise
-  its own verdict would be refused by its own allowlist, and the authority to
-  declare it comes from the platform's evaluation path rather than from the
-  manifest.
+- Two artifact kinds are reserved by the platform — `runtime_protocol_receipt`,
+  `runtime_input_manifest` and `protected_evaluation`. A plugin **declaring** one
+  in its result is refused. Listing one in the manifest's `artifact_rules` is
+  allowed and grants nothing: the evaluator has to list
+  `protected_evaluation`, because otherwise its own verdict would be refused by
+  its own allowlist, and the authority to declare it comes from the platform's
+  evaluation path rather than from the manifest.
 - A plugin may not set the `runtime_authority` or `official_qor` metadata keys.
   Metrics from the platform's own protected evaluator are marked by the platform,
   and an adapter claiming that authority is refused.
 
 The platform hashes every artifact **from the bytes on disk** after the process
 exits. A hash a plugin declares is a claim; the measurement is the platform's.
+
+**What happens to the file afterwards is the platform's business, not yours.**
+At registration the bytes are copied into a content-addressed store beside the
+state root, under a name that is their SHA-256, and the record says so. The copy
+in the workspace is scratch from that moment: editing it changes nothing that a
+reader will see, and the same bytes produced by a later run cost no extra space.
+The practical consequence for a plugin author is none — but it is worth knowing
+that writing to a file *after* declaring it is a race you will lose quietly,
+because the platform already took its copy.
 
 ### 4.4 Failure
 
