@@ -40,6 +40,7 @@ from openroad_platform_contracts import (
     EvaluationRequest,
     INPUT_MANIFEST_FILENAME,
     INPUT_MANIFEST_KIND,
+    InputFile,
     Metric,
     PluginManifest,
     PluginResult,
@@ -197,18 +198,32 @@ class WorkflowRuntime:
 
     # -- inputs -----------------------------------------------------------
 
-    @staticmethod
-    def _check_inputs(task: TaskSpec) -> None:
-        """Refuse a task whose required inputs are not there.
+    def _check_inputs(self, task: TaskSpec) -> None:
+        """Refuse a task whose declared inputs cannot be honoured.
 
-        A ``stat``, not a digest: the point is to tell the caller their request
-        is wrong while they are still listening.  The bytes are measured later,
-        as they are copied, because that copy is what the adapter will read.
-        The file may still vanish in between -- and then the attempt fails with
-        a recorded reason, which is the honest outcome rather than a guarantee
-        this platform cannot make.
+        For a host path this is a ``stat``, not a digest: the point is to tell
+        the caller their request is wrong while they are still listening.  The
+        bytes are measured later, as they are copied, because that copy is what
+        the adapter will read.  The file may still vanish in between -- and then
+        the attempt fails with a recorded reason, which is the honest outcome
+        rather than a guarantee this platform cannot make.
+
+        For an artifact reference only the *row* is checked here, for the same
+        reason.  An id the platform has never registered is a malformed request
+        whether the input is required or not, so it is refused either way; an
+        id it has registered but whose bytes have gone is an integrity problem
+        and is discovered as the bytes are copied.
         """
         for declaration in task.staged_inputs:
+            if declaration.artifact_id is not None:
+                try:
+                    self.store.get_artifact(declaration.artifact_id)
+                except RuntimeStoreError as exc:
+                    raise InputStagingError(
+                        f"input references an artifact the platform does not "
+                        f"have: {declaration.artifact_id!r}"
+                    ) from exc
+                continue
             if declaration.required and not Path(declaration.source).is_file():
                 raise InputStagingError(
                     f"required input is not a readable file: "
@@ -237,6 +252,12 @@ class WorkflowRuntime:
 
         staged: list[StagedInput] = []
         for declaration in task.staged_inputs:
+            destination = workspace / declaration.destination
+            if declaration.artifact_id is not None:
+                staged.append(
+                    self._stage_from_artifact(declaration, destination)
+                )
+                continue
             source = Path(declaration.source)
             if not source.is_file():
                 if declaration.required:
@@ -249,7 +270,6 @@ class WorkflowRuntime:
                     source=declaration.source, present=False, size_bytes=0,
                 ))
                 continue
-            destination = workspace / declaration.destination
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, destination)
             staged.append(StagedInput(
@@ -284,6 +304,42 @@ class WorkflowRuntime:
                 "metadata": {"producer": "runtime"},
             },
         }
+
+    def _stage_from_artifact(
+        self, declaration: InputFile, destination: Path
+    ) -> StagedInput:
+        """Place bytes the platform already holds, and check them as they land.
+
+        The copy is verified against the artifact's own record rather than
+        trusted because it came from the object store.  That check is the whole
+        reason a reference is worth having: a run that says "this came from
+        artifact X" becomes a claim someone can falsify, and this is where it is
+        checked.
+        """
+        try:
+            artifact = self.store.materialize_artifact(
+                declaration.artifact_id, destination
+            )
+        except RuntimeStoreError as exc:
+            if declaration.required:
+                raise InputStagingError(str(exc)) from exc
+            return StagedInput(
+                destination=declaration.destination, present=False, size_bytes=0,
+                source_artifact_id=declaration.artifact_id,
+            )
+        digest = sha256(destination)
+        size_bytes = destination.stat().st_size
+        if digest != artifact.sha256 or size_bytes != artifact.size_bytes:
+            raise InputStagingError(
+                f"artifact {declaration.artifact_id!r} does not match its own "
+                f"record: recorded {artifact.sha256} ({artifact.size_bytes} "
+                f"bytes), copied {digest} ({size_bytes} bytes)"
+            )
+        return StagedInput(
+            destination=declaration.destination, present=True,
+            size_bytes=size_bytes, sha256=digest,
+            source_artifact_id=declaration.artifact_id,
+        )
 
     # -- execution --------------------------------------------------------
 
@@ -633,6 +689,11 @@ class WorkflowRuntime:
         Callers never receive a workspace path or a store key.  The content is
         re-hashed before it is returned, so a file edited after registration is
         refused rather than served.
+
+        Which file is read comes from the artifact's own record, not from an
+        assumption about where artifacts live.  An artifact registered before
+        the object store existed is still in its attempt workspace, and saying
+        so is the store's job.
         """
         if (not isinstance(offset, int) or isinstance(offset, bool) or offset < 0
                 or not isinstance(max_bytes, int) or isinstance(max_bytes, bool)
@@ -650,15 +711,10 @@ class WorkflowRuntime:
             raise RuntimeStoreError(
                 f"artifact {artifact_id!r} is not registered in run {run_id!r}"
             )
-        attempt, artifact = matches[0]
-        workspace = Path(str(attempt["workspace"])).resolve()
-        path = (workspace / str(artifact["store_key"])).resolve()
-        try:
-            path.relative_to(workspace)
-        except ValueError as exc:
-            raise RuntimeStoreError(
-                "registered artifact escapes the runtime workspace"
-            ) from exc
+        # The search above is a membership check: a caller authorised for this
+        # run must not be able to read another run's artifact by quoting its id.
+        _, artifact = matches[0]
+        path = self.store.artifact_path(artifact_id)
         raw = path.read_bytes()
         if sha256(raw) != artifact["sha256"]:
             raise RuntimeStoreError(

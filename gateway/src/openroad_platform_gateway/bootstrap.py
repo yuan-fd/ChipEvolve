@@ -81,7 +81,10 @@ def build_kernel_parts(
         raise FileNotFoundError(f"plugin root not found: {paths.plugins_root}")
     paths.state_root.mkdir(parents=True, exist_ok=True)
 
-    store = RuntimeStore(paths.state_root / "runtime.db")
+    store = RuntimeStore(
+        paths.state_root / "runtime.db",
+        objects_root=paths.state_root / "runtime-objects",
+    )
     registry = PluginRegistry.from_directory(
         paths.plugins_root, admissions_root=paths.admissions_root,
     )

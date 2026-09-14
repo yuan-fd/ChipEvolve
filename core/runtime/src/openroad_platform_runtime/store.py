@@ -11,11 +11,19 @@ Design notes carried over from v1 because they were right:
   visible, auditable state (``lost``) instead of leaving it ``running`` forever.
 * Journal mode is DELETE, not WAL.  The state root may live on a shared
   filesystem where SQLite's WAL coordination is invalid.
+
+Artifacts are the one thing this store keeps *outside* its own tables.  A
+registered artifact is copied into a content-addressed object store beside the
+database, named for its digest, and the row records that.  The previous design
+left the bytes in the attempt workspace, which made an artifact's lifetime the
+same as a scratch directory's and made two attempts that produced identical
+bytes store them twice.
 """
 
 from __future__ import annotations
 
 import json
+import shutil
 import sqlite3
 import threading
 import uuid
@@ -40,7 +48,31 @@ from openroad_platform_contracts import (
     run_transition_allowed,
 )
 
-RUNTIME_SCHEMA_VERSION = 2
+RUNTIME_SCHEMA_VERSION = 3
+
+#: Where an artifact's bytes are.  Recorded per artifact rather than assumed,
+#: because there have been two answers: artifacts registered before the object
+#: store existed live in their attempt workspace, and are still readable there.
+STORAGE_OBJECT = "object"
+STORAGE_WORKSPACE = "workspace"
+
+#: Named separately because one migration has to *rebuild* this table: SQLite
+#: cannot drop a NOT NULL constraint in place, and an input's bytes may now come
+#: from the object store instead of a host path.  Two copies of this shape would
+#: eventually disagree, and the one that disagreed would be the migration.
+_INPUTS_DDL = """
+CREATE TABLE IF NOT EXISTS runtime_inputs (
+    attempt_id TEXT NOT NULL REFERENCES runtime_attempts(attempt_id),
+    destination TEXT NOT NULL,
+    source TEXT,
+    source_artifact_id TEXT,
+    present INTEGER NOT NULL CHECK(present IN (0, 1)),
+    size_bytes INTEGER NOT NULL CHECK(size_bytes >= 0),
+    sha256 TEXT,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (attempt_id, destination)
+);
+"""
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS runtime_schema_meta (
@@ -96,6 +128,7 @@ CREATE TABLE IF NOT EXISTS runtime_artifacts (
     sha256 TEXT NOT NULL,
     metadata_json TEXT NOT NULL,
     created_at TEXT NOT NULL,
+    storage TEXT NOT NULL,
     UNIQUE(attempt_id, store_key)
 );
 CREATE TABLE IF NOT EXISTS runtime_metrics (
@@ -110,16 +143,7 @@ CREATE TABLE IF NOT EXISTS runtime_metrics (
     context_json TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS runtime_inputs (
-    attempt_id TEXT NOT NULL REFERENCES runtime_attempts(attempt_id),
-    destination TEXT NOT NULL,
-    source TEXT NOT NULL,
-    present INTEGER NOT NULL CHECK(present IN (0, 1)),
-    size_bytes INTEGER NOT NULL CHECK(size_bytes >= 0),
-    sha256 TEXT,
-    created_at TEXT NOT NULL,
-    PRIMARY KEY (attempt_id, destination)
-);
+""" + _INPUTS_DDL + """
 CREATE TABLE IF NOT EXISTS runtime_events (
     event_id TEXT PRIMARY KEY,
     run_id TEXT NOT NULL,
@@ -228,9 +252,18 @@ class RuntimeStore:
     on a shared filesystem.
     """
 
-    def __init__(self, db_path: str | Path):
+    def __init__(self, db_path: str | Path, objects_root: str | Path | None = None):
         self.db_path = Path(db_path).expanduser()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        # Beside the database by default, because that is where the composition
+        # root puts it and the two must move together: a state root whose rows
+        # outlive its objects is a state root full of artifacts that cannot be
+        # read.  It is a parameter so that the composition root can say so
+        # explicitly rather than leaving the layout to be inferred from here.
+        self.objects_root = Path(
+            objects_root if objects_root is not None
+            else self.db_path.parent / "runtime-objects"
+        ).expanduser()
         self._lock = threading.RLock()
         self._connection = sqlite3.connect(
             str(self.db_path), check_same_thread=False, isolation_level=None
@@ -278,19 +311,56 @@ class RuntimeStore:
         migrated instead of rejected.  A *newer* root is still refused: this
         build cannot know what a later one wrote.
 
-        Every step so far is additive, so re-running the idempotent DDL is the
-        whole migration.  A step that is not additive -- a changed column, a
-        backfill, a split table -- must be written explicitly here rather than
-        leaning on that shortcut, because ``executescript`` would silently do
-        nothing for it and the version would then claim work that never ran.
+        Each step says what it is.  A step that is purely additive can re-run the
+        idempotent DDL, which is why the first one looks like no work at all; a
+        step that is not -- a new column on an existing table, a backfill, a
+        split -- must be written out, because ``executescript`` would silently
+        do nothing for it and the version would then claim work that never ran.
         """
         if from_version < 1:
             raise RuntimeStoreError(f"unsupported runtime schema {from_version!r}")
-        self._connection.executescript(_DDL)
+        if from_version < 2:
+            # 1 -> 2: runtime_inputs.  Additive, so the DDL is the migration.
+            self._connection.executescript(_DDL)
+        if from_version < 3:
+            # 2 -> 3: where an artifact's bytes live.  Not additive.  Every row
+            # that exists already has its bytes in its attempt workspace and no
+            # object beside the database, so the column arrives carrying that
+            # fact rather than a default that would claim otherwise.
+            #
+            # Checked rather than assumed, because DDL commits as it goes: a
+            # crash between this statement and the version update below would
+            # leave a root that is half-migrated and still labelled 2, and
+            # reopening it must not die on a column that is already there.
+            if not self._has_column("runtime_artifacts", "storage"):
+                self._connection.execute(
+                    "ALTER TABLE runtime_artifacts ADD COLUMN storage TEXT NOT "
+                    f"NULL DEFAULT '{STORAGE_WORKSPACE}'"
+                )
+            if not self._has_column("runtime_inputs", "source_artifact_id"):
+                # Rebuilt rather than altered: an input's bytes may now come
+                # from the object store, so ``source`` has to stop being NOT
+                # NULL, and SQLite cannot relax a constraint in place.  This is
+                # the case the docstring above warns about -- a step that is not
+                # additive, and that the idempotent DDL would silently skip.
+                self._connection.executescript(
+                    "ALTER TABLE runtime_inputs RENAME TO runtime_inputs_v2;"
+                    + _INPUTS_DDL
+                    + "INSERT INTO runtime_inputs (attempt_id, destination, "
+                    "source, source_artifact_id, present, size_bytes, sha256, "
+                    "created_at) SELECT attempt_id, destination, source, NULL, "
+                    "present, size_bytes, sha256, created_at "
+                    "FROM runtime_inputs_v2;"
+                    "DROP TABLE runtime_inputs_v2;"
+                )
         self._connection.execute(
             "UPDATE runtime_schema_meta SET value = ? WHERE key = 'schema_version'",
             (str(RUNTIME_SCHEMA_VERSION),),
         )
+
+    def _has_column(self, table: str, column: str) -> bool:
+        rows = self._connection.execute(f"PRAGMA table_info({table})").fetchall()
+        return any(row["name"] == column for row in rows)
 
     def close(self) -> None:
         with self._lock:
@@ -737,10 +807,17 @@ class RuntimeStore:
         self, attempt_id: str, workspace: Path,
         declarations: Sequence[Mapping[str, Any]],
     ) -> list[str]:
-        """Hash and record declared artifacts.
+        """Hash, record, and take custody of declared artifacts.
 
         The hash is computed here, from the bytes on disk.  A declared hash is
         a claim; this is the measurement.
+
+        Custody is the second half and used to be missing.  An artifact's bytes
+        stayed in the attempt workspace, so its lifetime was a scratch
+        directory's, and two attempts that produced identical bytes kept two
+        copies of them.  They are now copied into the object store under their
+        own digest, where a repeated digest costs nothing and the record says
+        which of the two places a reader should look.
         """
         workspace = Path(workspace).resolve()
         created: list[str] = []
@@ -770,13 +847,15 @@ class RuntimeStore:
                         metadata=dict(declaration.get("metadata") or {}),
                     )
                     artifact.validate()
+                    self._store_object(path, artifact.sha256, artifact.size_bytes)
                     self._connection.execute(
                         "INSERT INTO runtime_artifacts (artifact_id, attempt_id, "
                         "kind, store_key, size_bytes, sha256, metadata_json, "
-                        "created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        "created_at, storage) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         (artifact.artifact_id, attempt_id, artifact.kind,
                          artifact.store_key, artifact.size_bytes, artifact.sha256,
-                         json.dumps(artifact.metadata, sort_keys=True), _now()),
+                         json.dumps(artifact.metadata, sort_keys=True), _now(),
+                         STORAGE_OBJECT),
                     )
                     created.append(artifact.artifact_id)
                 self._connection.execute("COMMIT")
@@ -784,6 +863,116 @@ class RuntimeStore:
                 self._connection.execute("ROLLBACK")
                 raise
         return created
+
+    # -- the object store --------------------------------------------------
+
+    def object_path(self, digest: str) -> Path:
+        """Where the bytes with this digest live.
+
+        Two hex characters of fan-out, because a physical-design run produces
+        thousands of reports and a single flat directory is a directory listing
+        nobody wants to wait for.
+        """
+        return self.objects_root / digest[:2] / digest
+
+    def _store_object(self, path: Path, digest: str, size_bytes: int) -> None:
+        """Take a copy of ``path`` into the object store, once.
+
+        The name is the digest, so an object that is already there is the same
+        bytes by definition -- but its size is checked anyway, because a name
+        that is a hash cannot honestly have two sizes, and discovering that it
+        does is worth failing loudly over.
+
+        Published by rename.  A reader that found a half-written object would
+        find it under a valid name, which is the worst possible way to learn
+        that a copy was interrupted.
+        """
+        target = self.object_path(digest)
+        if target.is_file():
+            existing = target.stat().st_size
+            if existing != size_bytes:
+                raise RuntimeStoreError(
+                    f"object {digest} is {existing} bytes but the artifact is "
+                    f"{size_bytes}: the object store is inconsistent"
+                )
+            return
+        target.parent.mkdir(parents=True, exist_ok=True)
+        partial = target.with_name(f"{target.name}.partial-{uuid.uuid4().hex[:8]}")
+        try:
+            shutil.copyfile(path, partial)
+            partial.replace(target)
+        finally:
+            if partial.exists():
+                partial.unlink()
+
+    def get_artifact(self, artifact_id: str) -> Artifact:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM runtime_artifacts WHERE artifact_id = ?",
+                (artifact_id,),
+            ).fetchone()
+        if row is None:
+            raise RuntimeStoreError(f"no such artifact: {artifact_id!r}")
+        return Artifact(
+            artifact_id=row["artifact_id"], kind=row["kind"],
+            store_key=row["store_key"], sha256=row["sha256"],
+            size_bytes=row["size_bytes"],
+            metadata=json.loads(row["metadata_json"]),
+        )
+
+    def artifact_path(self, artifact_id: str) -> Path:
+        """Where an artifact's bytes are, according to its own record.
+
+        The row says, because there have been two answers and only one of them
+        is the current design.  A reader that guessed would be guessing about
+        evidence.
+        """
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT a.storage, a.store_key, a.sha256, t.workspace "
+                "FROM runtime_artifacts a "
+                "JOIN runtime_attempts t ON t.attempt_id = a.attempt_id "
+                "WHERE a.artifact_id = ?",
+                (artifact_id,),
+            ).fetchone()
+        if row is None:
+            raise RuntimeStoreError(f"no such artifact: {artifact_id!r}")
+        if row["storage"] == STORAGE_OBJECT:
+            return self.object_path(row["sha256"])
+        if row["storage"] != STORAGE_WORKSPACE:
+            raise RuntimeStoreError(
+                f"artifact {artifact_id!r} records an unknown storage "
+                f"{row['storage']!r}"
+            )
+        workspace = Path(str(row["workspace"])).resolve()
+        path = (workspace / str(row["store_key"])).resolve()
+        try:
+            path.relative_to(workspace)
+        except ValueError as exc:
+            raise RuntimeStoreError(
+                "registered artifact escapes the runtime workspace"
+            ) from exc
+        return path
+
+    def materialize_artifact(self, artifact_id: str, destination: Path) -> Artifact:
+        """Copy an artifact's bytes to ``destination`` and say what they are.
+
+        Returns the record rather than the bytes so the caller can check what it
+        just received against what the platform measured, which is the only way
+        a check on this path means anything.
+        """
+        artifact = self.get_artifact(artifact_id)
+        source = self.artifact_path(artifact_id)
+        if not source.is_file():
+            raise RuntimeStoreError(
+                f"artifact {artifact_id!r} is recorded as {artifact.sha256} but "
+                f"its bytes are missing from {source}"
+            )
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, destination)
+        return artifact
+
+    # -- inputs ------------------------------------------------------------
 
     def register_metrics(self, attempt_id: str, metrics: Iterable[Metric]) -> list[str]:
         created: list[str] = []
@@ -863,9 +1052,11 @@ class RuntimeStore:
                     staged.validate()
                     self._connection.execute(
                         "INSERT OR REPLACE INTO runtime_inputs (attempt_id, "
-                        "destination, source, present, size_bytes, sha256, "
-                        "created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        "destination, source, source_artifact_id, present, "
+                        "size_bytes, sha256, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                         (attempt_id, staged.destination, staged.source,
+                         staged.source_artifact_id,
                          1 if staged.present else 0, staged.size_bytes,
                          staged.sha256, now),
                     )
@@ -884,6 +1075,7 @@ class RuntimeStore:
         return [
             StagedInput(
                 destination=r["destination"], source=r["source"],
+                source_artifact_id=r["source_artifact_id"],
                 present=bool(r["present"]), size_bytes=r["size_bytes"],
                 sha256=r["sha256"],
             )
@@ -932,6 +1124,21 @@ class RuntimeStore:
 
     # -- projection --------------------------------------------------------
 
+    def _artifact_storages(self, attempt_id: str) -> dict[str, str]:
+        """Which place each of an attempt's artifacts lives, in one query.
+
+        A read model that issued one query per artifact would make the cost of
+        describing a run grow with the number of reports the run produced, which
+        for a physical-design flow is the wrong shape entirely.
+        """
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT artifact_id, storage FROM runtime_artifacts "
+                "WHERE attempt_id = ?",
+                (attempt_id,),
+            ).fetchall()
+        return {row["artifact_id"]: row["storage"] for row in rows}
+
     def describe_run(self, run_id: str) -> dict[str, Any]:
         """A read model for apps.  Reads only; never mutates."""
         run = self.get_run(run_id)
@@ -939,6 +1146,7 @@ class RuntimeStore:
         for stage in self.list_stages(run_id):
             attempts = []
             for attempt in self.list_attempts(stage.stage_run_id):
+                storages = self._artifact_storages(attempt.attempt_id)
                 attempts.append({
                     "attempt_id": attempt.attempt_id,
                     "attempt_number": attempt.attempt_number,
@@ -954,6 +1162,7 @@ class RuntimeStore:
                             "artifact_id": a.artifact_id, "kind": a.kind,
                             "store_key": a.store_key, "sha256": a.sha256,
                             "size_bytes": a.size_bytes, "metadata": a.metadata,
+                            "storage": storages.get(a.artifact_id, ""),
                         }
                         for a in self.list_artifacts(attempt.attempt_id)
                     ],
