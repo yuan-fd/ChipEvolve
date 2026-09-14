@@ -330,35 +330,3 @@ def test_the_store_bounds_the_query_limit(worker):
         store.runnable_runs(limit=0)
     with pytest.raises(Exception, match="limit must be between"):
         store.abandoned_cancellations(limit=10_000)
-
-
-# --------------------------------------------------------------------------
-# the command line
-# --------------------------------------------------------------------------
-
-def test_the_worker_cli_runs_one_cycle(tmp_path):
-    """``--once`` exists so a test, a cron job, or an operator can advance the
-    queue without supervising a daemon."""
-    state = tmp_path / "state"
-    plugins = tmp_path / "plugins"
-    plugins.mkdir()
-    state.mkdir()
-
-    completed = subprocess.run(
-        [sys.executable, "-m", "openroad_platform_runtime.worker",
-         "--state-root", str(state), "--plugins-root", str(plugins),
-         "--once", "--quiet"],
-        capture_output=True, text=True, timeout=60,
-        env={**__import__("os").environ,
-             "PYTHONPATH": __import__("os").pathsep.join([
-                 str(REPO_ROOT / "contracts" / "src"),
-                 str(REPO_ROOT / "core" / "runtime" / "src"),
-                 str(REPO_ROOT / "core" / "registry" / "src"),
-                 str(REPO_ROOT / "core" / "evaluator" / "src"),
-             ])},
-    )
-    assert completed.returncode == 0, completed.stderr
-    report = json.loads(completed.stdout.strip().splitlines()[-1])
-    assert report == {"reclaimed": 0, "cancelled": 0, "advanced": 0, "failed": 0}
-    # The cycle created the store it was pointed at.
-    assert (state / "runtime.db").is_file()

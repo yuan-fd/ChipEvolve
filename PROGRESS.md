@@ -774,22 +774,82 @@ The alpha suffix is honest.  The protocol has been exercised by this repository'
 own plugins and by a real toolchain; it has not yet been frozen by an
 implementation written outside it, and the next round is what tests that.
 
+## An external plugin, proved
+
+`edair` was moved out of this repository into its own.  It is discovered by
+pointing the platform at that repository, admitted by this platform's own record,
+executed as a process in its own environment, and its artifacts, sourced metrics
+and progress events are recorded -- with no platform source file changed to
+accommodate it.
+
+The platform's test suite lost exactly the plugin's own tests (84 of them) and
+nothing else.
+
+**The experiment found the defect it was for.**  `edair` expected its input to be
+already present in the attempt workspace, and its tests *wrote the file there
+themselves* -- so the plugin looked runnable, while in fact nothing in the
+platform ever stages a file.  The fixture supplied what the platform does not.
+The plugin now fetches its own input by absolute path and copies it into the
+workspace before indexing it, because the platform hashes what is inside the
+workspace.  This is the second time a fixture has agreed with the code instead of
+with reality; the first was the ORFS reference-design bundle.
+
+It also found a **gap in the protocol document**: an adapter sources a metric by
+naming its file in `context.source_artifact_store_key`, and the document did not
+describe that mechanism at all.  Both documents now do.  Writing the plugin from
+the document is what surfaced it -- had it been written from memory of the
+platform's source, the gap would still be there.
+
+## A conformance tool, in the registry
+
+`openroad-platform-plugin-validate <plugin-dir>`, implemented as a module of the
+registry package rather than a script under `tools/`.  Two reasons, both learned
+by writing it wrong first: as a script it mutated `sys.path` to reach the
+contract, which G11 flagged -- correctly -- and it restated the registry's own
+rules from outside, which is a second set of rules free to disagree with the
+first.
+
+It reports; it does not admit.  And in its first draft it refused a manifest that
+listed a platform-reserved artifact kind -- which the protected evaluator *must*
+do, or its own verdict would fail its own allowlist.  The tool was stricter than
+the platform, and the platform was right.  A validator that rejects what the
+platform accepts is a validator that lies.
+
+## Packaging that matches the imports
+
+`contracts` gained the `pyproject.toml` it never had while eight packages
+declared it as a dependency, and the three applications now declare the client
+they actually import instead of the contracts package they never did.
+
+A new test asks the harder question a `pyproject.toml` cannot answer by existing:
+whether every declared dependency is real and every real one is declared.  It
+immediately found that `core/runtime` imported the registry and the evaluator
+without declaring either -- and the reason they were not declared is that
+declaring them would have published a **cycle**: the runtime depends on the
+evaluator, and the evaluator depends on the runtime.
+
+The cycle was hidden behind an import inside a function in
+`core/runtime/worker.py`, which assembled the whole kernel itself -- a second
+composition root, whose docstring claimed to be "deliberately the same as the
+kernel's".  It was a copy.  There is now one `build_kernel_parts`, called by both
+the gateway and the worker command line, and `core/runtime` depends on the
+contract and nothing else.  The worker's command line lives at the composition
+root, where knowing concrete implementations is the job.
+
 ## Next
 
-1. **A conformance tool** (`agenticeda plugin validate`), so a team can check its
-   own plugin in its own CI.  It checks shape, not existence: an entrypoint may
-   legitimately be an absolute path that only exists in the deployment
-   environment.  It reports; it does not admit.
-2. **One real external plugin**, physically outside this repository and launched
-   from its own environment -- `edair` first (no toolchain needed, so it runs in
-   the default suite and exposes mechanism problems), then ORFS as the headline
-   proof on the real toolchain.  The experiment is only evidence if the plugin is
-   built from `docs/PLUGIN_PROTOCOL.human.md` rather than from the platform's
-   source: an insider following their own memory proves nothing about the
-   document.
-3. **Packaging**, so the platform can be installed rather than only run from a
-   checkout: `contracts` has no `pyproject.toml` although eight packages declare
-   it as a dependency, and the three apps declare the wrong one.
+1. **ORFS as the headline external proof**, on the real toolchain.  `edair`
+   proved the mechanism without needing anything installed; ORFS is the plugin
+   with the most surface (a toolchain, a flow, 2,363 lines) and the one whose
+   extraction would be the strongest evidence that this is an ecosystem rather
+   than a rearrangement.
+2. **A gate against cycles between kernel packages.**  The cycle above was real
+   and was hidden by a function-local import; nothing prevents the next one.  A
+   graph check over `KERNEL_DIRS` with a negative fixture would, and it is small.
+3. **Input staging**, if it turns out to be needed.  Today a plugin fetches its
+   own inputs from paths the task names; the protocol has no way for a task to
+   say "put this file in the workspace for me".  One external plugin is not
+   enough evidence to add it.
 
 Deliberately not next: more application development, and a workflow engine.  The
 orchestration question is a decision to record, not a feature to build -- an
@@ -836,7 +896,7 @@ reader does not have to re-derive the decision -- or, worse, port it by default.
   87 commits. It grew 49.6% *after* being labelled LEGACY.
 - Gate calibration: G1 fires **1,119 times** on v1's kernel-equivalent packages;
   G13 fires **147 times**. Both are zero in v2.
-- v2 size: 24370 Python lines including tests, against 102,852 in v1.
+- v2 size: 22760 Python lines including tests, against 102,852 in v1.
 
 ## How to run
 

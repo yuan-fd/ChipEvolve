@@ -160,14 +160,25 @@ Object: `{"kind": str, "path": str, "required": bool, "media_type": str|null, "m
 
 ## G. Metrics
 
-Object: `{"name": str, "value": scalar, "unit": str|null, "source_artifact_id": str|null, "parser_id": str|null, "parser_version": str|null, "context": obj}`
+Object: `{"name": str, "value": scalar, "unit": str|null, "context": obj}`
+
+An adapter does not know artifact ids — the platform assigns them — so an adapter
+sources a metric by naming the *file*:
+
+```json
+{"name": "parsed_paths", "value": 4, "unit": "count",
+ "context": {"source_artifact_store_key": "timing_paths.index.json",
+             "parser_id": "my-parser", "parser_version": "1"}}
+```
 
 | ID | Rule |
 | --- | --- |
 | G1 | `value` MUST be a JSON scalar (number, string, boolean). `NaN` is refused. |
 | G2 | `name` and `unit` MUST match IDENTIFIER. |
-| G3 | `source_artifact_id` absent or null ⇒ the metric is stored and labelled **unsourced**. It is not hidden and not treated as evidence. |
-| G4 | Metrics are registered ONLY for `status == "succeeded"`. |
+| G3 | `context.source_artifact_store_key`, when present, MUST name a workspace-relative path that the adapter also declared as an artifact and that was registered. The platform resolves it to the artifact id; an unresolvable key is a FAILURE of the run, not a warning. |
+| G4 | `context.parser_id` and `context.parser_version` are lifted onto the metric. |
+| G5 | Without a source key the metric is stored and labelled **unsourced**: kept, not hidden, not treated as evidence. |
+| G6 | Metrics are registered ONLY for `status == "succeeded"`. |
 
 ---
 

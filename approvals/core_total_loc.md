@@ -97,3 +97,28 @@ own, which is the change the two-file split is made of.  The growth is itemised:
 the kernel grew, and both times the growth bought a property rather than a
 feature.  The ratchet's job is not to prevent that; it is to make each one a
 written decision with a number attached.  Both are.
+
+## 6,463 -> 6,716: one assembly, two entry points, and a checker
+
+| Where | Lines | What |
+| --- | ---: | --- |
+| `core/registry/.../validate.py` | +247 | the conformance checker, in the package whose rules it applies |
+| `gateway/.../worker.py` | +80 | the worker's command line, at the composition root |
+| `gateway/.../bootstrap.py` | +24 | `build_kernel_parts` -- the store, registry and runtime, assembled once |
+| `core/runtime/.../worker.py` | **-82** | the assembly and its command line, removed |
+| `gateway/.../pyproject.toml` | +1 | the worker's console script |
+
+**Most of this round's growth is a relocation, and the relocation fixed a defect.**
+
+`core/runtime/worker.py` used to assemble the whole kernel itself: it imported
+the registry and the evaluator inside a function, which is how it hid a
+package-level cycle -- the runtime depends on the evaluator, and the evaluator
+depends on the runtime.  Its docstring claimed the composition was "deliberately
+the same as the kernel's".  It was not the same; it was a copy, and a copy is
+free to drift.
+
+Now there is one `build_kernel_parts`, called by both the gateway and the worker
+command line, and `core/runtime` depends on the contract and nothing else.  The
+packaging test that asks whether declared dependencies match actual imports is
+what surfaced it: `core/runtime` imported two packages it did not declare, and
+declaring them would have published a cycle.

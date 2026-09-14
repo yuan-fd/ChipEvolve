@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import socket
+import subprocess
+import sys
 import threading
 import time
 import urllib.error
@@ -17,6 +19,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 from openroad_platform_gateway import (
     AppRegistration,
@@ -248,3 +252,38 @@ def test_the_gateway_has_no_domain_logic_and_no_database():
         assert "import openroad_platform_registry" not in text
         assert "import openroad_platform_evaluator" not in text
         assert "import openroad_platform_identity" not in text
+
+
+# --------------------------------------------------------------------------
+# the command line
+# --------------------------------------------------------------------------
+
+def test_the_worker_cli_runs_one_cycle(tmp_path):
+    """``--once`` exists so a test, a cron job, or an operator can advance the
+    queue without supervising a daemon."""
+    state = tmp_path / "state"
+    plugins = tmp_path / "plugins"
+    plugins.mkdir()
+    state.mkdir()
+
+    completed = subprocess.run(
+        [sys.executable, "-m", "openroad_platform_gateway.worker",
+         "--state-root", str(state), "--plugins-root", str(plugins),
+         "--once", "--quiet"],
+        capture_output=True, text=True, timeout=60,
+        env={**__import__("os").environ,
+             "PYTHONPATH": __import__("os").pathsep.join([
+                 str(REPO_ROOT / "contracts" / "src"),
+                 str(REPO_ROOT / "core" / "runtime" / "src"),
+                 str(REPO_ROOT / "core" / "registry" / "src"),
+                 str(REPO_ROOT / "core" / "evaluator" / "src"),
+                 str(REPO_ROOT / "core" / "provenance" / "src"),
+                 str(REPO_ROOT / "core" / "identity" / "src"),
+                 str(REPO_ROOT / "gateway" / "src"),
+             ])},
+    )
+    assert completed.returncode == 0, completed.stderr
+    report = json.loads(completed.stdout.strip().splitlines()[-1])
+    assert report == {"reclaimed": 0, "cancelled": 0, "advanced": 0, "failed": 0}
+    # The cycle created the store it was pointed at.
+    assert (state / "runtime.db").is_file()

@@ -9,6 +9,9 @@ description = "Plugin discovery and admission for the platform kernel"
 requires-python = ">=3.9"
 dependencies = ["openroad-platform-contracts"]
 
+[project.scripts]
+openroad-platform-plugin-validate = "openroad_platform_registry.validate:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["openroad_platform_registry*"]

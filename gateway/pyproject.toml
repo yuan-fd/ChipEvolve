@@ -18,6 +18,7 @@ dependencies = [
 
 [project.scripts]
 openroad-platform-gateway = "openroad_platform_gateway.__main__:main"
+openroad-platform-worker = "openroad_platform_gateway.worker:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

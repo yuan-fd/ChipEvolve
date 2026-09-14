@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=59.4"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openroad-platform-contracts"
+version = "0.1.0"
+description = "The platform's shared language: the types every layer and every plugin exchange"
+requires-python = ">=3.9"
+# Dependency-free by construction.  This package is the one thing every other
+# package depends on, so anything added here is added to all of them -- and a
+# plugin that imports it (which none need to) would inherit it too.
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["openroad_platform_contracts*"]

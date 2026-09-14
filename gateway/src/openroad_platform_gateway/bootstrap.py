@@ -53,9 +53,25 @@ class KernelPaths:
         )
 
 
-def build_kernel(paths: KernelPaths, *, allow_anonymous: bool = False
-                 ) -> KernelApi:
-    """Assemble the kernel.
+@dataclass(frozen=True)
+class Kernel:
+    """The assembled kernel, before anything is wrapped around it.
+
+    Every entry point builds the same three objects from the same function.
+    A second assembly elsewhere would be a copy of this one, free to drift --
+    and the worker's command line used to be exactly that copy, down to a
+    repeated docstring claiming it was the same as the kernel's.
+    """
+
+    store: RuntimeStore
+    registry: PluginRegistry
+    runtime: WorkflowRuntime
+
+
+def build_kernel_parts(
+    paths: KernelPaths, *, worker_id: str = DEFAULT_WORKER_ID,
+) -> Kernel:
+    """Store, registry, evaluator and runtime, assembled once.
 
     A plugin directory that does not exist is an error rather than an empty
     registry: silently starting with no capabilities would look like a working
@@ -69,7 +85,6 @@ def build_kernel(paths: KernelPaths, *, allow_anonymous: bool = False
     registry = PluginRegistry.from_directory(
         paths.plugins_root, admissions_root=paths.admissions_root,
     )
-    identity = IdentityStore(paths.state_root / "identity.db")
 
     evaluator = None
     try:
@@ -83,10 +98,19 @@ def build_kernel(paths: KernelPaths, *, allow_anonymous: bool = False
         store, registry,
         config=RuntimeConfig(
             workspace_root=paths.state_root / "runtime-workspaces",
-            worker_id=DEFAULT_WORKER_ID,
+            worker_id=worker_id,
         ),
         protected_evaluator=evaluator,
     )
+    return Kernel(store=store, registry=registry, runtime=runtime)
+
+
+def build_kernel(paths: KernelPaths, *, allow_anonymous: bool = False
+                 ) -> KernelApi:
+    """The kernel with its HTTP surface: the entry point's assembly."""
+    parts = build_kernel_parts(paths)
+    store, registry, runtime = parts.store, parts.registry, parts.runtime
+    identity = IdentityStore(paths.state_root / "identity.db")
 
     local_user_id = None
     if allow_anonymous:

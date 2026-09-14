@@ -8,7 +8,6 @@ by G1 (no vendor names) and G2 (no adapters).
 from .artifact import (
     Artifact,
     ArtifactDeclaration,
-    ArtifactRule,
     Metric,
     RESERVED_ARTIFACT_KINDS,
     RESERVED_METRIC_CONTEXT_KEYS,
@@ -74,7 +73,7 @@ __all__ = (
     "TERMINAL_RUNTIME_STATUSES", "attempt_transition_allowed", "is_terminal",
     "run_transition_allowed",
     # artifacts and evidence
-    "Artifact", "ArtifactDeclaration", "ArtifactRule", "Metric",
+    "Artifact", "ArtifactDeclaration", "Metric",
     "RESERVED_ARTIFACT_KINDS", "RESERVED_METRIC_CONTEXT_KEYS",
     # evaluation boundary
     "EvaluationRequest", "EvaluatorPin", "PROTECTED_EVALUATOR_CAPABILITY",

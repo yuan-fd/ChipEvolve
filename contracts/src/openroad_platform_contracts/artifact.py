@@ -71,21 +71,6 @@ class ArtifactDeclaration:
 
 
 @dataclass(frozen=True)
-class ArtifactRule:
-    """A manifest's declaration of one artifact kind it may emit."""
-
-    kind: str
-    required: bool = False
-
-    def validate(self) -> None:
-        validate_identifier("kind", self.kind)
-        if self.kind in RESERVED_ARTIFACT_KINDS:
-            raise ContractError(
-                f"artifact kind {self.kind!r} is reserved by the platform"
-            )
-
-
-@dataclass(frozen=True)
 class Artifact:
     """A registered, hash-verified artifact."""
 

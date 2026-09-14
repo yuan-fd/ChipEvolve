@@ -21,14 +21,10 @@ expired becomes available in the same cycle rather than the next one.
 
 from __future__ import annotations
 
-import argparse
 import logging
-import signal
-import sys
 import threading
 import time
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Callable
 
 from openroad_platform_contracts import RuntimeStatus
@@ -139,81 +135,3 @@ class RuntimeWorker:
                 self.on_cycle(report)
             if not report.did_work:
                 stop.wait(self.idle_seconds)
-
-
-def main(argv: list[str] | None = None) -> int:
-    """Run a worker against a state root.
-
-    The composition is deliberately the same as the kernel's, so a worker and
-    the entry point cannot disagree about which store or which plugins they are
-    using.
-    """
-    parser = argparse.ArgumentParser(prog="openroad-platform-worker")
-    parser.add_argument("--state-root", required=True)
-    parser.add_argument("--plugins-root", default="plugins")
-    parser.add_argument("--admissions-root", default="admissions",
-                        help="the platform's own plugin trust records")
-    parser.add_argument("--idle-seconds", type=float, default=DEFAULT_IDLE_SECONDS)
-    parser.add_argument("--batch", type=int, default=DEFAULT_BATCH)
-    parser.add_argument("--once", action="store_true",
-                        help="run one cycle and exit; used by tests and cron")
-    parser.add_argument("--quiet", action="store_true")
-    args = parser.parse_args(argv)
-
-    logging.basicConfig(
-        level=logging.WARNING if args.quiet else logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s",
-    )
-
-    from openroad_platform_evaluator import PluginBackedEvaluator, resolve_evaluator
-    from openroad_platform_registry import PluginRegistry
-
-    from .adapter import ProcessAdapter
-    from .runtime import RuntimeConfig
-
-    state_root = Path(args.state_root).expanduser().resolve()
-    store = RuntimeStore(state_root / "runtime.db")
-    registry = PluginRegistry.from_directory(
-        Path(args.plugins_root), admissions_root=Path(args.admissions_root),
-    )
-    evaluator = None
-    try:
-        evaluator = PluginBackedEvaluator(
-            adapter=ProcessAdapter(), manifest=resolve_evaluator(registry))
-    except Exception:  # noqa: BLE001 - a worker without an evaluator still runs
-        LOGGER.warning("no protected evaluator is admitted; running without one")
-    runtime = WorkflowRuntime(
-        store, registry,
-        config=RuntimeConfig(workspace_root=state_root / "runtime-workspaces"),
-        protected_evaluator=evaluator,
-    )
-    worker = RuntimeWorker(store, runtime, idle_seconds=args.idle_seconds,
-                           batch=args.batch)
-
-    if args.once:
-        report = worker.cycle()
-        # JSON, because the caller is a script or an operator, not Python.
-        import json
-        print(json.dumps(report.to_dict(), sort_keys=True))
-        return 0
-
-    stop = threading.Event()
-
-    def request_stop(signum, frame):  # noqa: ANN001, ARG001
-        # A worker stops between attempts, never mid-attempt: an interrupted
-        # attempt becomes a reclaimable lease, and killing the process would
-        # orphan whatever it spawned.
-        LOGGER.info("signal %s received; finishing the current cycle", signum)
-        stop.set()
-
-    for name in ("SIGINT", "SIGTERM"):
-        if hasattr(signal, name):
-            signal.signal(getattr(signal, name), request_stop)
-
-    worker.serve_forever(stop)
-    store.close()
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

@@ -303,7 +303,12 @@ An artifact is a file the plugin produced, named relative to the workspace.
   not held to this — a run that failed has no obligation to have produced its
   outputs, and partial evidence is still evidence.
 - Two artifact kinds are reserved by the platform — `runtime_protocol_receipt`
-  and `protected_evaluation`. A plugin declaring either is refused.
+  and `protected_evaluation`. A plugin **declaring** one in its result is
+  refused. Listing one in the manifest's `artifact_rules` is allowed and grants
+  nothing: the evaluator has to list `protected_evaluation`, because otherwise
+  its own verdict would be refused by its own allowlist, and the authority to
+  declare it comes from the platform's evaluation path rather than from the
+  manifest.
 - A plugin may not set the `runtime_authority` or `official_qor` metadata keys.
   Metrics from the platform's own protected evaluator are marked by the platform,
   and an adapter claiming that authority is refused.
@@ -347,10 +352,28 @@ failed; it has simply declined to say why, and that absence is visible.
 ```
 
 - `value` must be a JSON scalar — a number, string, or boolean. `NaN` is refused.
-- A metric with no `source_artifact_id` is stored as **unsourced**. The platform
-  keeps it and labels it; it does not hide it and does not present it as
-  evidence. An unsourced metric is a display value.
 - `name` and `unit` must be identifiers, so that a later query can group by them.
+- **To make a metric traceable, name the file it came from** in
+  `context.source_artifact_store_key`, as a path relative to the workspace:
+
+  ```json
+  {"name": "parsed_paths", "value": 4, "unit": "count",
+   "context": {"source_artifact_store_key": "timing_paths.index.json",
+               "parser_id": "opensta-path-index", "parser_version": "1"}}
+  ```
+
+  The platform resolves that key to the artifact it hashed and records the
+  metric with its source. A key that names no registered artifact is **refused**,
+  not stored: the platform will not keep a number it cannot trace. `parser_id`
+  and `parser_version` ride the same context and are lifted onto the metric, so a
+  later reader can see which parser produced the number.
+
+- A metric with no source key is stored as **unsourced**. The platform keeps it
+  and labels it; it does not hide it and does not present it as evidence. An
+  unsourced metric is a display value. That is a legitimate state — a count the
+  plugin measured about its own work has no file to cite — but it is a weaker
+  claim than a sourced one, and the platform says so rather than implying
+  otherwise.
 
 Metrics are only registered for attempts that succeeded.
 
