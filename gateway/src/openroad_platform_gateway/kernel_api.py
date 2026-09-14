@@ -23,6 +23,7 @@ from openroad_platform_provenance import EvidenceIndex
 from openroad_platform_registry import PluginRegistry, RegistryError
 from openroad_platform_runtime import (
     InputStagingError,
+    ResourceLimitsUnsupported,
     RuntimeStore,
     RuntimeStoreError,
     WorkflowRuntime,
@@ -161,7 +162,8 @@ class KernelApi:
         try:
             run = (self.runtime.submit_idempotent(task)
                    if request.q("idempotent") else self.runtime.submit(task))
-        except (RegistryError, InputStagingError) as exc:
+        except (RegistryError, InputStagingError,
+                ResourceLimitsUnsupported) as exc:
             # A task naming a capability that is not available, or inputs that
             # are not where it said, is the caller's mistake, not the server's.
             # Unhandled, this reached the client as a 500, which sends an

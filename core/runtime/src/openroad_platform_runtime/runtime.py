@@ -77,6 +77,15 @@ class InputStagingError(RuntimeError):
     """
 
 
+class ResourceLimitsUnsupported(RuntimeError):
+    """The task declared bounds this host cannot enforce.
+
+    A refusal rather than a warning.  A limit that is accepted and not applied
+    is the exact species of false promise the rest of this codebase keeps
+    deleting: the caller believes the machine is protected, and it is not.
+    """
+
+
 class ManifestResolver(Protocol):
     """What the runtime needs from a plugin registry.
 
@@ -148,6 +157,7 @@ class WorkflowRuntime:
     ) -> RunRecord:
         task.validate()
         self._check_inputs(task)
+        self._check_resources(task)
         if task.plugin_id is None:
             raise ValueError("this runtime executes direct plugin tasks only")
         manifest = self.resolver.resolve(
@@ -171,6 +181,7 @@ class WorkflowRuntime:
         """
         task.validate()
         self._check_inputs(task)
+        self._check_resources(task)
         if task.plugin_id is None:
             raise ValueError("this runtime executes direct plugin tasks only")
         manifest = self.resolver.resolve(
@@ -197,6 +208,17 @@ class WorkflowRuntime:
         return existing
 
     # -- inputs -----------------------------------------------------------
+
+    def _check_resources(self, task: TaskSpec) -> None:
+        """Refuse a task whose declared limits this host cannot enforce."""
+        resources = task.resources
+        if resources is None or not resources.declared:
+            return
+        if not self.adapter.supports_limits():
+            raise ResourceLimitsUnsupported(
+                f"this host cannot measure a process tree, so the requested "
+                f"limits ({resources.describe()}) cannot be enforced"
+            )
 
     def _check_inputs(self, task: TaskSpec) -> None:
         """Refuse a task whose declared inputs cannot be honoured.
@@ -447,6 +469,7 @@ class WorkflowRuntime:
         execution = self.adapter.execute(
             manifest, run.task_spec, workspace=workspace,
             cancel_requested=pulse, on_line=observer, environment=environment,
+            limits=run.task_spec.resources,
         )
         self._reject_forged_authority(execution)
 

@@ -22,6 +22,7 @@ from .guardian import ProcessGuardian, ProcessOutcome
 from .observer import ProgressObserver
 from .runtime import (
     InputStagingError,
+    ResourceLimitsUnsupported,
     ManifestResolver,
     RECEIPT_ARTIFACT_KIND,
     RuntimeConfig,
@@ -48,7 +49,8 @@ __all__ = (
     "REQUEST_FILENAME", "RESULT_FILENAME", "LOG_FILENAME",
     "protocol_failure", "validate_artifact_declarations",
     # orchestration
-    "InputStagingError", "ManifestResolver", "RuntimeConfig", "WorkflowRuntime",
+    "InputStagingError", "ManifestResolver", "ResourceLimitsUnsupported",
+    "RuntimeConfig", "WorkflowRuntime",
     "RECEIPT_ARTIFACT_KIND",
     "ProgressObserver",
     # stage progress

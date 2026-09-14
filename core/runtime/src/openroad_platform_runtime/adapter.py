@@ -32,6 +32,7 @@ from openroad_platform_contracts import (
     ContractError,
     PluginManifest,
     PluginResult,
+    ResourceRequest,
     RuntimeStatus,
     TaskSpec,
     validate_identifier,
@@ -78,6 +79,16 @@ class ProcessAdapter:
     def __init__(self, guardian: ProcessGuardian | None = None):
         self.guardian = guardian or ProcessGuardian()
 
+    def supports_limits(self) -> bool:
+        """Whether this adapter can enforce the limits a task declares.
+
+        Asked by the runtime before it accepts a task, so an unenforceable
+        bound is refused while the caller is still listening instead of
+        silently not being applied.  A container backend answers differently,
+        which is the whole reason the question is put to the backend.
+        """
+        return self.guardian.supports_limits()
+
     def execute(
         self,
         manifest: PluginManifest,
@@ -88,6 +99,7 @@ class ProcessAdapter:
         on_line: Callable[[str], None] | None = None,
         environment: Mapping[str, str] | None = None,
         allow_reserved_artifacts: bool = False,
+        limits: ResourceRequest | None = None,
     ) -> AdapterExecution:
         # ``allow_reserved_artifacts`` is the one authority the platform
         # grants to itself when it runs its own evaluator.  It is an explicit
@@ -123,6 +135,7 @@ class ProcessAdapter:
                                 manifest.default_timeout_seconds),
             cancel_requested=cancel_requested,
             on_line=on_line,
+            limits=limits,
         )
         ended_at = _now()
 
@@ -207,6 +220,17 @@ class ProcessAdapter:
                 started_at=started_at, ended_at=ended_at,
                 failure={"category": "timeout",
                          "message": "adapter deadline exceeded"},
+            )
+        if outcome.exceeded is not None:
+            # The platform decided this outcome, not the adapter, and the
+            # adapter's own result file is not read: a plugin that ignored its
+            # bounds does not get to report on them.  Not retryable, either --
+            # the same request against the same limits would breach them again.
+            return PluginResult(
+                status=RuntimeStatus.FAILED, exit_code=outcome.returncode,
+                started_at=started_at, ended_at=ended_at,
+                failure={"category": "resource_exceeded",
+                         "message": outcome.exceeded, "retryable": False},
             )
         if not path.is_file():
             raise AdapterProtocolError(

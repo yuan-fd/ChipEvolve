@@ -10,6 +10,10 @@ Two properties are non-negotiable and each has a test:
    enormously noisy process must not be able to outlive its budget.
 2. **The whole descendant tree dies, including children that called setsid().**
    A process that deliberately detaches is still ours to clean up.
+3. **A declared resource limit is enforced, or the task is refused.** A plugin
+   that grows without bound takes the machine from every other experiment on it,
+   so the caller may bound the attempt -- and a bound the platform cannot
+   measure is refused at submission rather than accepted and quietly ignored.
 
 On testing style: v1's timeout tests asserted that a bash child had written a
 pid file within a 250 ms window.  On a loaded machine bash sometimes needed
@@ -24,17 +28,28 @@ import os
 import queue
 import signal
 import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Sequence, TextIO
 
+from openroad_platform_contracts import ResourceRequest
+
 #: How long a child gets to exit after SIGTERM before SIGKILL.
 DEFAULT_TERMINATE_GRACE = 5.0
 
 #: How often the supervisor wakes to check the deadline and cancellation.
 DEFAULT_POLL_INTERVAL = 0.1
+
+#: How often the resource meter reads /proc.  Slower than the deadline poll on
+#: purpose: the deadline costs one comparison, while the meter costs two file
+#: reads per process in the tree, and this module already has one regression on
+#: record from walking /proc too eagerly on a busy EDA host.  Half a second is
+#: far below the timescale of a flow that grows from nothing to the whole
+#: machine, which is the failure this catches.
+DEFAULT_MEASURE_INTERVAL = 0.5
 
 #: Lines drained per wake-up.  Draining without a bound lets a permanently
 #: non-empty queue starve deadline enforcement; a permanently noisy process
@@ -52,6 +67,9 @@ class ProcessOutcome:
     seconds: float
     timed_out: bool = False
     cancelled: bool = False
+    #: Which declared limit the tree went past, named with the measurement and
+    #: the request.  ``None`` when nothing was declared or nothing was breached.
+    exceeded: str | None = None
 
 
 class ProcessGuardian:
@@ -59,13 +77,29 @@ class ProcessGuardian:
         self, *,
         poll_interval: float = DEFAULT_POLL_INTERVAL,
         terminate_grace: float = DEFAULT_TERMINATE_GRACE,
+        measure_interval: float = DEFAULT_MEASURE_INTERVAL,
     ):
         if poll_interval <= 0:
             raise ValueError("poll_interval must be positive")
         if terminate_grace <= 0:
             raise ValueError("terminate_grace must be positive")
+        if measure_interval <= 0:
+            raise ValueError("measure_interval must be positive")
         self.poll_interval = poll_interval
         self.terminate_grace = terminate_grace
+        self.measure_interval = measure_interval
+
+    @staticmethod
+    def supports_limits() -> bool:
+        """Whether this host can enforce an aggregate limit on a process tree.
+
+        Per-process rlimits would be available almost anywhere, but they bound a
+        different thing than the caller declared -- per-process rather than
+        per-tree CPU, virtual rather than resident memory -- so they are not
+        used here, and the honest answer for a host without ``/proc`` is that
+        the limit cannot be kept.
+        """
+        return sys.platform.startswith("linux") and Path("/proc").is_dir()
 
     def run(
         self,
@@ -77,9 +111,15 @@ class ProcessGuardian:
         env: Mapping[str, str] | None = None,
         cancel_requested: Callable[[], bool] | None = None,
         on_line: Callable[[str], None] | None = None,
+        limits: ResourceRequest | None = None,
     ) -> ProcessOutcome:
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
+        if limits is not None and limits.declared and not self.supports_limits():
+            raise ValueError(
+                "this host cannot measure a process tree, so the requested "
+                f"limits ({limits.describe()}) cannot be enforced"
+            )
 
         normalized = tuple(str(item) for item in command)
         path = Path(log_path)
@@ -87,6 +127,8 @@ class ProcessGuardian:
         started = time.monotonic()
         timed_out = False
         cancelled = False
+        exceeded: str | None = None
+        next_measurement = started
 
         with path.open("a", encoding="utf-8") as log:
             process = subprocess.Popen(
@@ -119,6 +161,14 @@ class ProcessGuardian:
                         timed_out = True
                         self._terminate_tree(process)
                         break
+                    now = time.monotonic()
+                    if (limits is not None and limits.declared
+                            and now >= next_measurement):
+                        next_measurement = now + self.measure_interval
+                        exceeded = self._breach(process.pid, limits)
+                        if exceeded is not None:
+                            self._terminate_tree(process)
+                            break
                     time.sleep(self.poll_interval)
             except BaseException:
                 # An interrupted controller must not orphan a many-core job.
@@ -140,6 +190,8 @@ class ProcessGuardian:
                 )
             if cancelled:
                 log.write("\n[guardian] cancellation requested\n")
+            if exceeded is not None:
+                log.write(f"\n[guardian] resource limit exceeded: {exceeded}\n")
             log.flush()
 
         return ProcessOutcome(
@@ -148,6 +200,7 @@ class ProcessGuardian:
             seconds=time.monotonic() - started,
             timed_out=timed_out,
             cancelled=cancelled,
+            exceeded=exceeded,
         )
 
     # -- output ------------------------------------------------------------
@@ -197,6 +250,72 @@ class ProcessGuardian:
                             f"{type(exc).__name__}: {exc}\n"
                         )
         return count
+
+    # -- resource metering -------------------------------------------------
+
+    def _breach(self, root_pid: int, limits: ResourceRequest) -> str | None:
+        """Which declared limit the tree is past, or ``None``.
+
+        Process count is checked first because it is the cheapest to see and the
+        one a runaway driver breaks first; the message names both the
+        measurement and the request, because "limit exceeded" without the two
+        numbers is not something an operator can act on.
+        """
+        processes, cpu_seconds, memory_bytes = self.measure(root_pid)
+        if limits.processes is not None and processes > limits.processes:
+            return (
+                f"processes: the tree held {processes}, above the requested "
+                f"{limits.processes}"
+            )
+        if limits.cpu_seconds is not None and cpu_seconds > limits.cpu_seconds:
+            return (
+                f"cpu_seconds: the tree used {cpu_seconds:.2f}s, above the "
+                f"requested {limits.cpu_seconds:g}s"
+            )
+        if limits.memory_bytes is not None and memory_bytes > limits.memory_bytes:
+            return (
+                f"memory_bytes: the tree held {memory_bytes} bytes resident, "
+                f"above the requested {limits.memory_bytes}"
+            )
+        return None
+
+    def measure(self, root_pid: int) -> tuple[int, float, int]:
+        """The tree's process count, CPU seconds and resident bytes.
+
+        Aggregate, not per-process, because that is what the caller declared:
+        an EDA flow is usually one process that grows, or a driver that spawns
+        hundreds, and a per-process reading misses the second case entirely.
+
+        ``cutime`` and ``cstime`` are added to every live process's own CPU
+        because a reaped child's time moves into its parent and would otherwise
+        vanish from the total the moment the child exits -- which is exactly
+        when a flow that forks per stage spends most of its CPU.
+        """
+        ticks = _sysconf("SC_CLK_TCK", 100)
+        page = _sysconf("SC_PAGE_SIZE", 4096)
+        processes = 0
+        cpu_ticks = 0
+        resident_pages = 0
+        for pid in self._process_tree(root_pid):
+            try:
+                stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+                tail = stat[stat.rfind(")") + 2:].split()
+                if not tail or tail[0] == "Z":
+                    # A zombie holds no memory and no future CPU.
+                    continue
+                cpu_ticks += sum(int(tail[index]) for index in (11, 12, 13, 14))
+                statm = Path(f"/proc/{pid}/statm").read_text(
+                    encoding="utf-8"
+                ).split()
+                resident_pages += int(statm[1])
+                processes += 1
+            except (FileNotFoundError, PermissionError, ProcessLookupError,
+                    ValueError, IndexError, OSError):
+                # A process that exits mid-walk is not an error; the next
+                # measurement will not see it, and this one is still a truthful
+                # lower bound.
+                continue
+        return processes, cpu_ticks / ticks, resident_pages * page
 
     # -- process tree ------------------------------------------------------
 
@@ -317,3 +436,16 @@ class ProcessGuardian:
                 os.killpg(group, signum)
             except (ProcessLookupError, PermissionError, OSError):
                 pass
+
+
+def _sysconf(name: str, fallback: int) -> int:
+    """A sysconf value, or a documented fallback.
+
+    Only the fallback is documented here because the values are only used to
+    turn counts into seconds and bytes for a limit comparison; a host that
+    cannot report them is a host where ``supports_limits`` is already false.
+    """
+    try:
+        return int(os.sysconf(name))
+    except (ValueError, OSError, AttributeError):  # pragma: no cover
+        return fallback
