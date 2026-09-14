@@ -82,21 +82,167 @@ def test_a_newer_schema_version_is_refused(tmp_path: Path):
         RuntimeStore(path)
 
 
-def test_an_older_schema_is_migrated_rather_than_refused(tmp_path: Path):
-    """An upgrade must not cost the runs already recorded.
+#: `runtime_artifacts` as the build before the object store wrote it: no
+#: ``storage`` column, because there was only one place bytes could be.
+ARTIFACTS_BEFORE_THE_OBJECT_STORE = """
+CREATE TABLE runtime_artifacts (
+    artifact_id TEXT PRIMARY KEY,
+    attempt_id TEXT NOT NULL REFERENCES runtime_attempts(attempt_id),
+    kind TEXT NOT NULL,
+    store_key TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL CHECK(size_bytes >= 0),
+    sha256 TEXT NOT NULL,
+    metadata_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(attempt_id, store_key)
+)
+"""
 
-    The migration is exercised by stripping the table this build added and
-    setting the version back, which is exactly the state a root written by the
-    previous build is in.
+
+def make_root_look_older(path: Path, *, version: str = "1") -> None:
+    """Put a state root back in the shape an earlier build wrote.
+
+    Reshaping is the point: a migration that is only ever exercised against a
+    root this build just made is not being tested at all.  Which tables exist
+    depends on how far back the version goes -- ``runtime_inputs`` arrived at 2,
+    ``storage`` at 3 -- so the fixture removes exactly what that build had not
+    yet written.
     """
     import sqlite3
 
+    statements = []
+    if int(version) < 2:
+        statements.append("DROP TABLE runtime_inputs;")
+    elif int(version) < 3:
+        # `runtime_inputs` existed at 2 but carried a NOT NULL source and knew
+        # nothing about artifact references.
+        statements.append(
+            "ALTER TABLE runtime_inputs RENAME TO runtime_inputs_old;"
+            "CREATE TABLE runtime_inputs ("
+            " attempt_id TEXT NOT NULL REFERENCES runtime_attempts(attempt_id),"
+            " destination TEXT NOT NULL,"
+            " source TEXT NOT NULL,"
+            " present INTEGER NOT NULL CHECK(present IN (0, 1)),"
+            " size_bytes INTEGER NOT NULL CHECK(size_bytes >= 0),"
+            " sha256 TEXT,"
+            " created_at TEXT NOT NULL,"
+            " PRIMARY KEY (attempt_id, destination));"
+            "INSERT INTO runtime_inputs (attempt_id, destination, source,"
+            " present, size_bytes, sha256, created_at)"
+            " SELECT attempt_id, destination, source, present, size_bytes,"
+            " sha256, created_at FROM runtime_inputs_old;"
+            "DROP TABLE runtime_inputs_old;"
+        )
+    statements.extend([
+        "ALTER TABLE runtime_artifacts RENAME TO runtime_artifacts_current;",
+        ARTIFACTS_BEFORE_THE_OBJECT_STORE + ";",
+        "INSERT INTO runtime_artifacts (artifact_id, attempt_id, kind, store_key,"
+        " size_bytes, sha256, metadata_json, created_at)"
+        " SELECT artifact_id, attempt_id, kind, store_key, size_bytes, sha256,"
+        " metadata_json, created_at FROM runtime_artifacts_current;",
+        "DROP TABLE runtime_artifacts_current;",
+        f"UPDATE runtime_schema_meta SET value = '{version}'"
+        " WHERE key = 'schema_version';",
+    ])
+    connection = sqlite3.connect(str(path))
+    connection.executescript("".join(statements))
+    connection.commit()
+    connection.close()
+
+
+def test_an_older_schema_is_migrated_rather_than_refused(tmp_path: Path):
+    """An upgrade must not cost the runs already recorded."""
     from openroad_platform_runtime.store import RUNTIME_SCHEMA_VERSION
 
     path = tmp_path / "r.db"
     store = RuntimeStore(path)
     run = submit(store)
     store.close()
+    make_root_look_older(path)
+
+    migrated = RuntimeStore(path)
+    try:
+        assert migrated.get_run(run.run_id).task_id == run.task_id
+        recorded = migrated._connection.execute(
+            "SELECT value FROM runtime_schema_meta WHERE key = 'schema_version'"
+        ).fetchone()
+        assert recorded["value"] == str(RUNTIME_SCHEMA_VERSION)
+    finally:
+        migrated.close()
+
+
+def test_an_artifact_from_before_the_object_store_is_still_readable(tmp_path):
+    """Old evidence must survive the upgrade, not merely not crash it.
+
+    Artifacts registered by the previous build have their bytes in an attempt
+    workspace and no object beside the database.  The migration has to say so
+    rather than assume the new layout, because assuming is how a state root ends
+    up full of artifacts that cannot be read.
+    """
+    import sqlite3
+
+    path = tmp_path / "r.db"
+    workspace = tmp_path / "old-workspace"
+    workspace.mkdir()
+    payload = b'{"area_um2": 1234.5}'
+    (workspace / "report.json").write_bytes(payload)
+    digest = hashlib.sha256(payload).hexdigest()
+
+    store = RuntimeStore(path)
+    run = submit(store)
+    stage = store.list_stages(run.run_id)[0]
+    store.close()
+
+    make_root_look_older(path, version="2")
+
+    # Now write the row the way that earlier build wrote it: no storage column
+    # to say where the bytes are, because there was nowhere else they could be.
+    connection = sqlite3.connect(str(path))
+    connection.execute(
+        "INSERT INTO runtime_attempts (attempt_id, stage_run_id, "
+        "attempt_number, status, workspace, worker_id, started_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("att-old", stage.stage_run_id, 1, "succeeded", str(workspace),
+         "w", "2026-01-01T00:00:00+00:00"),
+    )
+    connection.execute(
+        "INSERT INTO runtime_artifacts (artifact_id, attempt_id, kind, store_key,"
+        " size_bytes, sha256, metadata_json, created_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ("art-old", "att-old", "report", "report.json", len(payload), digest,
+         "{}", "2026-01-01T00:00:00+00:00"),
+    )
+    connection.commit()
+    connection.close()
+
+    migrated = RuntimeStore(path)
+    try:
+        assert migrated.artifact_path("art-old") == workspace / "report.json"
+        stored = migrated._connection.execute(
+            "SELECT storage FROM runtime_artifacts WHERE artifact_id = 'art-old'"
+        ).fetchone()
+        assert stored["storage"] == "workspace"
+        view = migrated.describe_run(run.run_id)
+        assert view["stages"][0]["attempts"][0]["artifacts"][0]["storage"] == (
+            "workspace"
+        )
+    finally:
+        migrated.close()
+
+
+def test_the_migration_survives_being_interrupted_midway(tmp_path: Path):
+    """DDL commits as it goes, so a half-migrated root must still open.
+
+    The version is left behind deliberately: that is the state a crash between
+    the schema change and the version update leaves, and reopening it must not
+    die on a column that is already there.
+    """
+    path = tmp_path / "r.db"
+    store = RuntimeStore(path)
+    run = submit(store)
+    store.close()
+
+    import sqlite3
 
     connection = sqlite3.connect(str(path))
     connection.execute("DROP TABLE runtime_inputs")
@@ -109,10 +255,6 @@ def test_an_older_schema_is_migrated_rather_than_refused(tmp_path: Path):
     migrated = RuntimeStore(path)
     try:
         assert migrated.get_run(run.run_id).task_id == run.task_id
-        recorded = migrated._connection.execute(
-            "SELECT value FROM runtime_schema_meta WHERE key = 'schema_version'"
-        ).fetchone()
-        assert recorded["value"] == str(RUNTIME_SCHEMA_VERSION)
     finally:
         migrated.close()
 
@@ -535,3 +677,70 @@ def test_the_store_refuses_an_input_record_it_did_not_measure(store):
                         size_bytes=1),
         ])
     assert store.list_inputs(attempt.attempt_id) == []
+
+
+def test_identical_bytes_are_stored_once(store, tmp_path: Path):
+    """Content addressing, which is the whole reason the store is named for the
+    digest: a flow that emits the same report every run should cost one copy."""
+    payload = b'{"area_um2": 1234.5}'
+    digest = hashlib.sha256(payload).hexdigest()
+
+    artifact_ids = []
+    for number in (1, 2):
+        run = submit(store, task_id=f"task-{number}")
+        stage = store.list_stages(run.run_id)[0]
+        workspace = tmp_path / f"ws{number}"
+        workspace.mkdir()
+        (workspace / "report.json").write_bytes(payload)
+        attempt = store.start_attempt(
+            stage.stage_run_id, worker_id="w", workspace=str(workspace),
+            lease_seconds=30,
+        )
+        artifact_ids.extend(store.register_artifacts(
+            attempt.attempt_id, workspace,
+            [{"kind": "report", "store_key": "report.json"}],
+        ))
+
+    first, second = artifact_ids
+    assert store.get_artifact(first).sha256 == digest
+    assert store.get_artifact(second).sha256 == digest
+    # One object, reached from both records.
+    assert store.artifact_path(first) == store.artifact_path(second)
+    assert store.object_path(digest).is_file()
+    assert sorted(p.name for p in store.objects_root.glob("*/*")) == [digest]
+
+
+def test_an_input_from_before_the_object_store_survives_the_upgrade(tmp_path):
+    """The rebuilt `runtime_inputs` must keep its rows, with no artifact id.
+
+    The rebuild is the one migration step that is not additive, so it is the one
+    most worth a test: a copy that silently dropped rows would leave a run whose
+    inputs vanished from its own record.
+    """
+    import sqlite3
+
+    path = tmp_path / "r.db"
+    store = RuntimeStore(path)
+    run = submit(store)
+    stage = store.list_stages(run.run_id)[0]
+    attempt = store.start_attempt(
+        stage.stage_run_id, worker_id="w", workspace=str(tmp_path / "ws"),
+        lease_seconds=30,
+    )
+    store.record_inputs(attempt.attempt_id, [
+        StagedInput(destination="a.v", source="/data/a.v", present=True,
+                    size_bytes=3, sha256="a" * 64),
+    ])
+    store.close()
+
+    make_root_look_older(path, version="2")
+
+    migrated = RuntimeStore(path)
+    try:
+        recorded = migrated.list_inputs(attempt.attempt_id)
+        assert len(recorded) == 1
+        assert recorded[0].source == "/data/a.v"
+        assert recorded[0].source_artifact_id is None
+        assert recorded[0].sha256 == "a" * 64
+    finally:
+        migrated.close()

@@ -8,6 +8,7 @@ number stored through it becomes worthless.
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -346,13 +347,43 @@ def test_reading_a_registered_artifact_re_verifies_its_hash(tmp_path):
     )
     assert "area_um2" in excerpt["text"]
 
-    # Editing the file behind the runtime's back must be detected, not served.
-    path = Path(attempt["workspace"]) / report["store_key"]
-    path.write_text("tampered", encoding="utf-8")
+    # Editing the copy in the workspace no longer changes what is served: the
+    # artifact was taken into the object store at registration, and the
+    # workspace is scratch from that moment on.
+    (Path(attempt["workspace"]) / report["store_key"]).write_text(
+        "tampered", encoding="utf-8"
+    )
+    assert "area_um2" in rt.read_artifact_excerpt(
+        run.run_id, report["artifact_id"], offset=0, max_bytes=1024
+    )["text"]
+
+    # Editing the object behind the runtime's back is still detected, not served.
+    obj = rt.store.object_path(report["sha256"])
+    assert obj.is_file()
+    obj.write_text("tampered", encoding="utf-8")
     with pytest.raises(RuntimeStoreError, match="changed after registration"):
         rt.read_artifact_excerpt(
             run.run_id, report["artifact_id"], offset=0, max_bytes=1024
         )
+
+
+def test_an_artifact_outlives_the_workspace_that_produced_it(tmp_path):
+    """The point of taking custody: an artifact is not a scratch file.
+
+    Until the object store existed the bytes lived in the attempt workspace, so
+    a run's evidence was as durable as a directory nobody was managing.
+    """
+    rt = runtime(tmp_path, manifest())
+    run = rt.submit(task("ok"))
+    rt.execute_once(run.run_id)
+    attempt = rt.describe(run.run_id)["stages"][0]["attempts"][0]
+    report = next(a for a in attempt["artifacts"] if a["kind"] == "report")
+
+    shutil.rmtree(attempt["workspace"])
+    excerpt = rt.read_artifact_excerpt(
+        run.run_id, report["artifact_id"], offset=0, max_bytes=1024
+    )
+    assert "area_um2" in excerpt["text"]
 
 
 def test_artifact_excerpt_bounds_are_enforced(tmp_path):

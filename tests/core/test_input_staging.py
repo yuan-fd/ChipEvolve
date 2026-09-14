@@ -8,6 +8,7 @@ measured can.  Every test here is a way that claim could be false.
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -50,7 +51,10 @@ def manifest(**overrides) -> PluginManifest:
         adapter_entry=(sys.executable, str(FIXTURE)),
         capabilities=("do.thing",),
         supported_arch=("aarch64", "x86_64", "arm64"),
-        artifact_rules=({"kind": "report", "required": True},),
+        artifact_rules=(
+            {"kind": "report", "required": True},
+            {"kind": "log", "required": False},
+        ),
         default_timeout_seconds=60,
     )
     base.update(overrides)
@@ -342,3 +346,108 @@ def test_resubmitting_under_the_same_task_id_with_changed_inputs_is_refused(
     assert rt.submit_idempotent(task(
         "idem", InputFile(source=str(source), destination="design.v"),
     )).run_id is not None
+
+
+# --------------------------------------------------------------------------
+# an input may come from an artifact the platform already holds
+# --------------------------------------------------------------------------
+
+def produce_a_report(rt: WorkflowRuntime, name: str):
+    """Run the fake capability and hand back the artifact it produced."""
+    run = run_to_completion(rt, task(name))
+    attempt = only_attempt(rt, run.run_id)
+    report = next(
+        a for a in rt.store.list_artifacts(attempt.attempt_id)
+        if a.kind == "report"
+    )
+    return run, attempt, report
+
+
+def test_an_input_can_be_an_artifact_another_run_produced(tmp_path):
+    """The point of the pair: one run consumes what another produced, with no
+    filesystem path passing between them and no re-measuring from a host."""
+    rt = runtime(tmp_path)
+    _, _, report = produce_a_report(rt, "producer")
+
+    run = run_to_completion(rt, task(
+        "consumer",
+        InputFile(destination="previous/report.json",
+                  artifact_id=report.artifact_id),
+    ))
+    attempt = only_attempt(rt, run.run_id)
+
+    landed = Path(attempt.workspace) / "previous/report.json"
+    assert landed.is_file()
+
+    recorded = rt.store.list_inputs(attempt.attempt_id)[0]
+    assert recorded.source_artifact_id == report.artifact_id
+    assert recorded.source is None
+    assert recorded.sha256 == report.sha256
+    assert recorded.size_bytes == report.size_bytes
+
+
+def test_a_referenced_artifact_survives_the_workspace_that_made_it(tmp_path):
+    """Two runs chained through the object store, after the first is gone.
+
+    If a reference were resolved through the producer's workspace this is where
+    it would break, and it would break for every run whose scratch directory had
+    been cleaned up -- which is all of them, eventually.
+    """
+    rt = runtime(tmp_path)
+    _, producer_attempt, report = produce_a_report(rt, "chained-producer")
+    shutil.rmtree(producer_attempt.workspace)
+
+    run = run_to_completion(rt, task(
+        "chained-consumer",
+        InputFile(destination="in/report.json", artifact_id=report.artifact_id),
+    ))
+    attempt = only_attempt(rt, run.run_id)
+    assert run.status is RuntimeStatus.SUCCEEDED
+    assert (Path(attempt.workspace) / "in/report.json").is_file()
+
+
+def test_an_unknown_artifact_id_is_refused_at_submission(tmp_path):
+    rt = runtime(tmp_path)
+    with pytest.raises(InputStagingError, match="does not have"):
+        rt.submit(task(
+            "dangling",
+            InputFile(destination="in.json", artifact_id="art-does-not-exist"),
+        ))
+    assert rt.store.find_run_by_task_id("task-dangling") is None
+
+
+def test_a_reference_whose_bytes_have_gone_fails_the_attempt(tmp_path):
+    """The digest is checked as the bytes are copied, so a corrupt store is a
+    failure rather than a run that silently reads the wrong design."""
+    rt = runtime(tmp_path)
+    _, _, report = produce_a_report(rt, "corrupt-producer")
+    rt.store.object_path(report.sha256).write_bytes(b"not the report any more")
+
+    spec = task(
+        "corrupt-consumer",
+        InputFile(destination="in/report.json", artifact_id=report.artifact_id),
+    )
+    run = rt.submit(spec)
+    finished = rt.execute_once(run.run_id)
+
+    assert finished.status is RuntimeStatus.FAILED
+    failure = only_attempt(rt, run.run_id).failure
+    assert "does not match its own record" in failure["message"]
+
+
+def test_an_absent_optional_artifact_reference_is_not_an_error(tmp_path):
+    """A reference to bytes that are gone is optional if the task says so."""
+    rt = runtime(tmp_path)
+    _, _, report = produce_a_report(rt, "optional-producer")
+    rt.store.object_path(report.sha256).unlink()
+
+    run = run_to_completion(rt, task(
+        "optional-consumer",
+        InputFile(destination="in/report.json", artifact_id=report.artifact_id,
+                  required=False),
+    ))
+    assert run.status is RuntimeStatus.SUCCEEDED
+    recorded = rt.store.list_inputs(only_attempt(rt, run.run_id).attempt_id)[0]
+    assert recorded.present is False
+    assert recorded.source_artifact_id == report.artifact_id
+    assert recorded.sha256 is None
