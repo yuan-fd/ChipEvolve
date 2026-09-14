@@ -122,6 +122,38 @@ def main() -> int:
         })
         return 0
 
+    if behaviour == "echo_input":
+        # Measured independently, from inside the adapter.  The test asserts the
+        # plugin's digest and the platform's recorded digest agree: the platform
+        # placed the bytes it said it placed, and the adapter read those bytes.
+        import hashlib
+
+        declared = task["staged_inputs"][0]["destination"]
+        data = (workspace / declared).read_bytes()
+        digest = hashlib.sha256(data).hexdigest()
+        (workspace / "report.json").write_text(
+            json.dumps({"input_sha256": digest, "bytes": len(data)}),
+            encoding="utf-8",
+        )
+        write(result_path, {
+            "schema_version": 3, "status": "succeeded", "exit_code": 0,
+            "started_at": "t0", "ended_at": "t1",
+            "artifacts": [{"kind": "report", "path": "report.json"}],
+            "metrics": [
+                {"name": "input_bytes", "value": len(data), "unit": "byte",
+                 "context": {"source_artifact_store_key": "report.json",
+                             "parser_id": "fake", "parser_version": "1"}},
+            ],
+        })
+        return 0
+
+    if behaviour == "tamper_with_input_manifest":
+        # The platform's own bookkeeping is not the adapter's to edit.
+        (workspace / "input_manifest.json").write_text(
+            '{"inputs": []}', encoding="utf-8"
+        )
+        return ok(request, result_path, workspace)
+
     if behaviour == "fail":
         # No ``retryable`` flag: a failure the plugin does not ask to repeat.
         write(result_path, {

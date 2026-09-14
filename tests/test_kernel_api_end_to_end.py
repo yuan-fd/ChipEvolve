@@ -299,6 +299,27 @@ def test_an_unknown_plugin_is_refused_as_a_bad_request(platform):
     assert "unknown plugin" in str(caught.value)
 
 
+def test_a_task_with_a_missing_input_is_refused_as_a_bad_request(platform):
+    """Same reasoning as an unknown plugin: the caller's request is wrong.
+
+    The alternative is a 201 followed by a run that fails a moment later, which
+    reports the same fact at the worst possible time -- after the caller stopped
+    listening.
+    """
+    client, _ = platform
+    client.register("alice", "a long enough password")
+    with pytest.raises(KernelError) as caught:
+        client.submit({
+            "schema_version": 3, "task_id": "x", "project_id": "p",
+            "design_id": "d", "plugin_id": "example-reporter", "inputs": {},
+            "staged_inputs": [
+                {"source": "/nowhere/at/all.v", "destination": "design.v"},
+            ],
+        })
+    assert caught.value.status == 400
+    assert "not a readable file" in str(caught.value)
+
+
 def test_an_invalid_task_is_a_400(platform):
     client, _ = platform
     client.register("alice", "a long enough password")

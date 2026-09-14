@@ -14,8 +14,10 @@ import pytest
 
 from openroad_platform_contracts import (
     AttemptStatus,
+    ContractError,
     Metric,
     RuntimeStatus,
+    StagedInput,
     TaskSpec,
 )
 from openroad_platform_runtime.store import (
@@ -57,7 +59,14 @@ def test_reopening_the_same_database_is_fine(tmp_path: Path):
     RuntimeStore(path).close()
 
 
-def test_a_foreign_schema_version_is_refused(tmp_path: Path):
+def test_a_newer_schema_version_is_refused(tmp_path: Path):
+    """A root written by a later build is refused, not guessed at.
+
+    This used to be "any other version", including an older one.  Refusing an
+    older root costs the run history of every upgrade, so older roots are
+    migrated instead -- and a newer one must still stop the build, because this
+    build cannot know what a later one wrote.
+    """
     import sqlite3
 
     path = tmp_path / "r.db"
@@ -69,7 +78,58 @@ def test_a_foreign_schema_version_is_refused(tmp_path: Path):
     )
     connection.commit()
     connection.close()
-    with pytest.raises(RuntimeStoreError, match="unsupported runtime schema"):
+    with pytest.raises(RuntimeStoreError, match="written by a newer build"):
+        RuntimeStore(path)
+
+
+def test_an_older_schema_is_migrated_rather_than_refused(tmp_path: Path):
+    """An upgrade must not cost the runs already recorded.
+
+    The migration is exercised by stripping the table this build added and
+    setting the version back, which is exactly the state a root written by the
+    previous build is in.
+    """
+    import sqlite3
+
+    from openroad_platform_runtime.store import RUNTIME_SCHEMA_VERSION
+
+    path = tmp_path / "r.db"
+    store = RuntimeStore(path)
+    run = submit(store)
+    store.close()
+
+    connection = sqlite3.connect(str(path))
+    connection.execute("DROP TABLE runtime_inputs")
+    connection.execute(
+        "UPDATE runtime_schema_meta SET value = '1' WHERE key = 'schema_version'"
+    )
+    connection.commit()
+    connection.close()
+
+    migrated = RuntimeStore(path)
+    try:
+        assert migrated.get_run(run.run_id).task_id == run.task_id
+        recorded = migrated._connection.execute(
+            "SELECT value FROM runtime_schema_meta WHERE key = 'schema_version'"
+        ).fetchone()
+        assert recorded["value"] == str(RUNTIME_SCHEMA_VERSION)
+    finally:
+        migrated.close()
+
+
+def test_a_schema_version_that_is_not_a_number_is_refused(tmp_path: Path):
+    import sqlite3
+
+    path = tmp_path / "r.db"
+    store = RuntimeStore(path)
+    store.close()
+    connection = sqlite3.connect(str(path))
+    connection.execute(
+        "UPDATE runtime_schema_meta SET value = 'two' WHERE key = 'schema_version'"
+    )
+    connection.commit()
+    connection.close()
+    with pytest.raises(RuntimeStoreError, match="not a number"):
         RuntimeStore(path)
 
 
@@ -416,3 +476,62 @@ def test_a_retry_is_refused_when_the_stage_is_not_running(
     stage = store.list_stages(run.run_id)[0]
     with pytest.raises(InvalidTransition):
         store.schedule_retry(run.run_id, stage.stage_run_id, reason="x")
+
+
+# --------------------------------------------------------------------------
+# staged inputs
+# --------------------------------------------------------------------------
+
+def test_inputs_are_recorded_against_the_attempt_that_read_them(store):
+    run = submit(store)
+    stage = store.list_stages(run.run_id)[0]
+    attempt = store.start_attempt(
+        stage.stage_run_id, worker_id="w", workspace="/tmp/ws",
+        lease_seconds=30,
+    )
+    store.record_inputs(attempt.attempt_id, [
+        StagedInput(destination="b.v", source="/data/b.v", present=True,
+                    size_bytes=2, sha256="b" * 64),
+        StagedInput(destination="a.v", source="/data/a.v", present=True,
+                    size_bytes=1, sha256="a" * 64),
+    ])
+    # Ordered by destination, so a reader does not depend on insertion order.
+    assert [i.destination for i in store.list_inputs(attempt.attempt_id)] == [
+        "a.v", "b.v",
+    ]
+
+
+def test_an_absent_input_is_stored_without_a_digest(store):
+    run = submit(store)
+    stage = store.list_stages(run.run_id)[0]
+    attempt = store.start_attempt(
+        stage.stage_run_id, worker_id="w", workspace="/tmp/ws",
+        lease_seconds=30,
+    )
+    store.record_inputs(attempt.attempt_id, [
+        StagedInput(destination="maybe.sdc", source="/data/maybe.sdc",
+                    present=False, size_bytes=0),
+    ])
+    recorded = store.list_inputs(attempt.attempt_id)[0]
+    assert recorded.present is False
+    assert recorded.sha256 is None
+
+
+def test_the_store_refuses_an_input_record_it_did_not_measure(store):
+    """A digest is the platform's measurement, so a malformed one is refused.
+
+    The runtime is the only writer, and validation here is what keeps that
+    claim true if a second caller ever appears.
+    """
+    run = submit(store)
+    stage = store.list_stages(run.run_id)[0]
+    attempt = store.start_attempt(
+        stage.stage_run_id, worker_id="w", workspace="/tmp/ws",
+        lease_seconds=30,
+    )
+    with pytest.raises(ContractError, match="needs a sha256"):
+        store.record_inputs(attempt.attempt_id, [
+            StagedInput(destination="a.v", source="/data/a.v", present=True,
+                        size_bytes=1),
+        ])
+    assert store.list_inputs(attempt.attempt_id) == []
