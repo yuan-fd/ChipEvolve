@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import platform
+import shutil
 import socket
 import time
 import uuid
@@ -37,11 +38,15 @@ from typing import Any, Callable, Protocol
 from openroad_platform_contracts import (
     AttemptStatus,
     EvaluationRequest,
+    INPUT_MANIFEST_FILENAME,
+    INPUT_MANIFEST_KIND,
     Metric,
     PluginManifest,
     PluginResult,
     ProtectedEvaluator,
     RuntimeStatus,
+    SCHEMA_VERSION,
+    StagedInput,
     TaskSpec,
     Verdict,
     VerdictStatus,
@@ -59,6 +64,16 @@ from .store import (
     RuntimeStoreError,
     StageRun,
 )
+
+
+class InputStagingError(RuntimeError):
+    """The platform could not put a declared input where the task said.
+
+    A caller error, not a plugin's: the task named bytes that are not there, or
+    named them at a path the platform may not use.  Reported before a run exists
+    so the caller is told their request is wrong rather than handed a run that
+    is about to fail.
+    """
 
 
 class ManifestResolver(Protocol):
@@ -131,6 +146,7 @@ class WorkflowRuntime:
         capability: str | None = None,
     ) -> RunRecord:
         task.validate()
+        self._check_inputs(task)
         if task.plugin_id is None:
             raise ValueError("this runtime executes direct plugin tasks only")
         manifest = self.resolver.resolve(
@@ -153,6 +169,7 @@ class WorkflowRuntime:
         overwrite.
         """
         task.validate()
+        self._check_inputs(task)
         if task.plugin_id is None:
             raise ValueError("this runtime executes direct plugin tasks only")
         manifest = self.resolver.resolve(
@@ -177,6 +194,96 @@ class WorkflowRuntime:
                 f"{stage.plugin_version!r}"
             )
         return existing
+
+    # -- inputs -----------------------------------------------------------
+
+    @staticmethod
+    def _check_inputs(task: TaskSpec) -> None:
+        """Refuse a task whose required inputs are not there.
+
+        A ``stat``, not a digest: the point is to tell the caller their request
+        is wrong while they are still listening.  The bytes are measured later,
+        as they are copied, because that copy is what the adapter will read.
+        The file may still vanish in between -- and then the attempt fails with
+        a recorded reason, which is the honest outcome rather than a guarantee
+        this platform cannot make.
+        """
+        for declaration in task.staged_inputs:
+            if declaration.required and not Path(declaration.source).is_file():
+                raise InputStagingError(
+                    f"required input is not a readable file: "
+                    f"{declaration.source!r} (declared as "
+                    f"{declaration.destination!r})"
+                )
+
+    def _stage_inputs(
+        self, task: TaskSpec, workspace: Path
+    ) -> tuple[tuple[StagedInput, ...], dict[str, Any] | None]:
+        """Place the declared inputs in the workspace and measure what landed.
+
+        Copy, not link.  A hardlink would let an adapter corrupt the caller's
+        original *through its own input*, and a symlink would let it read
+        outside the workspace -- and there is no sandbox to stop either.  The
+        honest cost is one copy per attempt rather than one per run; it is
+        recorded here instead of being discovered when the first large design
+        arrives.
+
+        The digest is taken from the destination, not the source, for the same
+        reason ``register_artifacts`` hashes what is on disk: a hash of what was
+        *supposed* to be copied would verify the intention, not the bytes.
+        """
+        if not task.staged_inputs:
+            return (), None
+
+        staged: list[StagedInput] = []
+        for declaration in task.staged_inputs:
+            source = Path(declaration.source)
+            if not source.is_file():
+                if declaration.required:
+                    raise InputStagingError(
+                        f"required input disappeared before it could be staged: "
+                        f"{declaration.source!r}"
+                    )
+                staged.append(StagedInput(
+                    destination=declaration.destination,
+                    source=declaration.source, present=False, size_bytes=0,
+                ))
+                continue
+            destination = workspace / declaration.destination
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, destination)
+            staged.append(StagedInput(
+                destination=declaration.destination,
+                source=declaration.source, present=True,
+                size_bytes=destination.stat().st_size,
+                sha256=sha256(destination),
+            ))
+
+        manifest_path = workspace / INPUT_MANIFEST_FILENAME
+        manifest_path.write_text(json.dumps({
+            "schema_version": SCHEMA_VERSION,
+            # An identity document, not an audit record.  Where a file happened
+            # to live is not part of what it is: two runs that read the same
+            # bytes into the same destinations are running the same design even
+            # if one caller kept it under /tmp and the other on a shared volume.
+            # Including the source would make those two manifests differ, and
+            # the digest would then measure the caller's filing habits.  The
+            # source is recorded in ``runtime_inputs``, where it is provenance.
+            "inputs": [
+                {"destination": item.destination, "present": item.present,
+                 "size_bytes": item.size_bytes, "sha256": item.sha256}
+                for item in staged
+            ],
+        }, indent=2, sort_keys=True), encoding="utf-8")
+        return tuple(staged), {
+            "path": manifest_path,
+            "sha256": sha256(manifest_path),
+            "declaration": {
+                "kind": INPUT_MANIFEST_KIND,
+                "path": manifest_path.name,
+                "metadata": {"producer": "runtime"},
+            },
+        }
 
     # -- execution --------------------------------------------------------
 
@@ -269,6 +376,14 @@ class WorkflowRuntime:
         environment = dict(
             self.environment_resolver(run) if self.environment_resolver else {}
         )
+        # Staged before anything else runs, and recorded before the adapter
+        # starts: what an attempt was given is evidence even if the adapter
+        # then crashes, and a failed attempt that read the wrong design is
+        # exactly the case where that evidence matters most.
+        staged_inputs, input_manifest = self._stage_inputs(
+            run.task_spec, workspace
+        )
+        self.store.record_inputs(attempt.attempt_id, staged_inputs)
         receipt = self._write_protocol_receipt(
             manifest, run, attempt, workspace, environment
         )
@@ -279,14 +394,23 @@ class WorkflowRuntime:
         )
         self._reject_forged_authority(execution)
 
-        if receipt is not None and receipt["sha256"] != sha256(receipt["path"]):
-            raise RuntimeStoreError("adapter modified the runtime protocol receipt")
+        for written in (receipt, input_manifest):
+            if written is not None and written["sha256"] != sha256(written["path"]):
+                raise RuntimeStoreError(
+                    f"adapter modified the platform's own "
+                    f"{written['declaration']['kind']}"
+                )
 
-        # The receipt is the platform's own bookkeeping, so it is the one
-        # caller allowed to register a reserved kind.
+        # The receipt and the input manifest are the platform's own
+        # bookkeeping, so they are the only declarations allowed to carry a
+        # reserved kind.
         runtime_artifacts = validate_artifact_declarations(
             workspace, manifest,
-            (receipt["declaration"],) if receipt is not None else (),
+            tuple(
+                written["declaration"]
+                for written in (input_manifest, receipt)
+                if written is not None
+            ),
             expected_kinds=(), require_expected=False, allow_reserved=True,
         )
         evaluator_artifacts = self._evaluate(

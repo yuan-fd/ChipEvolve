@@ -33,13 +33,14 @@ from openroad_platform_contracts import (
     Metric,
     PluginResult,
     RuntimeStatus,
+    StagedInput,
     TaskSpec,
     attempt_transition_allowed,
     is_terminal,
     run_transition_allowed,
 )
 
-RUNTIME_SCHEMA_VERSION = 1
+RUNTIME_SCHEMA_VERSION = 2
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS runtime_schema_meta (
@@ -109,6 +110,16 @@ CREATE TABLE IF NOT EXISTS runtime_metrics (
     context_json TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS runtime_inputs (
+    attempt_id TEXT NOT NULL REFERENCES runtime_attempts(attempt_id),
+    destination TEXT NOT NULL,
+    source TEXT NOT NULL,
+    present INTEGER NOT NULL CHECK(present IN (0, 1)),
+    size_bytes INTEGER NOT NULL CHECK(size_bytes >= 0),
+    sha256 TEXT,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (attempt_id, destination)
+);
 CREATE TABLE IF NOT EXISTS runtime_events (
     event_id TEXT PRIMARY KEY,
     run_id TEXT NOT NULL,
@@ -147,6 +158,20 @@ def _optional_json_object(raw: str | None) -> Mapping[str, Any] | None:
 
 def _new_id(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex}"
+
+
+def _schema_version(raw: str) -> int:
+    """Read the recorded schema version, refusing to guess at a broken one.
+
+    Treating an unreadable version as "current" would run the wrong DDL against
+    a real state root, so the failure is reported instead.
+    """
+    try:
+        return int(raw)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeStoreError(
+            f"runtime schema version is not a number: {raw!r}"
+        ) from exc
 
 
 class RuntimeStoreError(RuntimeError):
@@ -235,11 +260,37 @@ class RuntimeStore:
             ).fetchone()
             if row is None:
                 raise RuntimeStoreError("runtime schema has no schema_version")
-            if row["value"] != str(RUNTIME_SCHEMA_VERSION):
+            stored = _schema_version(row["value"])
+            if stored == RUNTIME_SCHEMA_VERSION:
+                return
+            if stored > RUNTIME_SCHEMA_VERSION:
                 raise RuntimeStoreError(
-                    f"unsupported runtime schema {row['value']!r}; "
+                    f"runtime schema {stored} was written by a newer build; "
                     f"this build speaks {RUNTIME_SCHEMA_VERSION}"
                 )
+            self._migrate(stored)
+
+    def _migrate(self, from_version: int) -> None:
+        """Bring an older state root forward, in place.
+
+        Refusing to open a state root one version behind is how a research
+        platform loses its run history to a routine upgrade, so older roots are
+        migrated instead of rejected.  A *newer* root is still refused: this
+        build cannot know what a later one wrote.
+
+        Every step so far is additive, so re-running the idempotent DDL is the
+        whole migration.  A step that is not additive -- a changed column, a
+        backfill, a split table -- must be written explicitly here rather than
+        leaning on that shortcut, because ``executescript`` would silently do
+        nothing for it and the version would then claim work that never ran.
+        """
+        if from_version < 1:
+            raise RuntimeStoreError(f"unsupported runtime schema {from_version!r}")
+        self._connection.executescript(_DDL)
+        self._connection.execute(
+            "UPDATE runtime_schema_meta SET value = ? WHERE key = 'schema_version'",
+            (str(RUNTIME_SCHEMA_VERSION),),
+        )
 
     def close(self) -> None:
         with self._lock:
@@ -792,6 +843,53 @@ class RuntimeStore:
             for r in rows
         ]
 
+    # -- inputs ------------------------------------------------------------
+
+    def record_inputs(
+        self, attempt_id: str, staged_inputs: Sequence[StagedInput]
+    ) -> None:
+        """Record what the platform placed, and what it measured there.
+
+        Written by the runtime after it has copied the bytes, so a row here
+        describes a file that is really in the attempt workspace.  Nothing else
+        in the platform may write it: a caller that could would be able to claim
+        a digest for bytes it never read, which is exactly what digesting is for.
+        """
+        now = _now()
+        with self._lock:
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                for staged in staged_inputs:
+                    staged.validate()
+                    self._connection.execute(
+                        "INSERT OR REPLACE INTO runtime_inputs (attempt_id, "
+                        "destination, source, present, size_bytes, sha256, "
+                        "created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (attempt_id, staged.destination, staged.source,
+                         1 if staged.present else 0, staged.size_bytes,
+                         staged.sha256, now),
+                    )
+                self._connection.execute("COMMIT")
+            except Exception:
+                self._connection.execute("ROLLBACK")
+                raise
+
+    def list_inputs(self, attempt_id: str) -> list[StagedInput]:
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT * FROM runtime_inputs WHERE attempt_id = ? "
+                "ORDER BY destination",
+                (attempt_id,),
+            ).fetchall()
+        return [
+            StagedInput(
+                destination=r["destination"], source=r["source"],
+                present=bool(r["present"]), size_bytes=r["size_bytes"],
+                sha256=r["sha256"],
+            )
+            for r in rows
+        ]
+
     # -- events ------------------------------------------------------------
 
     def record_event(
@@ -848,6 +946,9 @@ class RuntimeStore:
                     "workspace": attempt.workspace,
                     "worker_id": attempt.worker_id,
                     "failure": attempt.failure,
+                    "inputs": [
+                        s.to_dict() for s in self.list_inputs(attempt.attempt_id)
+                    ],
                     "artifacts": [
                         {
                             "artifact_id": a.artifact_id, "kind": a.kind,

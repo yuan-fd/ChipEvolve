@@ -21,7 +21,12 @@ from openroad_platform_contracts import ContractError, TaskSpec
 from openroad_platform_identity import AuthSession, IdentityStore
 from openroad_platform_provenance import EvidenceIndex
 from openroad_platform_registry import PluginRegistry, RegistryError
-from openroad_platform_runtime import RuntimeStore, RuntimeStoreError, WorkflowRuntime
+from openroad_platform_runtime import (
+    InputStagingError,
+    RuntimeStore,
+    RuntimeStoreError,
+    WorkflowRuntime,
+)
 
 from .router import HttpError, Request, Response, Router
 
@@ -156,12 +161,12 @@ class KernelApi:
         try:
             run = (self.runtime.submit_idempotent(task)
                    if request.q("idempotent") else self.runtime.submit(task))
-        except RegistryError as exc:
-            # A task naming a capability that is not available is the caller's
-            # mistake, not the server's, and the registry already names what it
-            # could not resolve.  Unhandled, this reached the client as a 500,
-            # which sends an operator to investigate the platform for a problem
-            # that is in their own request.
+        except (RegistryError, InputStagingError) as exc:
+            # A task naming a capability that is not available, or inputs that
+            # are not where it said, is the caller's mistake, not the server's.
+            # Unhandled, this reached the client as a 500, which sends an
+            # operator to investigate the platform for a problem that is in
+            # their own request.
             raise HttpError(400, str(exc)) from exc
         owner = session.user_id if session else self.local_user_id
         if owner:
