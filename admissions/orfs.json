@@ -1,0 +1,8 @@
+{
+  "plugin_id": "orfs",
+  "status": "admitted",
+  "license_review": "green",
+  "approved_commit": "e7a0725758c0abde2b69e2cdba783435238748ef",
+  "reviewer": "platform-owner",
+  "reason": "ORFS is Apache-2.0 and is executed as an external toolchain, never vendored. The approved commit is the revision the measurements were taken against. Toolchain paths are supplied per task and are not redistributed here."
+}

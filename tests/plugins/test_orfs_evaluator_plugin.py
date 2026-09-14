@@ -31,6 +31,7 @@ from openroad_platform_runtime.guardian import ProcessGuardian
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PLUGINS_ROOT = REPO_ROOT / "plugins"
+ADMISSIONS_ROOT = REPO_ROOT / "admissions"
 PLATFORM = "sky130hd"
 DESIGN = "gcd"
 
@@ -118,7 +119,7 @@ def build_workspace(
 
 
 def evaluator_from_registry(tmp_path: Path) -> PluginBackedEvaluator:
-    registry = PluginRegistry.from_directory(PLUGINS_ROOT)
+    registry = PluginRegistry.from_directory(PLUGINS_ROOT, admissions_root=ADMISSIONS_ROOT)
     manifest = registry.resolve("orfs-evaluator",
                                 capability=PROTECTED_EVALUATOR_CAPABILITY)
     return PluginBackedEvaluator(
@@ -154,7 +155,7 @@ def request_for(workspace: Path) -> EvaluationRequest:
 # --------------------------------------------------------------------------
 
 def test_the_evaluator_plugin_is_discovered_and_admitted():
-    registry = PluginRegistry.from_directory(PLUGINS_ROOT)
+    registry = PluginRegistry.from_directory(PLUGINS_ROOT, admissions_root=ADMISSIONS_ROOT)
     plugin = registry.get("orfs-evaluator")
     assert plugin.executable is True
     assert PROTECTED_EVALUATOR_CAPABILITY in plugin.manifest.capabilities
@@ -163,7 +164,7 @@ def test_the_evaluator_plugin_is_discovered_and_admitted():
 
 def test_the_plugin_cannot_be_used_to_execute_eda(tmp_path):
     """It declares exactly one capability, and it is not an execution one."""
-    registry = PluginRegistry.from_directory(PLUGINS_ROOT)
+    registry = PluginRegistry.from_directory(PLUGINS_ROOT, admissions_root=ADMISSIONS_ROOT)
     with pytest.raises(Exception, match="lacks capability"):
         registry.resolve("orfs-evaluator", capability="eda.rtl_to_gds")
 

@@ -724,30 +724,70 @@ with `the kernel imports the plugin 'orfs'`; removing it returns the tree to
 green.  The claims in the tier-one list below are now guarded rather than merely
 measured.
 
+## Two files, two owners: the admission split
+
+The platform used to read its trust records out of the plugin's own directory.
+That asked a third party to maintain a document saying *we* had approved them,
+which is not a smaller version of the idea but the idea backwards.
+
+Now there are two files with two owners:
+
+| File | Owner | Answers |
+| --- | --- | --- |
+| `<plugin>/provenance.json` | the plugin | where it came from, under what licence |
+| `admissions/<plugin_id>.json` | the platform | whether that is good enough to execute here |
+
+Two properties follow, and neither existed before.  **A plugin cannot admit
+itself**: nothing in its directory grants execution, and a plugin that writes a
+trust decision into its own provenance file is told so loudly rather than having
+the field ignored.  **The reviewed revision is the revision that runs**: if the
+record names an `approved_commit` and the plugin declares a different
+`source_commit`, the registry refuses to load it and prints both hashes.  Without
+that, "pinned commit" is a word.
+
+The new `admissions/` directory is deliberately not to be confused with
+`approvals/`: one is permission to execute a capability, the other is permission
+to grow a size ceiling.  Its README says so, because two directories named alike
+and doing different things is how a reader ends up trusting the wrong one.
+
+The owner's rule for the conformance tool is recorded here as a design
+constraint: **self-checking is an aid to acceptance, not a gate.** A plugin
+validates itself in its own CI; admission into the platform stays a review the
+platform performs.  The tool does not admit anyone.
+
+## The plugin protocol, written down
+
+`docs/PLUGIN_PROTOCOL.human.md` and `docs/PLUGIN_PROTOCOL.agent.md`, both
+v1alpha1.  Two audiences, one contract: the first is prose with a worked
+walkthrough and a table of what commonly goes wrong; the second is normative, one
+rule per line, with the constants and a validation checklist an agent can execute
+against its own output.
+
+Both transcribe a protocol that already existed and was already exercised -- the
+request and result envelopes, exit-code agreement, artifact containment, the
+progress envelopes.  What they add is the part that did not exist: which fields
+are required, which are refused, who decides a retry, and what the platform will
+not take on trust.  The `agent` file ends with a **known gaps** table so that
+absent behaviour cannot be mistaken for specified behaviour.
+
+The alpha suffix is honest.  The protocol has been exercised by this repository's
+own plugins and by a real toolchain; it has not yet been frozen by an
+implementation written outside it, and the next round is what tests that.
+
 ## Next
 
-The structure is done and the contracts no longer lie.  What remains is the part
-an outside team touches:
-
-1. **Split the manifest from the admission record.** A third party maintains
-   only their own manifest; whether the platform trusts them is the platform's
-   own record, under `<state-root>/admissions/`.  Decided with the owner:
-   **self-checking is an aid to acceptance, not a gate** -- a plugin validates
-   itself in its own CI, and admission into the platform is still a review the
-   platform performs.  The tool does not admit anyone.
-2. **Write the plugin protocol down** (`docs/PLUGIN_PROTOCOL.md`): the wire
-   contract, language-independent, transcribing the request and result envelopes
-   that already exist and are exercised, plus the compatibility statement that
-   does not exist yet.  It stays JSON: a YAML manifest would put a parser
-   dependency into a dependency-free kernel.
-3. **A conformance tool** (`plugin validate`), so a team can check its own plugin
-   in its own CI.  It checks shape, not existence: an entrypoint may legitimately
-   be an absolute path that only exists in the deployment environment.
-4. **One real external plugin**, physically outside this repository and launched
+1. **A conformance tool** (`agenticeda plugin validate`), so a team can check its
+   own plugin in its own CI.  It checks shape, not existence: an entrypoint may
+   legitimately be an absolute path that only exists in the deployment
+   environment.  It reports; it does not admit.
+2. **One real external plugin**, physically outside this repository and launched
    from its own environment -- `edair` first (no toolchain needed, so it runs in
    the default suite and exposes mechanism problems), then ORFS as the headline
-   proof on the real toolchain.
-5. **Packaging**, so the platform can be installed rather than only run from a
+   proof on the real toolchain.  The experiment is only evidence if the plugin is
+   built from `docs/PLUGIN_PROTOCOL.human.md` rather than from the platform's
+   source: an insider following their own memory proves nothing about the
+   document.
+3. **Packaging**, so the platform can be installed rather than only run from a
    checkout: `contracts` has no `pyproject.toml` although eight packages declare
    it as a dependency, and the three apps declare the wrong one.
 
@@ -796,7 +836,7 @@ reader does not have to re-derive the decision -- or, worse, port it by default.
   87 commits. It grew 49.6% *after* being labelled LEGACY.
 - Gate calibration: G1 fires **1,119 times** on v1's kernel-equivalent packages;
   G13 fires **147 times**. Both are zero in v2.
-- v2 size: 24070 Python lines including tests, against 102,852 in v1.
+- v2 size: 24370 Python lines including tests, against 102,852 in v1.
 
 ## How to run
 

@@ -30,6 +30,7 @@ from openroad_platform_runtime import RuntimeWorker
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PLUGINS_ROOT = REPO_ROOT / "plugins"
+ADMISSIONS_ROOT = REPO_ROOT / "admissions"
 
 
 def free_port() -> int:
@@ -41,7 +42,7 @@ def free_port() -> int:
 @pytest.fixture()
 def platform(tmp_path: Path):
     """A running gateway with the kernel attached, and a client for it."""
-    kernel = build_kernel(KernelPaths.of(tmp_path / "state", PLUGINS_ROOT))
+    kernel = build_kernel(KernelPaths.of(tmp_path / "state", PLUGINS_ROOT, ADMISSIONS_ROOT))
     router = build_router(GatewayConfig(), kernel)
     port = free_port()
     from http.server import ThreadingHTTPServer
@@ -394,7 +395,7 @@ def test_a_developer_can_see_every_run(platform):
 @pytest.fixture()
 def staffed_platform(tmp_path: Path):
     """The same platform, with a worker thread running cycles."""
-    kernel = build_kernel(KernelPaths.of(tmp_path / "state", PLUGINS_ROOT))
+    kernel = build_kernel(KernelPaths.of(tmp_path / "state", PLUGINS_ROOT, ADMISSIONS_ROOT))
     router = build_router(GatewayConfig(), kernel)
     port = free_port()
     from http.server import ThreadingHTTPServer

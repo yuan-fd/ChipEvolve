@@ -20,6 +20,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="directory holding the kernel's durable state")
     parser.add_argument("--plugins-root", default="plugins",
                         help="directory scanned for plugin manifests")
+    parser.add_argument("--admissions-root", default="admissions",
+                        help="directory holding the platform's own trust records")
     parser.add_argument("--no-auth", action="store_true",
                         help="skip authentication; binds everything to local-user")
     parser.add_argument("--host", default="127.0.0.1")
@@ -29,7 +31,7 @@ def main(argv: list[str] | None = None) -> int:
     config = (GatewayConfig.from_file(args.config) if args.config
               else GatewayConfig())
     kernel = build_kernel(
-        KernelPaths.of(args.state_root, args.plugins_root),
+        KernelPaths.of(args.state_root, args.plugins_root, args.admissions_root),
         allow_anonymous=args.no_auth,
     )
     router = build_router(config, kernel)

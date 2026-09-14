@@ -1,0 +1,8 @@
+{
+  "plugin_id": "orfs-evaluator",
+  "status": "admitted",
+  "license_review": "green",
+  "approved_commit": "0000000000000000000000000000000000000000",
+  "reviewer": "platform-owner",
+  "reason": "First-party evaluator. It reads ORFS JSON that ORFS itself emits and executes no upstream code; the pinned toolchain revision is recorded in the ORFS execution plugin's admission, not here."
+}

@@ -28,10 +28,11 @@ from openroad_platform_runtime.guardian import ProcessGuardian
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PLUGINS_ROOT = REPO_ROOT / "plugins"
+ADMISSIONS_ROOT = REPO_ROOT / "admissions"
 
 
 def build(tmp_path: Path):
-    registry = PluginRegistry.from_directory(PLUGINS_ROOT)
+    registry = PluginRegistry.from_directory(PLUGINS_ROOT, admissions_root=ADMISSIONS_ROOT)
     store = RuntimeStore(tmp_path / "runtime.db")
     runtime = WorkflowRuntime(
         store, registry,
@@ -45,7 +46,7 @@ def build(tmp_path: Path):
 
 
 def test_the_example_plugin_is_discovered_and_admitted():
-    registry = PluginRegistry.from_directory(PLUGINS_ROOT)
+    registry = PluginRegistry.from_directory(PLUGINS_ROOT, admissions_root=ADMISSIONS_ROOT)
     catalogue = {row["plugin_id"]: row for row in registry.catalogue()}
     assert "example-reporter" in catalogue
     entry = catalogue["example-reporter"]

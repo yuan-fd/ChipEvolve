@@ -34,11 +34,23 @@ DEFAULT_WORKER_ID = "kernel"
 class KernelPaths:
     state_root: Path
     plugins_root: Path
+    #: The platform's own trust records, one file per plugin.  Separate from the
+    #: plugin directories on purpose: whether this platform admits a plugin is
+    #: not the plugin's document to keep.
+    admissions_root: Path
 
     @classmethod
-    def of(cls, state_root: str | Path, plugins_root: str | Path) -> "KernelPaths":
-        return cls(state_root=Path(state_root).expanduser().resolve(),
-                   plugins_root=Path(plugins_root).expanduser().resolve())
+    def of(cls, state_root: str | Path, plugins_root: str | Path,
+           admissions_root: str | Path | None = None) -> "KernelPaths":
+        state = Path(state_root).expanduser().resolve()
+        return cls(
+            state_root=state,
+            plugins_root=Path(plugins_root).expanduser().resolve(),
+            admissions_root=Path(
+                admissions_root if admissions_root is not None
+                else state / "admissions"
+            ).expanduser().resolve(),
+        )
 
 
 def build_kernel(paths: KernelPaths, *, allow_anonymous: bool = False
@@ -54,7 +66,9 @@ def build_kernel(paths: KernelPaths, *, allow_anonymous: bool = False
     paths.state_root.mkdir(parents=True, exist_ok=True)
 
     store = RuntimeStore(paths.state_root / "runtime.db")
-    registry = PluginRegistry.from_directory(paths.plugins_root)
+    registry = PluginRegistry.from_directory(
+        paths.plugins_root, admissions_root=paths.admissions_root,
+    )
     identity = IdentityStore(paths.state_root / "identity.db")
 
     evaluator = None

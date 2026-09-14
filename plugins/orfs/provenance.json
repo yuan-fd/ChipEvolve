@@ -1,0 +1,6 @@
+{
+  "license": "Apache-2.0",
+  "source_url": "https://github.com/The-OpenROAD-Project/OpenROAD-flow-scripts",
+  "source_commit": "e7a0725758c0abde2b69e2cdba783435238748ef",
+  "notes": "The paired OpenROAD revision is 4630b597e7da45019e0e17f19bc58f9128bdbc03. The flow is invoked as an external toolchain from the location the task names."
+}

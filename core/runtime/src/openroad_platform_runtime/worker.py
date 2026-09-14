@@ -151,6 +151,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="openroad-platform-worker")
     parser.add_argument("--state-root", required=True)
     parser.add_argument("--plugins-root", default="plugins")
+    parser.add_argument("--admissions-root", default="admissions",
+                        help="the platform's own plugin trust records")
     parser.add_argument("--idle-seconds", type=float, default=DEFAULT_IDLE_SECONDS)
     parser.add_argument("--batch", type=int, default=DEFAULT_BATCH)
     parser.add_argument("--once", action="store_true",
@@ -171,7 +173,9 @@ def main(argv: list[str] | None = None) -> int:
 
     state_root = Path(args.state_root).expanduser().resolve()
     store = RuntimeStore(state_root / "runtime.db")
-    registry = PluginRegistry.from_directory(Path(args.plugins_root))
+    registry = PluginRegistry.from_directory(
+        Path(args.plugins_root), admissions_root=Path(args.admissions_root),
+    )
     evaluator = None
     try:
         evaluator = PluginBackedEvaluator(

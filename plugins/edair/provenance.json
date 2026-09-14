@@ -1,0 +1,6 @@
+{
+  "license": "Apache-2.0",
+  "source_url": "https://github.com/The-OpenROAD-Project/OpenSTA",
+  "source_commit": "0000000000000000000000000000000000000000",
+  "notes": "Reads OpenSTA text reports. Executes no upstream code."
+}

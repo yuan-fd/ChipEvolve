@@ -28,7 +28,16 @@ from openroad_platform_contracts import (
 )
 
 MANIFEST_SUFFIX = ".plugin.json"
-INTAKE_FILENAME = "intake.json"
+
+#: What a plugin declares about its own origin.  It lives in the plugin's own
+#: directory because it is a fact about the plugin -- and it grants nothing.
+PROVENANCE_FILENAME = "provenance.json"
+
+#: Where the platform keeps its trust decisions.  One file per plugin_id, named
+#: for the plugin.  Deliberately *not* inside the plugin's directory: whether
+#: this platform trusts a plugin is the platform's decision, and a third party
+#: should not be maintaining a record that says we approved them.
+ADMISSION_SUFFIX = ".json"
 
 #: Admission outcomes.  Only ``admitted`` may be executed.
 ADMITTED = "admitted"
@@ -44,8 +53,48 @@ class RegistryError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class Provenance:
+    """What a plugin declares about its own origin.
+
+    The plugin's own file, in the plugin's own directory.  It answers "where did
+    I come from and under what licence"; it does **not** answer "may I run here",
+    which is the platform's record to keep.
+
+    Every field is optional: a plugin that declares nothing is not lying, it is
+    unstated, and the platform records that as unstated rather than inventing an
+    answer.
+    """
+
+    license: str | None = None
+    source_url: str | None = None
+    source_commit: str | None = None
+    notes: str | None = None
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "Provenance":
+        known = {"license", "source_url", "source_commit", "notes"}
+        unknown = sorted(set(payload) - known)
+        if unknown:
+            raise RegistryError(f"unknown provenance fields: {', '.join(unknown)}")
+        for name in sorted(known):
+            value = payload.get(name)
+            if value is not None and not isinstance(value, str):
+                raise RegistryError(f"provenance field {name} must be a string")
+        return cls(
+            license=payload.get("license"),
+            source_url=payload.get("source_url"),
+            source_commit=payload.get("source_commit"),
+            notes=payload.get("notes"),
+        )
+
+
+@dataclass(frozen=True)
 class Admission:
-    """The governance record for one plugin.
+    """The platform's trust decision about one plugin.
+
+    Kept apart from what the plugin declares, because they are different
+    questions asked by different parties.  The plugin says where it came from;
+    this platform decides whether that is good enough to execute here.
 
     ``reason`` is mandatory on a non-admitted plugin.  "Not admitted" with no
     explanation is how a blocked capability quietly becomes a missing one.
@@ -53,9 +102,11 @@ class Admission:
 
     plugin_id: str
     status: str = UNKNOWN
-    license: str | None = None
-    source_url: str | None = None
-    source_commit: str | None = None
+    #: The platform's own licence conclusion, not the plugin's SPDX identifier.
+    license_review: str | None = None
+    #: The commit the reviewer actually looked at.
+    approved_commit: str | None = None
+    reviewer: str | None = None
     reason: str | None = None
 
     def validate(self) -> None:
@@ -63,13 +114,13 @@ class Admission:
         if self.status not in {ADMITTED, SOURCE_AUDIT_ONLY, UNKNOWN}:
             raise RegistryError(f"unknown admission status {self.status!r}")
         if self.status == ADMITTED:
-            if (self.license or "").lower() not in EXECUTABLE_LICENSES:
+            if (self.license_review or "").lower() not in EXECUTABLE_LICENSES:
                 raise RegistryError(
-                    f"{self.plugin_id!r} is marked admitted but its license "
-                    f"conclusion is {self.license!r}; admitted requires one of "
-                    f"{sorted(EXECUTABLE_LICENSES)}"
+                    f"{self.plugin_id!r} is marked admitted but its licence "
+                    f"review is {self.license_review!r}; admitted requires one "
+                    f"of {sorted(EXECUTABLE_LICENSES)}"
                 )
-            if not self.source_commit:
+            if not self.approved_commit:
                 raise RegistryError(
                     f"{self.plugin_id!r} is admitted without a pinned commit; "
                     f"an unpinned branch tip is not admissible"
@@ -81,18 +132,25 @@ class Admission:
 
     @classmethod
     def from_dict(cls, plugin_id: str, payload: Mapping[str, Any]) -> "Admission":
-        known = {"status", "license", "source_url", "source_commit", "reason"}
+        known = {"plugin_id", "status", "license_review", "approved_commit",
+                 "reviewer", "reason"}
         unknown = sorted(set(payload) - known)
         if unknown:
             raise RegistryError(
-                f"unknown intake fields for {plugin_id!r}: {', '.join(unknown)}"
+                f"unknown admission fields for {plugin_id!r}: "
+                f"{', '.join(unknown)}"
+            )
+        declared = payload.get("plugin_id")
+        if declared is not None and declared != plugin_id:
+            raise RegistryError(
+                f"admission record for {plugin_id!r} declares {declared!r}"
             )
         admission = cls(
             plugin_id=plugin_id,
             status=str(payload.get("status", UNKNOWN)),
-            license=payload.get("license"),
-            source_url=payload.get("source_url"),
-            source_commit=payload.get("source_commit"),
+            license_review=payload.get("license_review"),
+            approved_commit=payload.get("approved_commit"),
+            reviewer=payload.get("reviewer"),
             reason=payload.get("reason"),
         )
         admission.validate()
@@ -103,6 +161,7 @@ class Admission:
 class RegisteredPlugin:
     manifest: PluginManifest
     admission: Admission
+    provenance: Provenance = field(default_factory=Provenance)
     manifest_path: str = ""
     adapter_entry: tuple[str, ...] = field(default=())
 
@@ -122,28 +181,37 @@ class PluginRegistry:
     # -- construction -----------------------------------------------------
 
     @classmethod
-    def from_directory(cls, root: str | Path) -> "PluginRegistry":
+    def from_directory(
+        cls, root: str | Path, *, admissions_root: str | Path | None = None,
+    ) -> "PluginRegistry":
         """Discover every plugin under ``root``.
 
         Expected shape::
 
-            <root>/<name>/<name>.plugin.json
-            <root>/<name>/intake.json        (admission evidence)
-            <root>/<name>/<adapter>
+            <root>/<name>/<name>.plugin.json     (the plugin's declaration)
+            <root>/<name>/provenance.json        (the plugin's own origin)
+            <root>/<name>/<adapter>              (the plugin's code)
 
-        A plugin directory with no manifest is skipped: it may be a half-written
+            <admissions_root>/<name>.json        (the platform's trust record)
+
+        Two files, two owners.  The plugin carries what it knows about itself;
+        the platform keeps what it has decided about the plugin.  A plugin
+        directory with no manifest is skipped -- it may be a half-written
         checkout, and inventing a manifest for it would be worse than ignoring
-        it.  A plugin with a manifest but no intake is registered as UNKNOWN, so
-        it appears in the catalogue and refuses to execute.
+        it.  A plugin with no admission record is registered as UNKNOWN: it
+        appears in the catalogue and refuses to execute, which is the state an
+        unreviewed capability should be in.
         """
         base = Path(root).expanduser().resolve()
         if not base.is_dir():
             raise RegistryError(f"plugin root not found: {base}")
+        admissions = (Path(admissions_root).expanduser().resolve()
+                      if admissions_root is not None else None)
         registry = cls()
         for directory in sorted(p for p in base.iterdir() if p.is_dir()):
             for manifest_path in sorted(directory.glob(f"*{MANIFEST_SUFFIX}")):
                 registry.register(
-                    _load_plugin(manifest_path, manifest_path.parent)
+                    _load_plugin(manifest_path, manifest_path.parent, admissions)
                 )
         return registry
 
@@ -220,7 +288,12 @@ class PluginRegistry:
         )
 
     def catalogue(self) -> list[dict[str, Any]]:
-        """A read model for an app that lists capabilities and their state."""
+        """A read model for an app that lists capabilities and their state.
+
+        The plugin's own statement and the platform's decision are reported
+        side by side, under separate keys, because a reader has to be able to
+        tell which party said what.
+        """
         return [
             {
                 "plugin_id": p.manifest.plugin_id,
@@ -229,13 +302,22 @@ class PluginRegistry:
                 "admission": p.admission.status,
                 "executable": p.executable,
                 "reason": p.admission.reason,
+                "reviewer": p.admission.reviewer,
+                "license_review": p.admission.license_review,
+                "declared": {
+                    "license": p.provenance.license,
+                    "source_url": p.provenance.source_url,
+                    "source_commit": p.provenance.source_commit,
+                },
                 "adapter_entry": list(p.adapter_entry or p.manifest.adapter_entry),
             }
             for p in self.list()
         ]
 
 
-def _load_plugin(manifest_path: Path, directory: Path) -> RegisteredPlugin:
+def _load_plugin(
+    manifest_path: Path, directory: Path, admissions_root: Path | None,
+) -> RegisteredPlugin:
     try:
         payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -275,26 +357,77 @@ def _load_plugin(manifest_path: Path, directory: Path) -> RegisteredPlugin:
     # shows up when a real plugin is executed, which is exactly what the
     # end-to-end test does.
     resolved = dataclasses.replace(manifest, adapter_entry=tuple(entry))
-    admission = _load_admission(manifest.plugin_id, directory)
+    provenance = _load_provenance(manifest.plugin_id, directory)
+    admission = _load_admission(manifest.plugin_id, admissions_root)
+    _check_reviewed_commit(admission, provenance)
     return RegisteredPlugin(
-        manifest=resolved, admission=admission,
+        manifest=resolved, admission=admission, provenance=provenance,
         manifest_path=str(manifest_path), adapter_entry=tuple(entry),
     )
 
 
-def _load_admission(plugin_id: str, directory: Path) -> Admission:
-    path = directory / INTAKE_FILENAME
+def _load_provenance(plugin_id: str, directory: Path) -> Provenance:
+    """The plugin's own statement about where it came from.
+
+    Absent, unreadable or malformed all mean the same thing: unstated.  It is
+    not an error, because a plugin is allowed to declare nothing -- it is
+    recorded as unstated rather than guessed at.
+    """
+    path = directory / PROVENANCE_FILENAME
+    if not path.is_file():
+        return Provenance()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return Provenance(notes=f"{PROVENANCE_FILENAME} is unreadable")
+    return Provenance.from_dict(payload)
+
+
+def _load_admission(plugin_id: str, admissions_root: Path | None) -> Admission:
+    """The platform's trust record for one plugin.
+
+    Nothing here comes from the plugin.  A plugin cannot admit itself, and it
+    cannot carry the record that says it was admitted -- that was the shape of
+    the earlier design, and it asked a third party to maintain a document about
+    our decision.
+    """
+    if admissions_root is None:
+        return Admission(
+            plugin_id=plugin_id, status=UNKNOWN,
+            reason="no admissions directory was configured, so no plugin is "
+                   "admitted; the platform keeps its own trust records",
+        )
+    path = admissions_root / f"{plugin_id}{ADMISSION_SUFFIX}"
     if not path.is_file():
         return Admission(
             plugin_id=plugin_id, status=UNKNOWN,
-            reason=f"no {INTAKE_FILENAME} in the plugin directory; "
-                   f"admission evidence is required before execution",
+            reason=f"no admission record at {path}; a capability is reviewed "
+                   f"before it may execute",
         )
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         return Admission(
             plugin_id=plugin_id, status=UNKNOWN,
-            reason=f"{INTAKE_FILENAME} is unreadable: {exc}",
+            reason=f"admission record is unreadable: {exc}",
         )
     return Admission.from_dict(plugin_id, payload)
+
+
+def _check_reviewed_commit(admission: Admission, provenance: Provenance) -> None:
+    """Refuse a checkout that is not the revision that was reviewed.
+
+    An admission record names the commit the reviewer looked at.  If the plugin
+    declares a different one, the thing about to execute is not the thing that
+    was reviewed -- so it does not execute, and the message says both hashes.
+    Silence here would make "pinned commit" a word rather than a property.
+    """
+    approved = admission.approved_commit
+    declared = provenance.source_commit
+    if not approved or not declared or approved == declared:
+        return
+    raise RegistryError(
+        f"{admission.plugin_id!r} declares source_commit {declared!r} but the "
+        f"admitted revision is {approved!r}; the checkout is not the revision "
+        f"that was reviewed"
+    )

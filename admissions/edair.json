@@ -1,0 +1,8 @@
+{
+  "plugin_id": "edair",
+  "status": "admitted",
+  "license_review": "green",
+  "approved_commit": "0000000000000000000000000000000000000000",
+  "reviewer": "platform-owner",
+  "reason": "First-party indexer. It parses OpenSTA text output, which the tool emits itself and which is documented by an Apache-2.0 project; it executes no upstream code."
+}

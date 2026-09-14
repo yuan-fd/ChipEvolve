@@ -27,6 +27,7 @@ from openroad_platform_runtime import RuntimeWorker
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PLUGINS_ROOT = REPO_ROOT / "plugins"
+ADMISSIONS_ROOT = REPO_ROOT / "admissions"
 APP_DIR = REPO_ROOT / "apps" / "dse_lab"
 CLIENT_SRC = REPO_ROOT / "core" / "client" / "src"
 
@@ -70,7 +71,7 @@ def wait_for(url: str, timeout: float = 20.0) -> dict:
 @pytest.fixture()
 def lab(tmp_path: Path):
     """A real kernel with a worker, and the app running as its own process."""
-    kernel = build_kernel(KernelPaths.of(tmp_path / "state", PLUGINS_ROOT))
+    kernel = build_kernel(KernelPaths.of(tmp_path / "state", PLUGINS_ROOT, ADMISSIONS_ROOT))
     router = build_router(GatewayConfig(), kernel)
     kernel_port = free_port()
     from http.server import ThreadingHTTPServer

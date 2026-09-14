@@ -1,0 +1,8 @@
+{
+  "plugin_id": "example-reporter",
+  "status": "admitted",
+  "license_review": "green",
+  "approved_commit": "0000000000000000000000000000000000000000",
+  "reviewer": "platform-owner",
+  "reason": "First-party example plugin, MIT, no external source. Admitted so the reference implementation and the end-to-end tests can run."
+}

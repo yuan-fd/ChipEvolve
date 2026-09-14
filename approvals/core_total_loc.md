@@ -80,3 +80,20 @@ re-add the fields -- which is the whole point of deleting them in writing.
 
 **The ceilings this needs are recorded in `approvals/ceiling.json`.**  Three
 per-file ceilings rise with it, each with its own note beside this one.
+
+## 6,303 -> 6,463: the plugin's statement and the platform's decision
+
+The admission record moved out of the plugin's directory and into the platform's
+own, which is the change the two-file split is made of.  The growth is itemised:
+
+| Where | Lines | What |
+| --- | ---: | --- |
+| `core/registry/.../registry.py` | +133 | a `Provenance` record, a `Provenance` reader, an admission reader keyed by plugin id, the reviewed-commit cross-check, and the catalogue reporting both sources |
+| `gateway/.../bootstrap.py` | +14 | `KernelPaths` carries the admissions root; the composition root passes it |
+| `gateway/.../__main__.py` | +2 | `--admissions-root` |
+| `core/runtime/.../worker.py` | +4 | the worker discovers with the same records the gateway does |
+
+**Not a coincidence, and worth stating:** this is the second round in a row where
+the kernel grew, and both times the growth bought a property rather than a
+feature.  The ratchet's job is not to prevent that; it is to make each one a
+written decision with a number attached.  Both are.
