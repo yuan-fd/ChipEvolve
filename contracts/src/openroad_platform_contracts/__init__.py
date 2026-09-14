@@ -34,6 +34,7 @@ from .progress import (
     ProgressStatus,
     decode_progress_line,
 )
+from .resources import ResourceRequest
 from .runtime import (
     ACTIVE_RUNTIME_STATUSES,
     ATTEMPT_TRANSITIONS,
@@ -74,6 +75,8 @@ __all__ = (
     "validate_relative_path", "validate_sha256", "validate_version",
     # task triangle
     "PluginManifest", "PluginResult", "RuntimeRequirements", "TaskSpec",
+    # resources
+    "ResourceRequest",
     # staged inputs
     "INPUT_MANIFEST_FILENAME", "INPUT_MANIFEST_KIND", "InputFile", "StagedInput",
     # runtime state

@@ -14,6 +14,7 @@ from typing import Any, Mapping
 from .runtime import RuntimeStatus
 from .progress import DEFAULT_PROGRESS_MARKER
 from .input import InputFile
+from .resources import ResourceRequest
 from .version import (
     instantiate,
     ContractError,
@@ -59,6 +60,9 @@ class TaskSpec:
     #: between them cannot be falsified.  These digests are the identity the
     #: label was standing in for.
     staged_inputs: tuple[InputFile, ...] = ()
+    #: Aggregate bounds on the attempt's process tree.  ``None`` means the
+    #: caller declared none, which is not the same as declaring zero.
+    resources: ResourceRequest | None = None
     timeout_seconds: int = 3600
     #: How many attempts a *retryable* failure is allowed.  One means no retry,
     #: which is the default because a capability that cannot be re-run from its
@@ -86,6 +90,10 @@ class TaskSpec:
             raise ContractError(
                 "two staged inputs would be placed at the same destination"
             )
+        if self.resources is not None:
+            if not isinstance(self.resources, ResourceRequest):
+                raise ContractError("resources must be a ResourceRequest")
+            self.resources.validate()
         if not isinstance(self.timeout_seconds, int) or self.timeout_seconds <= 0:
             raise ContractError("timeout_seconds must be a positive integer")
         if not isinstance(self.max_attempts, int) or self.max_attempts <= 0:
@@ -105,6 +113,9 @@ class TaskSpec:
             item if isinstance(item, InputFile) else InputFile.from_dict(item)
             for item in value.get("staged_inputs", ())
         )
+        resources = value.get("resources")
+        if resources is not None and not isinstance(resources, ResourceRequest):
+            value["resources"] = ResourceRequest.from_dict(resources)
         result = instantiate(cls, value)
         result.validate()
         return result

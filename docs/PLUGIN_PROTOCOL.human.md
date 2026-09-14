@@ -227,6 +227,7 @@ durable storage.
        "required": true},
       {"artifact_id": "art-1f0c...", "destination": "previous/report.json"}
     ],
+    "resources": {"cpu_seconds": 3600, "memory_bytes": 17179869184},
     "timeout_seconds": 3600,
     "max_attempts": 1,
     "expected_artifacts": ["report"],
@@ -299,6 +300,46 @@ that needs no files ignores it entirely.
 
 `max_attempts` is the attempt budget. A failure the plugin marks `retryable` will
 be retried until the budget is spent (§4.4).
+
+### 4.1.2 Resource bounds (`resources`)
+
+A task may bound what the attempt is allowed to consume:
+
+```json
+"resources": {"cpu_seconds": 3600, "memory_bytes": 17179869184, "processes": 64}
+```
+
+Every field is optional; an absent field means "not bounded", and a task with no
+`resources` at all is unbounded — which is what every task was before this
+existed. All three bounds are **aggregate**: they apply to the whole process
+tree the attempt starts, not to each process in it.
+
+| Field | Bounds |
+| --- | --- |
+| `cpu_seconds` | CPU time used by the tree, in seconds |
+| `memory_bytes` | Resident memory held by the tree, in bytes |
+| `processes` | How many processes the tree may contain at once |
+
+The platform measures the tree while the attempt runs and terminates it on a
+breach. The attempt becomes `failed` with `failure.category` of
+`resource_exceeded` and a message naming the measurement and the request, and it
+is **not** retried: the same request against the same bounds would breach them
+again. Your result file is not read — a plugin that ignored its bounds does not
+get to report on them.
+
+**This is a bound, not a sandbox.** It is measured by polling, so a spike
+entirely inside one polling interval is missed; and it bounds CPU, memory and
+process count, not disk, not file descriptors, and not network. Refusing to
+present it as isolation is deliberate: a plugin that needs a real boundary needs
+a container, which this platform does not yet run plugins in.
+
+**Why this is not a manifest field.** A manifest is written by the plugin, and
+an untrusted party setting its own ceiling is not a ceiling. What a capability
+*needs* from the kernel is declared in the manifest; how much of the machine it
+*may use* is the caller's decision.
+
+**On a host that cannot measure a process tree, a task declaring bounds is
+refused at submission** rather than accepted and quietly left unenforced (§5.7).
 
 ### 4.2 The result
 
@@ -505,6 +546,11 @@ platform runs a separate evaluator plugin afterwards and accepts its verdict onl
 if every metric cites an artifact that exists in the workspace. Adapters cannot
 produce that verdict for themselves — that is what "protected" means here.
 
+**5.7 That its own bounds can be kept.** A task that declares `resources` on a
+host that cannot measure a process tree is refused at submission. A bound that
+is accepted and not applied is worse than no bound: the caller believes the
+machine is protected and it is not.
+
 **5.6 Its own bookkeeping.** Two files in the workspace are written by the
 platform rather than the plugin: `runtime_protocol_receipt.json` when the
 manifest asks for one, and `input_manifest.json` when the task declared staged
@@ -595,6 +641,7 @@ compatibility range in the manifest is a recognised gap, not a feature.
 | Prints progress envelopes if useful | Records them as events, and tolerates their absence |
 | Uses its own environment | Passes only what the manifest asked for |
 | Names the files it needs placed | Copies and digests them, and publishes the digests |
+| (says nothing about how much it may use) | Bounds the process tree the caller asked for, and refuses a bound it cannot measure |
 
 The one rule that explains most of the rest: **the platform owns the lifecycle,
 the plugin owns the meaning.** What a stage is called, what a metric means, what

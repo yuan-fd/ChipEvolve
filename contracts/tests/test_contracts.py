@@ -76,9 +76,21 @@ def test_the_removed_fields_are_refused_rather_than_ignored():
     payload["workflow_id"] = "wf-1"
     with pytest.raises(ContractError, match="unknown TaskSpec fields: workflow_id"):
         TaskSpec.from_dict(payload)
+
+
+
+def test_the_resource_field_came_back_with_a_different_shape():
+    """``resources`` was deleted for being a promise; it returns with behaviour.
+
+    The old shape was declared and enforced nowhere, which is why it was
+    removed.  What came back is a different contract: aggregate bounds on the
+    attempt's process tree, measured by the platform.  A payload written against
+    the old shape is refused rather than half-read, because reading a field
+    whose meaning changed is how a caller keeps believing something is honoured.
+    """
     payload = make_task().to_dict()
     payload["resources"] = {"cpu": 4}
-    with pytest.raises(ContractError, match="unknown TaskSpec fields: resources"):
+    with pytest.raises(ContractError, match="unknown ResourceRequest fields: cpu"):
         TaskSpec.from_dict(payload)
 
 

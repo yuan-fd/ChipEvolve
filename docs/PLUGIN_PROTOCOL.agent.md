@@ -250,7 +250,7 @@ One JSON object per line on stdout, prefixed with `manifest.progress_marker`.
 ```
 
 `task` fields the adapter receives: `schema_version`, `task_id`, `project_id`,
-`design_id`, `plugin_id`, `inputs`, `parameters`, `staged_inputs`,
+`design_id`, `plugin_id`, `inputs`, `parameters`, `staged_inputs`, `resources`,
 `timeout_seconds`, `max_attempts`, `expected_artifacts`, `labels`. `inputs` and
 `parameters` are the plugin's own; the platform carries them and does not
 validate their shape.
@@ -289,6 +289,8 @@ platform, not by the manifest.
 | K3 | An entry with `required: false` whose source is absent MUST NOT fail the attempt; the manifest records `"present": false` and `"sha256": null`. |
 | K4 | The adapter MUST NOT write to `input_manifest.json` or `runtime_protocol_receipt.json`. Both are hashed before launch and re-hashed after exit; a mismatch fails the attempt. |
 | K5 | A digest in `input_manifest.json` is the platform's measurement and MAY be cited in the result's `provenance`. The adapter's own digest of the same file SHOULD agree with it. |
+| K6 | `resources` (optional object: `cpu_seconds`, `memory_bytes`, `processes`, all optional) bounds the **whole process tree** the adapter starts, not each process. The platform measures the tree and terminates it on breach. |
+| K7 | On a breach the attempt is `failed` with `failure.category == "resource_exceeded"`; the adapter's result file is NOT read and the attempt is NOT retried. An adapter that spawns a helper MUST count the helpers against `processes`. |
 
 ---
 
@@ -322,6 +324,8 @@ Run before submitting a plugin to a platform owner.
 [ ] every metric value is a JSON scalar and not NaN
 [ ] failure (when present) has a non-empty message and an identifier category
 [ ] retryable is set only where a retry could actually succeed
+[ ] if the task declares `resources.processes`, every helper process the
+    adapter starts is counted, not just the adapter itself
 [ ] provenance.json (if present) declares only the four allowed fields
 [ ] the plugin runs correctly with a hand-written request file, with no
     AgenticEDA package installed and no platform on sys.path
@@ -348,6 +352,7 @@ Recorded so they are not mistaken for specified behaviour.
 | No compatibility negotiation | The request carries `protocol_version`; a plugin cannot declare a range, and the platform cannot pre-screen an incompatible plugin. A plugin SHOULD fail with `configuration_error` naming both versions if it cannot speak the one it receives. |
 | No transport declaration | The transport is the file protocol defined here; it is not a manifest field. |
 | No permission model | A plugin process is not sandboxed for network or filesystem access. The manifest cannot declare either. |
-| No resource limits | `TaskSpec` carries no CPU or memory request; none is enforced. |
+| No disk or file-descriptor bounds | `resources` bounds CPU, resident memory and process count. Total disk use, open file descriptors and network are not bounded. |
+| Polling, not a sandbox | A limit is measured while the attempt runs, so a spike inside one polling interval is missed. Real isolation needs a container backend, which does not exist yet. |
 | No retry backoff | A retryable failure is re-queued immediately. There is no `retry_after`. |
 | No envelope ordering | A `finished` for a stage that never started is accepted as `finished`. |
