@@ -63,3 +63,36 @@ The method reuses `run_transition_allowed` rather than testing the run's status
 itself, so the rule for which transitions are legal stays in the one place that
 owns it.  The attempt that failed stays `FAILED`: the retry is a new attempt, not
 an erasure of the old one.
+
+## 881 -> 982: the inputs an attempt was given
+
+The store already recorded what came *out* of an attempt -- artifacts, their
+digests, and the metrics that cite them.  It recorded nothing about what went
+*in*.  That gave the platform a one-sided evidence chain: a reader could trace a
+number back to the file it was parsed from, and could not trace the file back to
+anything.
+
+`runtime_inputs` is keyed by `attempt_id`, like artifacts and metrics, and for
+the same reason: an attempt is the unit that actually read bytes.  Recording it
+on the run would be a claim about attempts the platform did not make.
+
+Three parts, in the order they matter:
+
+* **The table and `record_inputs`** -- written by the runtime after it has copied
+  the bytes, so a row here describes a file that is really in the workspace.
+  Nothing else may write it; a caller that could would be able to assert a digest
+  for bytes it never read.
+* **`list_inputs`, and the projection into `describe_run`** -- because an app may
+  not open this database (G5), a fact the read model omits is a fact no
+  application can ever show.
+* **The forward migration** -- `RUNTIME_SCHEMA_VERSION` 1 -> 2.  The previous
+  behaviour was to refuse an older root outright, which turns every upgrade into
+  a choice between the platform and its run history.  Older roots are now brought
+  forward in place.  Every step so far is additive, so re-running the idempotent
+  DDL is the whole migration, and the docstring says plainly that a step which is
+  *not* additive must be written out explicitly rather than leaning on that.
+
+`present` is stored as an integer with a CHECK, and `sha256` is nullable only for
+an input that is absent.  An absent optional input has no digest on purpose:
+digesting the empty string would make two different absences indistinguishable
+from the same empty file.

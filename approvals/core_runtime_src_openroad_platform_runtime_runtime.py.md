@@ -25,3 +25,38 @@ machine and the worker's claim query had both been written for retries already
 (`RUNNING -> RETRY_WAIT` was allowed; `retry_wait` was in the runnable set), so
 the only thing missing was the decision.  Twenty-nine lines turns a promise into
 behaviour; leaving it out would have meant deleting the field instead.
+
+## 605 -> 729: placing the inputs, and measuring what was placed
+
+Three pieces, and the middle one is the reason the other two exist.
+
+**`_check_inputs`** runs at submit and does a `stat`, not a digest.  Its job is to
+tell the caller their request is wrong while they are still listening, so
+"required input is not a readable file: ..." reaches them as a 400 rather than as
+a run that fails a minute later.  It deliberately does not promise the file will
+still be there at attempt time -- the platform cannot promise that, and pretending
+otherwise would be the sort of guarantee that is discovered to be false exactly
+when it matters.
+
+**`_stage_inputs`** copies each declared input into the attempt workspace and
+digests it *there*.  Two decisions are worth the lines they cost:
+
+* **Copy, not link.**  A hardlink would let an adapter corrupt the caller's
+  original through its own input.  A symlink would let it read outside the
+  workspace.  There is no sandbox yet, so neither can be allowed, and the price
+  is one copy per attempt.
+* **Digest the destination.**  `register_artifacts` hashes what is on disk rather
+  than what it was told, and for the same reason: a digest of what was *meant* to
+  be copied verifies the intention, not the bytes the adapter will read.
+
+**The input manifest** is written into the workspace and registered as a
+platform-owned artifact under the reserved kind `runtime_input_manifest`, exactly
+as the protocol receipt already was.  That is not decoration.  It gives the whole
+input set one digest, so "the same design" is a single hash rather than a set to
+be compared element by element -- and it makes the manifest itself citable
+evidence, which is what a data layer above this platform needs in order to hang
+its records on something the platform actually measured.
+
+The tamper check is the one the receipt already had, now applied to both files
+through one loop instead of two near-identical branches.  An adapter that writes
+to the platform's own bookkeeping fails the attempt, loudly.

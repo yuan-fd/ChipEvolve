@@ -122,3 +122,60 @@ command line, and `core/runtime` depends on the contract and nothing else.  The
 packaging test that asks whether declared dependencies match actual imports is
 what surfaced it: `core/runtime` imported two packages it did not declare, and
 declaring them would have published a cycle.
+
+## 6,716 -> 7,159: an input has an identity, and the platform places it
+
+Until this round `inputs` was a free-form dictionary.  The kernel did not
+interpret it, did not copy it, and **did not digest it**.  `design_id` was a
+string used for filtering; two runs carrying the same string could have read
+different bytes, and nothing in the platform could tell.  Every comparison
+between such runs was therefore unfalsifiable -- which is a strange property for
+a platform whose entire claim is that a stored number is worth something.
+
+A task may now declare `staged_inputs`.  The platform copies each one into the
+attempt workspace, digests it there, and records the result against the attempt.
+The growth is itemised:
+
+| Where | Lines | What |
+| --- | ---: | --- |
+| `contracts/.../input.py` | +162 | `InputFile` (what the caller declares) and `StagedInput` (what the platform measured) |
+| `contracts/.../task.py` | +31 | the field, its validation, its round-trip |
+| `contracts/.../version.py` | +14 | `validate_relative_path`, extracted so the rule exists once |
+| `contracts/.../artifact.py` | +8 | the reserved kind, and using the extracted rule |
+| `core/runtime/.../store.py` | +101 | the `runtime_inputs` table, its reader, its projection, and a forward migration |
+| `core/runtime/.../runtime.py` | +124 | staging, digesting, the manifest, the tamper check |
+| `gateway/.../kernel_api.py` | +5 | a request naming absent inputs is a 400, not a 500 |
+
+**Why this is kernel and not an app or a plugin.**  Who else could do it?  The
+caller cannot: a caller that places its own files and reports its own digests is
+reporting a claim, and the platform's one useful habit is to measure rather than
+believe.  A plugin cannot: the plugin is the untrusted party, and a digest it
+supplied would prove only that it can compute SHA-256.  Staging and measuring an
+input is the mirror image of registering an artifact, and artifacts are already
+the kernel's.
+
+**The property bought, stated so it can be tested.**  Two runs may be compared
+by input digest instead of by a label, and a comparison between runs that read
+different bytes is now detectable rather than silent.  A digest of the manifest
+as a whole covers the entire input set at once, so "the same design" reduces to
+one hash.
+
+**A second thing this round fixed, smaller and worth naming.**  The store
+refused to open a state root written by an older build -- including one from the
+immediately previous commit.  A research platform that loses its run history to a
+routine upgrade is not a platform.  `RUNTIME_SCHEMA_VERSION` is now 2 and older
+roots are migrated forward in place; a *newer* root is still refused, because
+this build cannot know what a later one wrote.  Seventeen of the lines above are
+that path and the comment saying which future changes may not lean on it.
+
+**What is not being added.**  No capability, no parser, no vendor name, no
+algorithm.  Nothing here knows what a design is.  G1, G2 and G13 remain zero
+across the kernel.
+
+**Cost accepted, and where it will be paid back.**  An input is copied once per
+attempt, so a retry re-copies it.  That is the honest price of copy-not-link --
+a hardlink would let an adapter corrupt the caller's original through its own
+input, and a symlink would let it read outside the workspace, and there is no
+sandbox to prevent either.  The optimisation belongs to the artifact store
+(content addressing, one copy per distinct byte sequence), which is the next
+step and will lower this ceiling rather than raise it.
