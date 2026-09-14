@@ -381,3 +381,38 @@ def test_an_attempt_with_no_recorded_failure_says_nothing(
     store.finish_attempt(attempt.attempt_id, AttemptStatus.SUCCEEDED, exit_code=0)
     view = store.describe_run(run.run_id)
     assert view["stages"][0]["attempts"][0]["failure"] is None
+
+
+def test_scheduling_a_retry_moves_both_the_stage_and_the_run(
+    store: RuntimeStore, tmp_path: Path
+):
+    """A run put back in the queue must actually be offered to a worker.
+
+    ``runnable_runs`` requires *both* the stage and the run to be non-terminal,
+    so a retry that moved only one of them would be accepted here and then never
+    claimed -- a run waiting forever for something that cannot happen.
+    """
+    run = submit(store)
+    stage = store.list_stages(run.run_id)[0]
+    store.start_attempt(stage.stage_run_id, worker_id="w1",
+                        workspace=tmp_path, lease_seconds=30)
+
+    store.schedule_retry(run.run_id, stage.stage_run_id, reason="retrying: busy")
+
+    assert store.get_run(run.run_id).status is RuntimeStatus.RETRY_WAIT
+    assert store.list_stages(run.run_id)[0].status is RuntimeStatus.RETRY_WAIT
+    assert run.run_id in store.runnable_runs()
+    # And a new attempt can be claimed, numbered after the one that failed.
+    again = store.start_attempt(stage.stage_run_id, worker_id="w1",
+                                workspace=tmp_path, lease_seconds=30)
+    assert again.attempt_number == 2
+
+
+def test_a_retry_is_refused_when_the_stage_is_not_running(
+    store: RuntimeStore, tmp_path: Path
+):
+    """Only a stage that just had an attempt can go back in the queue."""
+    run = submit(store)
+    stage = store.list_stages(run.run_id)[0]
+    with pytest.raises(InvalidTransition):
+        store.schedule_retry(run.run_id, stage.stage_run_id, reason="x")

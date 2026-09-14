@@ -61,7 +61,7 @@ def platform(tmp_path: Path):
 
 def submit_example(client: KernelClient, *, records=None, task_id="t-1"):
     return client.submit({
-        "schema_version": 2,
+        "schema_version": 3,
         "task_id": task_id,
         "project_id": "demo",
         "design_id": "demo-design",
@@ -266,7 +266,7 @@ def test_idempotent_submission_returns_the_same_run(platform):
     client, _ = platform
     client.register("alice", "a long enough password")
     task = {
-        "schema_version": 2, "task_id": "same", "project_id": "demo",
+        "schema_version": 3, "task_id": "same", "project_id": "demo",
         "design_id": "demo-design", "plugin_id": "example-reporter",
         "inputs": {"records": [1, 2, 3, 4]}, "timeout_seconds": 30,
     }
@@ -291,7 +291,7 @@ def test_an_unknown_plugin_is_refused_as_a_bad_request(platform):
     client.register("alice", "a long enough password")
     with pytest.raises(KernelError) as caught:
         client.submit({
-            "schema_version": 2, "task_id": "x", "project_id": "p",
+            "schema_version": 3, "task_id": "x", "project_id": "p",
             "design_id": "d", "plugin_id": "no-such-plugin", "inputs": {},
         })
     assert caught.value.status == 400
@@ -302,7 +302,7 @@ def test_an_invalid_task_is_a_400(platform):
     client, _ = platform
     client.register("alice", "a long enough password")
     with pytest.raises(KernelError) as caught:
-        client.submit({"schema_version": 2, "task_id": "x"})
+        client.submit({"schema_version": 3, "task_id": "x"})
     assert caught.value.status == 400
 
 

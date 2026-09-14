@@ -15,7 +15,7 @@ from typing import Any, Mapping
 
 #: Bumped when a contract changes shape.  A consumer must reject anything it
 #: was not compiled against rather than guess.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 #: Identifiers that may appear in a task, run, plugin, or event.
 IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")

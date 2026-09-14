@@ -1,0 +1,3 @@
+{"schema_version": 3, "plugin_id": "widget", "plugin_version": "1.0.0",
+ "adapter_entry": ["./adapter"], "capabilities": ["do.thing"],
+ "supported_arch": ["aarch64"]}

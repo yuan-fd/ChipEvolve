@@ -122,7 +122,7 @@ def main() -> int:
 
 def _write(path: Path, payload: dict, started_at: str) -> None:
     payload = {
-        "schema_version": 2,
+        "schema_version": 3,
         "started_at": started_at,
         "ended_at": now(),
         **payload,

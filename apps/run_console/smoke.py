@@ -188,7 +188,7 @@ def main() -> int:
         assert health["app"] == "run_console", health
 
         status, created = request("POST", f"{base}/runs", {
-            "task": {"schema_version": 2, "task_id": "t-1", "project_id": "p",
+            "task": {"schema_version": 3, "task_id": "t-1", "project_id": "p",
                      "design_id": "gcd", "plugin_id": "orfs",
                      "inputs": {"rtl_path": "/tmp/x.v", "platform": "nangate45"},
                      "parameters": {}},

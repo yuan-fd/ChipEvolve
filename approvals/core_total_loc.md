@@ -52,3 +52,31 @@ through. Six lines: the `try`, the `except`, the re-raise, and the reason.
 Worth recording that this is what the ratchet is for. The growth is small and
 the change is a correctness fix, and it still took an entry here, because the
 alternative is a budget that every "but it is only six lines" erodes.
+
+## 6,201 -> 6,303: a false contract replaced by real behaviour
+
+This round removed five fields the platform never honoured and implemented the
+one that was worth keeping.  The kernel grew by 102 lines net, and the growth is
+itemised rather than summarised:
+
+| Where | Lines | What |
+| --- | ---: | --- |
+| `core/runtime/store.py` | +53 | `schedule_retry` -- returning a failed stage *and* its run to the queue |
+| `core/runtime/runtime.py` | +29 | `_should_retry` -- who decides a retry is allowed, and who pays for it |
+| `core/runtime/adapter.py` | +4 | renaming the wire version, and saying why it is not `schema_version` |
+| `contracts/` | +15 | the docstrings recording *why* five fields were deleted |
+| `core/evaluator/boundary.py` | +1 | using the version constant instead of a literal |
+
+**Why this is growth and not bloat.**  Everything else in the round *shrank*:
+`TaskSpec` lost `workflow_id` and `resources`, `PluginManifest` lost
+`input_schema`, `output_schema` and `required_tools`.  What grew is the one
+change that replaced a promise with behaviour: `max_attempts` now does
+something.  A plugin that reports a failure as `retryable` gets another attempt,
+within a budget the platform owns.
+
+The 15 lines in `contracts/` are the explanation of the removals.  Trimming that
+prose to fit the ceiling would be trimming the reason a future reader does not
+re-add the fields -- which is the whole point of deleting them in writing.
+
+**The ceilings this needs are recorded in `approvals/ceiling.json`.**  Three
+per-file ceilings rise with it, each with its own note beside this one.

@@ -1,19 +1,10 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "plugin_id": "example-reporter",
   "plugin_version": "1.0.0",
   "adapter_entry": ["python3", "./adapter.py"],
   "capabilities": ["report.summarize"],
   "supported_arch": ["aarch64", "x86_64", "arm64"],
-  "input_schema": {
-    "type": "object",
-    "required": ["records"]
-  },
-  "output_schema": {
-    "type": "object",
-    "required": ["status", "artifacts"]
-  },
-  "required_tools": ["python3"],
   "default_timeout_seconds": 60,
   "artifact_rules": [
     {"kind": "summary", "required": true},

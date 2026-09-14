@@ -48,3 +48,18 @@ zero across the kernel.
 800 -> 828, recorded in `approvals/ceiling.json`.  This is the first approval
 under the repaired check: the gate compares the number now, instead of testing
 that some file existed.
+
+## 828 -> 881: a retry has to be reachable
+
+`schedule_retry` moves a failed stage **and** its run back to `retry_wait`.
+
+Both, because the worker's claim query requires both to be non-terminal
+(`store.py`, `runnable_runs`).  Moving only the run would produce a retry that
+is recorded and never claimed: the caller would wait forever for something that
+cannot happen.  That is the failure mode this method's docstring names, and a
+test asserts the run appears in `runnable_runs` afterwards.
+
+The method reuses `run_transition_allowed` rather than testing the run's status
+itself, so the rule for which transitions are legal stays in the one place that
+owns it.  The attempt that failed stays `FAILED`: the retry is a new attempt, not
+an erasure of the old one.

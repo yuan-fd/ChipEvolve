@@ -31,18 +31,27 @@ class TaskSpec:
 
     Immutable once submitted.  ``inputs`` and ``parameters`` are free-form
     because the platform deliberately does not understand a capability's
-    domain; the plugin's own ``input_schema`` constrains them.
+    domain.  Who checks that they mean anything?  The plugin, at its own
+    boundary: it is the only party that knows what they should contain, and it
+    reports a ``configuration_error`` when they are wrong.
+
+    Two fields were removed rather than left as promises this platform does not
+    keep: ``workflow_id`` (validated, read by nothing, and fatal at the store)
+    and ``resources`` (declared, enforced nowhere).  Orchestration and resource
+    limits are real ideas; they come back when they are implemented, together
+    with the behaviour that makes them true.
     """
 
     task_id: str
     project_id: str
     design_id: str
     plugin_id: str | None = None
-    workflow_id: str | None = None
     inputs: dict[str, Any] = field(default_factory=dict)
     parameters: dict[str, Any] = field(default_factory=dict)
-    resources: dict[str, Any] = field(default_factory=dict)
     timeout_seconds: int = 3600
+    #: How many attempts a *retryable* failure is allowed.  One means no retry,
+    #: which is the default because a capability that cannot be re-run from its
+    #: own evidence should not be re-run automatically.
     max_attempts: int = 1
     expected_artifacts: tuple[str, ...] = ()
     labels: dict[str, str] = field(default_factory=dict)
@@ -52,11 +61,10 @@ class TaskSpec:
         validate_version(self.schema_version)
         for name in ("task_id", "project_id", "design_id"):
             validate_identifier(name, getattr(self, name))
-        if (self.plugin_id is None) == (self.workflow_id is None):
-            raise ContractError("TaskSpec must define exactly one of plugin_id or workflow_id")
+        if self.plugin_id is None:
+            raise ContractError("TaskSpec must name the plugin it runs")
         validate_identifier("plugin_id", self.plugin_id, required=False)
-        validate_identifier("workflow_id", self.workflow_id, required=False)
-        for name in ("inputs", "parameters", "resources", "labels"):
+        for name in ("inputs", "parameters", "labels"):
             validate_mapping(name, getattr(self, name))
         if not isinstance(self.timeout_seconds, int) or self.timeout_seconds <= 0:
             raise ContractError("timeout_seconds must be a positive integer")
@@ -138,16 +146,25 @@ class RuntimeRequirements:
 
 @dataclass(frozen=True)
 class PluginManifest:
-    """Immutable identity and boundary declaration for one capability."""
+    """Immutable identity and boundary declaration for one capability.
+
+    Three fields were removed rather than left as promises: ``input_schema`` and
+    ``output_schema`` (the kernel never validated either, and validating them
+    would mean teaching the kernel a schema dialect -- and, on the way, giving a
+    dependency-free package its first dependency), and ``required_tools`` (the
+    kernel cannot check them: a plugin runs in its own environment, so the
+    kernel would be asking about the wrong ``PATH``.  The plugin checks its own
+    tools at its own boundary and reports a ``configuration_error``).
+
+    What remains is what this platform actually honours.  Adding a field here
+    means adding the behaviour that makes it true.
+    """
 
     plugin_id: str
     plugin_version: str
     adapter_entry: tuple[str, ...]
     capabilities: tuple[str, ...]
     supported_arch: tuple[str, ...]
-    input_schema: dict[str, Any]
-    output_schema: dict[str, Any]
-    required_tools: tuple[str, ...] = ()
     default_timeout_seconds: int = 3600
     artifact_rules: tuple[dict[str, Any], ...] = ()
     environment: dict[str, str] = field(default_factory=dict)
@@ -173,8 +190,6 @@ class PluginManifest:
             isinstance(i, str) and i for i in self.supported_arch
         ):
             raise ContractError("supported_arch must be a non-empty string list")
-        validate_mapping("input_schema", self.input_schema)
-        validate_mapping("output_schema", self.output_schema)
         validate_mapping("environment", self.environment)
         if not all(isinstance(k, str) and isinstance(v, str)
                    for k, v in self.environment.items()):
@@ -194,7 +209,7 @@ class PluginManifest:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "PluginManifest":
         value = known_payload(cls, payload)
-        for name in ("adapter_entry", "capabilities", "supported_arch", "required_tools"):
+        for name in ("adapter_entry", "capabilities", "supported_arch"):
             value[name] = tuple(value.get(name, ()))
         value["artifact_rules"] = tuple(value.get("artifact_rules", ()))
         value["requirements"] = RuntimeRequirements.from_dict(value.get("requirements"))

@@ -537,6 +537,59 @@ class RuntimeStore:
                 self._connection.execute("ROLLBACK")
                 raise
 
+    def schedule_retry(
+        self, run_id: str, stage_run_id: str, *, reason: str,
+    ) -> None:
+        """Return a failed stage, and its run, to the queue for another attempt.
+
+        Both move, because a worker's claim query requires both: a run left in
+        ``retry_wait`` with a ``running`` stage is a retry nothing can ever pick
+        up, and the caller would wait forever for something that cannot happen.
+
+        The attempt that just failed stays FAILED.  It did fail, and that is
+        evidence; the retry is a new attempt, not an erasure of the old one.
+        """
+        with self._lock:
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                stage = self._connection.execute(
+                    "SELECT * FROM runtime_stage_runs WHERE stage_run_id = ?",
+                    (stage_run_id,),
+                ).fetchone()
+                if stage is None:
+                    raise RuntimeStoreError(f"unknown stage {stage_run_id!r}")
+                stage_status = RuntimeStatus(stage["status"])
+                if stage_status is not RuntimeStatus.RUNNING:
+                    raise InvalidTransition(
+                        f"only a running stage can be retried, not {stage_status.value}"
+                    )
+                row = self._connection.execute(
+                    "SELECT status FROM runtime_runs WHERE run_id = ?", (run_id,)
+                ).fetchone()
+                if row is None:
+                    raise RuntimeStoreError(f"unknown run {run_id!r}")
+                current = RuntimeStatus(row["status"])
+                # The rule for which run transitions are legal lives in one
+                # place, so a retry cannot invent a path the state machine
+                # would refuse elsewhere.
+                if not run_transition_allowed(current, RuntimeStatus.RETRY_WAIT):
+                    raise InvalidTransition(
+                        f"invalid run transition {current.value} -> retry_wait"
+                    )
+                self._connection.execute(
+                    "UPDATE runtime_stage_runs SET status = ? WHERE stage_run_id = ?",
+                    (RuntimeStatus.RETRY_WAIT.value, stage_run_id),
+                )
+                self._connection.execute(
+                    "UPDATE runtime_runs SET status = ?, terminal_reason = ? "
+                    "WHERE run_id = ?",
+                    (RuntimeStatus.RETRY_WAIT.value, reason, run_id),
+                )
+                self._connection.execute("COMMIT")
+            except Exception:
+                self._connection.execute("ROLLBACK")
+                raise
+
     def runnable_runs(self, *, limit: int = 50) -> list[str]:
         """Run ids that have a stage a worker may claim.
 

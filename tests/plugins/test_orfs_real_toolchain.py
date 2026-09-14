@@ -99,7 +99,7 @@ def real_run(tmp_path_factory) -> tuple[dict, Path]:
         "schema_version": 1,
         "plugin": {"plugin_id": "orfs", "plugin_version": "1.0.0"},
         "task": {
-            "schema_version": 2, "task_id": "real-orfs", "project_id": "p",
+            "schema_version": 3, "task_id": "real-orfs", "project_id": "p",
             "design_id": "counter", "plugin_id": "orfs",
             "inputs": {
                 "rtl_path": str(rtl), "platform": PLATFORM, "design": "counter",
@@ -222,7 +222,7 @@ def test_the_protected_evaluator_scores_the_real_run(real_run, tmp_path):
         "schema_version": 1,
         "plugin": {"plugin_id": "orfs-evaluator", "plugin_version": "1.0.0"},
         "task": {
-            "schema_version": 2, "task_id": "eval", "project_id": "p",
+            "schema_version": 3, "task_id": "eval", "project_id": "p",
             "design_id": "counter", "plugin_id": "orfs-evaluator",
             # The kernel declares the workspace it is evaluating.
             "inputs": {"workspace": str(workspace)}, "parameters": {},

@@ -126,7 +126,7 @@ def console(tmp_path: Path):
 
 def task(plugin_id: str) -> dict:
     return {
-        "schema_version": 2, "task_id": f"task-{plugin_id}", "project_id": "p",
+        "schema_version": 3, "task_id": f"task-{plugin_id}", "project_id": "p",
         "design_id": "d", "plugin_id": plugin_id, "inputs": {"records": [4, 9]},
         "parameters": {},
     }
@@ -234,7 +234,7 @@ def test_a_run_that_reported_nothing_says_so(console, tmp_path):
     """
     base, token = console
     status, created = http("POST", f"{base}/runs", {"task": {
-        "schema_version": 2, "task_id": "no-toolchain", "project_id": "p",
+        "schema_version": 3, "task_id": "no-toolchain", "project_id": "p",
         "design_id": "d", "plugin_id": "orfs",
         # Explicit paths always win over the environment, so this is
         # deterministic whatever the host has configured: there is no Makefile

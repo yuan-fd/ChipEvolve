@@ -680,28 +680,76 @@ different file from the timing numbers it applies to, which is exactly why the
 parser looks for the declaration across the stage reports instead of assuming it
 sits beside the value.
 
+## The false contracts, settled
+
+Five fields were declared to the outside world and honoured by nothing.  Each is
+now either implemented or gone; none was left as "we may implement this later".
+
+| Field | Outcome | Why that outcome |
+| --- | --- | --- |
+| `input_schema`, `output_schema` | **deleted** | The kernel never validated either. Validating them would mean teaching the kernel a schema dialect -- and giving a dependency-free package its first dependency -- to check a plugin's own domain, which the plugin is the only party able to check. It reports a `configuration_error` instead. |
+| `workflow_id` | **deleted** | The contract demanded exactly one of it and `plugin_id`, nothing read it, and a task naming only a workflow failed at the store. |
+| `resources` | **deleted** | Declared, enforced nowhere. Real limits need cgroups or containers; the field returns when the enforcement does. |
+| `required_tools` | **deleted** | The kernel *cannot* check it: a plugin runs in its own environment, so the kernel would be asking about the wrong `PATH`. The plugin checks its own tools. |
+| `max_attempts` | **implemented** | Retry is lifecycle, which is the platform's business. See below. |
+| the two keys named `schema_version` | **separated** | The request envelope now carries `protocol_version`; payloads keep `schema_version`. Two questions, two names. |
+
+The manifest schema version moved 2 -> 3, because `known_payload` refuses unknown
+fields: a v2 manifest carrying `input_schema` now fails loudly instead of being
+silently accepted.  Twenty producers (four manifests, four adapters, tests,
+smokes) were updated, which is the point -- the version number is what made the
+break visible.
+
+**One field was worth keeping.** `max_attempts` is now real: a plugin that
+reports a failure as `retryable` gets another attempt, within a budget the
+platform owns.  The state machine and the worker's claim query had been written
+for retries already -- `RUNNING -> RETRY_WAIT` was allowed and `retry_wait` was
+in the runnable set -- so only the decision was missing.  The division is the
+platform's own principle: **the plugin decides what may be retried, the platform
+decides how many times**, because only the plugin knows whether trying again
+could help, and only the platform can bound a loop.  A timeout, a cancellation,
+a lost lease and a protocol error are never retried, each with a test.
+
+## The boundary is now enforced, not just observed
+
+`G16`: the kernel must not import an app or a plugin.  It measured **zero** and
+was true only by convention -- and no existing rule would have noticed a
+regression, because G1 catches a plugin *name* in kernel text, not the kernel
+importing the plugin's code.  This is the failure the previous platform made
+first: its worker imported the whole application layer to run one command, which
+is why deleting a capability there required editing the kernel.
+
+Mutation-checked: injecting `import orfs` into a kernel module makes G16 fail
+with `the kernel imports the plugin 'orfs'`; removing it returns the tree to
+green.  The claims in the tier-one list below are now guarded rather than merely
+measured.
+
 ## Next
 
-The platform's structure is done; what remains is the part an outside team
-touches.  In the order it has to happen:
+The structure is done and the contracts no longer lie.  What remains is the part
+an outside team touches:
 
-1. **Settle the false contracts.** `input_schema` / `output_schema`,
-   `workflow_id`, the `append_stage` docstring and the two keys both named
-   `schema_version`.  Each is either implemented and tested or removed from the
-   public contract; none stays as "we may implement this later".
-2. **Split the manifest from the admission record.** A third party should
-   maintain only their own manifest; whether the platform trusts them is the
-   platform's file, under `<state-root>/admissions/`.
-3. **Write the plugin protocol down** (`docs/PLUGIN_PROTOCOL.md`): the wire
-   contract, language-independent, with the request and result envelopes that
-   already exist plus the compatibility statement that does not.
-4. **A conformance tool**, so a team can check its own plugin in its own CI
-   without reading this repository.
-5. **One real external plugin**, physically outside this repository and launched
-   from its own environment -- `edair` first (no toolchain needed, so it can run
-   in the default suite), then ORFS as the headline proof on the real toolchain.
-6. **Guardrails for the boundaries that are only true by convention today**,
-   above all that the kernel may not import an app or a plugin.
+1. **Split the manifest from the admission record.** A third party maintains
+   only their own manifest; whether the platform trusts them is the platform's
+   own record, under `<state-root>/admissions/`.  Decided with the owner:
+   **self-checking is an aid to acceptance, not a gate** -- a plugin validates
+   itself in its own CI, and admission into the platform is still a review the
+   platform performs.  The tool does not admit anyone.
+2. **Write the plugin protocol down** (`docs/PLUGIN_PROTOCOL.md`): the wire
+   contract, language-independent, transcribing the request and result envelopes
+   that already exist and are exercised, plus the compatibility statement that
+   does not exist yet.  It stays JSON: a YAML manifest would put a parser
+   dependency into a dependency-free kernel.
+3. **A conformance tool** (`plugin validate`), so a team can check its own plugin
+   in its own CI.  It checks shape, not existence: an entrypoint may legitimately
+   be an absolute path that only exists in the deployment environment.
+4. **One real external plugin**, physically outside this repository and launched
+   from its own environment -- `edair` first (no toolchain needed, so it runs in
+   the default suite and exposes mechanism problems), then ORFS as the headline
+   proof on the real toolchain.
+5. **Packaging**, so the platform can be installed rather than only run from a
+   checkout: `contracts` has no `pyproject.toml` although eight packages declare
+   it as a dependency, and the three apps declare the wrong one.
 
 Deliberately not next: more application development, and a workflow engine.  The
 orchestration question is a decision to record, not a feature to build -- an
@@ -748,7 +796,7 @@ reader does not have to re-derive the decision -- or, worse, port it by default.
   87 commits. It grew 49.6% *after* being labelled LEGACY.
 - Gate calibration: G1 fires **1,119 times** on v1's kernel-equivalent packages;
   G13 fires **147 times**. Both are zero in v2.
-- v2 size: 23721 Python lines including tests, against 102,852 in v1.
+- v2 size: 24070 Python lines including tests, against 102,852 in v1.
 
 ## How to run
 

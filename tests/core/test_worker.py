@@ -42,7 +42,6 @@ def manifest(**overrides) -> PluginManifest:
         adapter_entry=(sys.executable, str(FIXTURE)),
         capabilities=("do.thing",),
         supported_arch=("aarch64", "x86_64", "arm64"),
-        input_schema={}, output_schema={},
         artifact_rules=(
             {"kind": "report", "required": True},
             {"kind": "log", "required": False},

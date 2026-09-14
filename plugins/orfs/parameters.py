@@ -234,7 +234,7 @@ def orfs_parameter_config_lines(parameters: Mapping[str, Any], *,
 
 def orfs_parameter_schema() -> dict[str, Any]:
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "liveness_rule_version": "orfs-runtime-patterns-v2",
         "frozen_constraints": list(FROZEN_CONSTRAINTS),
         "parameters": [item.__dict__ for item in ORFS_PARAMETERS],

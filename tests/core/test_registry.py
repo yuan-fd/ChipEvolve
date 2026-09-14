@@ -24,15 +24,13 @@ from openroad_platform_registry import (
 
 def manifest_payload(plugin_id: str = "capability", **overrides) -> dict:
     payload = {
-        "schema_version": 2,
+        "schema_version": 3,
         "plugin_id": plugin_id,
         "plugin_version": "1.0.0",
         "adapter_entry": ["python3", "./adapter.py"],
         "capabilities": ["do.thing"],
         "supported_arch": ["aarch64", "x86_64", "arm64"],
-        "input_schema": {"type": "object"},
-        "output_schema": {"type": "object"},
-        "artifact_rules": [{"kind": "report", "required": True}],
+"artifact_rules": [{"kind": "report", "required": True}],
     }
     payload.update(overrides)
     return payload

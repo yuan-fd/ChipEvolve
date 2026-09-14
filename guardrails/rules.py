@@ -838,6 +838,66 @@ def change_budget_violations(root: Path, changed_files: list[str]) -> list[Viola
 
 
 # --------------------------------------------------------------------------
+# G16 - the kernel must not import an app or a plugin
+# --------------------------------------------------------------------------
+
+PLUGIN_DIR = "plugins"
+APP_PACKAGE_PREFIX = "openroad_app_"
+
+
+def _plugin_dirs(root: Path) -> list[Path]:
+    base = root / PLUGIN_DIR
+    if not base.is_dir():
+        return []
+    return sorted(p for p in base.iterdir() if p.is_dir())
+
+
+def kernel_imports_capability_violations(root: Path) -> list[Violation]:
+    """G16: the kernel may not import an application or a plugin.
+
+    This is the property that makes the platform thin, and until now nothing
+    enforced it.  It was true -- measured at zero -- but only by convention, and
+    a single convenient import would end it silently: no other rule in this file
+    would notice, because G1 catches a plugin *name* appearing in kernel text,
+    not the kernel importing the plugin's code.
+
+    The previous platform failed here first.  Its worker imported the entire
+    application layer to run a command, so "remove the capability and the
+    platform still works" was false, and every capability it supported was an
+    implicit part of the kernel.
+
+    Three shapes are refused: an import of a plugin directory by name, an import
+    through the ``plugins.`` path, and an import of an application package.
+    """
+    out: list[Violation] = []
+    plugin_names = {d.name for d in _plugin_dirs(root)}
+    for area in KERNEL_DIRS:
+        base = root / area
+        if not base.is_dir():
+            continue
+        for path in _walk_python(base):
+            for module, lineno in _imported_modules(path):
+                parts = module.split(".")
+                where = _rel(root, path)
+                if parts[0] == APP_DIR or parts[0].startswith(APP_PACKAGE_PREFIX):
+                    out.append(Violation(
+                        "G16", where, lineno,
+                        f"the kernel imports the application {module!r}",
+                    ))
+                elif PLUGIN_DIR in parts:
+                    out.append(Violation(
+                        "G16", where, lineno,
+                        f"the kernel imports plugin code {module!r}",
+                    ))
+                elif parts[0] in plugin_names:
+                    out.append(Violation(
+                        "G16", where, lineno,
+                        f"the kernel imports the plugin {parts[0]!r}",
+                    ))
+    return out
+
+
+# --------------------------------------------------------------------------
 # G15 - every declared rule has a gate, and every gate can fail
 # --------------------------------------------------------------------------
 
@@ -894,6 +954,7 @@ RULES: dict[str, object] = {
     "G12": unreachable_code_violations,
     "G13": duplicate_implementation_violations,
     "G15": rule_coverage_violations,
+    "G16": kernel_imports_capability_violations,
 }
 
 #: Rules that operate on a supplied list rather than a static tree scan.

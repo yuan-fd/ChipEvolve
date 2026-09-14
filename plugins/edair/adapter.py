@@ -48,7 +48,7 @@ def inside(root: Path, candidate: str) -> Path:
 
 def write_result(path: Path, payload: dict, started_at: str) -> None:
     path.write_text(json.dumps({
-        "schema_version": 2, "started_at": started_at, "ended_at": now(), **payload,
+        "schema_version": 3, "started_at": started_at, "ended_at": now(), **payload,
     }, indent=2), encoding="utf-8")
 
 

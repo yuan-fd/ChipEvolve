@@ -15,12 +15,14 @@ import pytest
 
 from openroad_platform_contracts import (
     ArtifactDeclaration,
+    AttemptStatus,
     EvaluationRequest,
     Metric,
     PluginManifest,
     RuntimeRequirements,
     RuntimeStatus,
     TaskSpec,
+    is_terminal,
     Verdict,
     VerdictStatus,
 )
@@ -59,8 +61,6 @@ def manifest(**overrides) -> PluginManifest:
         adapter_entry=(sys.executable, str(FIXTURE)),
         capabilities=("do.thing",),
         supported_arch=("aarch64", "x86_64", "arm64"),
-        input_schema={},
-        output_schema={},
         artifact_rules=(
             {"kind": "report", "required": True},
             {"kind": "log", "required": False},
@@ -397,3 +397,110 @@ def test_a_terminal_run_is_not_executed_again(tmp_path):
     # Exactly one attempt: a finished run does not silently run twice.
     attempts = rt.store.list_attempts(rt.store.list_stages(run.run_id)[0].stage_run_id)
     assert len(attempts) == 1
+
+
+# --------------------------------------------------------------------------
+# retry: who decides, and who pays
+# --------------------------------------------------------------------------
+
+def test_a_retryable_failure_returns_the_run_to_the_queue(tmp_path):
+    """The plugin asks for another attempt; the platform grants the budget.
+
+    A retryable failure must NOT settle the run.  If it did, the plugin's
+    ``retryable`` flag would be a word nobody acts on -- which is the failure
+    mode this round exists to remove.
+    """
+    rt = runtime(tmp_path, manifest())
+    run = rt.submit(task("fail_retryable", max_attempts=2))
+    run = rt.execute_once(run.run_id)
+
+    assert run.status is RuntimeStatus.RETRY_WAIT, run.status
+    assert not is_terminal(run.status)
+    # The attempt that failed stays recorded as a failure: it did fail, and the
+    # retry is a new attempt rather than an erasure of the old one.
+    stage = rt.store.list_stages(run.run_id)[0]
+    attempts = rt.store.list_attempts(stage.stage_run_id)
+    assert len(attempts) == 1
+    assert attempts[0].status is AttemptStatus.FAILED
+    assert attempts[0].failure["category"] == "transient_error"
+
+
+def test_a_retried_run_can_actually_be_claimed_again(tmp_path):
+    """A retry that no worker can pick up is a run that waits forever.
+
+    The claim query requires both the stage and the run to be non-terminal, so
+    this asserts the property that makes the retry reachable rather than merely
+    recorded.
+    """
+    rt = runtime(tmp_path, manifest())
+    run = rt.submit(task("fail_retryable", max_attempts=2))
+    rt.execute_once(run.run_id)
+    assert run.run_id in rt.store.runnable_runs()
+
+
+def test_the_budget_is_respected_and_then_the_run_fails(tmp_path):
+    """``max_attempts`` is spent, not ignored in either direction."""
+    rt = runtime(tmp_path, manifest())
+    run = rt.submit(task("fail_retryable", max_attempts=3))
+
+    run = rt.execute_once(run.run_id)
+    assert run.status is RuntimeStatus.RETRY_WAIT
+    run = rt.execute_once(run.run_id)
+    assert run.status is RuntimeStatus.RETRY_WAIT
+    run = rt.execute_once(run.run_id)
+    assert run.status is RuntimeStatus.FAILED, run.status
+
+    stage = rt.store.list_stages(run.run_id)[0]
+    attempts = rt.store.list_attempts(stage.stage_run_id)
+    assert [a.attempt_number for a in attempts] == [1, 2, 3]
+    assert all(a.status is AttemptStatus.FAILED for a in attempts)
+    # And it is no longer offered to any worker.
+    assert run.run_id not in rt.store.runnable_runs()
+
+
+def test_one_attempt_means_no_retry(tmp_path):
+    """The default is no retry: an unasked-for repeat is not a kindness."""
+    rt = runtime(tmp_path, manifest())
+    run = rt.submit(task("fail_retryable"))          # max_attempts defaults to 1
+    run = rt.execute_once(run.run_id)
+    assert run.status is RuntimeStatus.FAILED
+    stage = rt.store.list_stages(run.run_id)[0]
+    assert len(rt.store.list_attempts(stage.stage_run_id)) == 1
+
+
+def test_a_failure_the_plugin_did_not_mark_retryable_is_not_retried(tmp_path):
+    """The platform does not guess.  Silence is not consent to re-run."""
+    rt = runtime(tmp_path, manifest())
+    run = rt.submit(task("fail", max_attempts=5))
+    run = rt.execute_once(run.run_id)
+    assert run.status is RuntimeStatus.FAILED
+    stage = rt.store.list_stages(run.run_id)[0]
+    assert len(rt.store.list_attempts(stage.stage_run_id)) == 1
+
+
+def test_a_protocol_error_is_never_retried(tmp_path):
+    """A plugin bug reproduces on the second run; the budget is not spent on it.
+
+    ``missing_artifact`` is the adapter's declaration not matching what it left
+    behind -- deterministic, so retrying would burn an attempt to learn nothing.
+    """
+    rt = runtime(tmp_path, manifest())
+    run = rt.submit(task("missing_artifact", max_attempts=4))
+    run = rt.execute_once(run.run_id)
+    assert run.status is RuntimeStatus.FAILED
+    stage = rt.store.list_stages(run.run_id)[0]
+    attempts = rt.store.list_attempts(stage.stage_run_id)
+    assert len(attempts) == 1
+    assert attempts[0].failure["category"] == "protocol_error"
+
+
+def test_a_timed_out_run_is_not_retried(tmp_path):
+    """A timeout is not a retryable failure: nothing asked for another attempt."""
+    # The manifest's own ceiling is what bounds the attempt, so it is set low
+    # rather than the task's: the attempt is capped at one second.
+    rt = runtime(tmp_path, manifest(default_timeout_seconds=1))
+    run = rt.submit(task("noisy", max_attempts=4, timeout_seconds=600))
+    run = rt.execute_once(run.run_id)
+    assert run.status is RuntimeStatus.TIMED_OUT, run.status
+    stage = rt.store.list_stages(run.run_id)[0]
+    assert len(rt.store.list_attempts(stage.stage_run_id)) == 1

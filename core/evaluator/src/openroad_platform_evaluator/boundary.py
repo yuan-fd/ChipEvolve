@@ -34,6 +34,7 @@ from openroad_platform_contracts import (
     PROTECTED_EVALUATOR_CAPABILITY,
     PluginManifest,
     RuntimeStatus,
+    SCHEMA_VERSION,
     TaskSpec,
     Verdict,
     VerdictStatus,
@@ -177,7 +178,7 @@ class PluginBackedEvaluator:
                 f"{[s.value for s in VerdictStatus]}"
             ) from exc
         metrics = tuple(
-            Metric.from_dict({"schema_version": 2, **item})
+            Metric.from_dict({"schema_version": SCHEMA_VERSION, **item})
             for item in payload.get("metrics", ())
         )
         artifacts = tuple(

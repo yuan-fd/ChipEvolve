@@ -196,7 +196,7 @@ def submit_sweep(client: KernelClient, store: SweepStore, *, name: str,
     sweep = store.get_sweep(sweep_id)
     for point in sweep["points"]:
         task = {
-            "schema_version": 2,
+            "schema_version": 3,
             "task_id": f"{sweep_id}-p{point['ordinal']}",
             "project_id": sweep["plugin_id"],
             "design_id": str(inputs.get("design") or "unknown"),

@@ -42,8 +42,6 @@ def evaluator_manifest(**overrides) -> PluginManifest:
         adapter_entry=(sys.executable, str(FIXTURE)),
         capabilities=(PROTECTED_EVALUATOR_CAPABILITY,),
         supported_arch=("aarch64", "x86_64", "arm64"),
-        input_schema={},
-        output_schema={},
         artifact_rules=({"kind": VERDICT_ARTIFACT_KIND, "required": True},),
         default_timeout_seconds=60,
     )
@@ -74,8 +72,7 @@ def run_evaluation(tmp_path: Path, behaviour: str, **manifest_overrides):
         manifest=PluginManifest(
             plugin_id="some-capability", plugin_version="1.0.0",
             adapter_entry=("python3", "./a.py"), capabilities=("do.thing",),
-            supported_arch=("aarch64",), input_schema={}, output_schema={},
-        ),
+            supported_arch=("aarch64",), ),
         task=evaluated_task(behaviour),
         workspace=str(workspace),
         attempt_id="attempt-1",

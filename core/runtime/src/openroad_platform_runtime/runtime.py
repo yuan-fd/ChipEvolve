@@ -310,10 +310,39 @@ class WorkflowRuntime:
             exit_code=execution.result.exit_code,
             failure=execution.result.failure,
         )
+        if self._should_retry(run, attempt, execution):
+            self.store.schedule_retry(
+                run.run_id, stage.stage_run_id,
+                reason=f"retrying: {_terminal_reason(execution.result)}",
+            )
+            return
         self.store.transition_run(
             run.run_id, execution.result.status,
             reason=_terminal_reason(execution.result),
         )
+
+    @staticmethod
+    def _should_retry(
+        run: RunRecord, attempt: Attempt, execution: AdapterExecution,
+    ) -> bool:
+        """Whether a failed attempt has another attempt left in its budget.
+
+        Who decides what may be retried?  The plugin, in its own failure report:
+        it is the only party that knows whether trying again could help -- a
+        missing tool will not appear, a transient read might succeed.  The
+        platform decides only the budget, because the budget is lifecycle, and
+        because an unbounded retry loop is the platform's problem to prevent.
+
+        Nothing else is retried: a timeout, a cancellation and a lost lease are
+        not failures the plugin asked to repeat, and a protocol error is a plugin
+        bug that a second run would reproduce.
+        """
+        if execution.result.status is not RuntimeStatus.FAILED:
+            return False
+        failure = execution.result.failure or {}
+        if not failure.get("retryable"):
+            return False
+        return attempt.attempt_number < run.task_spec.max_attempts
 
     def _write_protocol_receipt(
         self, manifest: PluginManifest, run: RunRecord, attempt: Attempt,

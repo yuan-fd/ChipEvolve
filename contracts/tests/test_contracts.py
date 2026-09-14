@@ -49,13 +49,34 @@ def make_task(**overrides) -> TaskSpec:
 # task / manifest / result
 # --------------------------------------------------------------------------
 
-def test_task_requires_exactly_one_of_plugin_or_workflow():
-    with pytest.raises(ContractError):
+def test_a_task_must_name_the_plugin_that_runs_it():
+    """There is exactly one way to say what runs a task, and it is required.
+
+    ``workflow_id`` used to be the alternative: the contract demanded exactly one
+    of the two, no code read either one, and a task that named only a workflow
+    failed at the store with "a run stage requires a plugin_id".  A field that is
+    validated but neither read nor usable is worse than a missing feature -- it
+    tells a caller it can do something it cannot.
+    """
+    with pytest.raises(ContractError, match="must name the plugin"):
         make_task(plugin_id=None).validate()
-    make_task(plugin_id=None, workflow_id="wf-1").validate()
-    make_task(workflow_id=None).validate()
-    with pytest.raises(ContractError, match="exactly one"):
-        make_task(workflow_id="wf-1").validate()
+    make_task(plugin_id="some-capability").validate()
+
+
+def test_the_removed_fields_are_refused_rather_than_ignored():
+    """A payload from the previous schema version fails loudly.
+
+    Silently dropping ``workflow_id`` would let a caller keep believing their
+    orchestration was honoured.
+    """
+    payload = make_task().to_dict()
+    payload["workflow_id"] = "wf-1"
+    with pytest.raises(ContractError, match="unknown TaskSpec fields: workflow_id"):
+        TaskSpec.from_dict(payload)
+    payload = make_task().to_dict()
+    payload["resources"] = {"cpu": 4}
+    with pytest.raises(ContractError, match="unknown TaskSpec fields: resources"):
+        TaskSpec.from_dict(payload)
 
 
 def test_task_rejects_unknown_field_on_load():
@@ -87,7 +108,6 @@ def test_manifest_rejects_reserved_artifact_kind():
         plugin_id="x", plugin_version="1",
         adapter_entry=("python3", "./adapter.py"),
         capabilities=("do.thing",), supported_arch=("aarch64",),
-        input_schema={}, output_schema={},
         artifact_rules=({"kind": "protected_evaluation"},),
     )
     manifest.validate()  # manifest rules do not inspect kinds
@@ -102,7 +122,6 @@ def test_manifest_requirements_are_declarative_not_hardcoded():
         plugin_id="anything", plugin_version="1",
         adapter_entry=("python3", "./a.py"),
         capabilities=("x",), supported_arch=("aarch64",),
-        input_schema={}, output_schema={},
         requirements=RuntimeRequirements(
             require_protocol_receipt=True,
             require_experiment_protocol=True,
@@ -257,5 +276,5 @@ def test_adapter_may_not_declare_runtime_authority():
 def test_primitive_output_is_json_serialisable():
     payload = primitive(make_task(labels={"a": "b"}))
     json.dumps(payload)
-    assert payload["schema_version"] == 2
+    assert payload["schema_version"] == 3
     assert payload["labels"] == {"a": "b"}

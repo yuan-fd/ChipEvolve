@@ -219,7 +219,7 @@ def run_adapter(tmp_path: Path, *, inputs: dict, prepare=True) -> tuple[dict, Pa
     request.write_text(json.dumps({
         "schema_version": 1,
         "plugin": {"plugin_id": "edair", "plugin_version": "1.0.0"},
-        "task": {"schema_version": 2, "task_id": "t", "project_id": "p",
+        "task": {"schema_version": 3, "task_id": "t", "project_id": "p",
                  "design_id": "d", "plugin_id": "edair", "inputs": inputs},
     }), encoding="utf-8")
 

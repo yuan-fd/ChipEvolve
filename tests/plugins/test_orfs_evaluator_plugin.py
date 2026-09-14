@@ -136,8 +136,7 @@ def request_for(workspace: Path) -> EvaluationRequest:
             adapter_entry=("python3", "./a.py"),
             capabilities=("eda.orfs",),
             supported_arch=("aarch64", "x86_64", "arm64"),
-            input_schema={}, output_schema={},
-        ),
+            ),
         task=TaskSpec(
             task_id="orfs-run-1", project_id="p", design_id=DESIGN,
             plugin_id="orfs",

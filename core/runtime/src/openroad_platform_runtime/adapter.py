@@ -51,7 +51,11 @@ REQUEST_FILENAME = "adapter_request.json"
 RESULT_FILENAME = "adapter_result.json"
 LOG_FILENAME = "adapter.log"
 
-PROTOCOL_SCHEMA_VERSION = 1
+#: The wire protocol's own version.  Deliberately *not* called schema_version:
+#: the request envelope and the payloads inside it version independently, and a
+#: plugin that saw two different keys with the same name could not tell which
+#: one it was being asked about.
+PROTOCOL_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -151,7 +155,7 @@ class ProcessAdapter:
     @staticmethod
     def _write_request(path: Path, manifest: PluginManifest, task: TaskSpec) -> None:
         payload = {
-            "schema_version": PROTOCOL_SCHEMA_VERSION,
+            "protocol_version": PROTOCOL_VERSION,
             "plugin": {
                 "plugin_id": manifest.plugin_id,
                 "plugin_version": manifest.plugin_version,

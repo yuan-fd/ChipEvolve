@@ -34,7 +34,7 @@ def ok(request: dict, result_path: Path, workspace: Path) -> int:
     emit("beta", "started")
     emit("beta", "finished", status="succeeded", seconds=0.25)
     write(result_path, {
-        "schema_version": 2,
+        "schema_version": 3,
         "status": "succeeded",
         "exit_code": 0,
         "started_at": "2026-01-01T00:00:00+00:00",
@@ -73,14 +73,14 @@ def main() -> int:
 
     if behaviour == "lie_success_nonzero_exit":
         write(result_path, {
-            "schema_version": 2, "status": "succeeded", "exit_code": 0,
+            "schema_version": 3, "status": "succeeded", "exit_code": 0,
             "started_at": "t0", "ended_at": "t1", "artifacts": [], "metrics": [],
         })
         return 1
 
     if behaviour == "exit_code_mismatch":
         write(result_path, {
-            "schema_version": 2, "status": "failed", "exit_code": 7,
+            "schema_version": 3, "status": "failed", "exit_code": 7,
             "started_at": "t0", "ended_at": "t1",
             "failure": {"category": "tool_error", "message": "boom"},
         })
@@ -89,7 +89,7 @@ def main() -> int:
     if behaviour == "escape_workspace":
         (workspace.parent / "outside.txt").write_text("secret", encoding="utf-8")
         write(result_path, {
-            "schema_version": 2, "status": "succeeded", "exit_code": 0,
+            "schema_version": 3, "status": "succeeded", "exit_code": 0,
             "started_at": "t0", "ended_at": "t1",
             "artifacts": [{"kind": "report", "path": "../outside.txt"}],
         })
@@ -97,7 +97,7 @@ def main() -> int:
 
     if behaviour == "missing_artifact":
         write(result_path, {
-            "schema_version": 2, "status": "succeeded", "exit_code": 0,
+            "schema_version": 3, "status": "succeeded", "exit_code": 0,
             "started_at": "t0", "ended_at": "t1",
             "artifacts": [{"kind": "report", "path": "never-written.json"}],
         })
@@ -106,7 +106,7 @@ def main() -> int:
     if behaviour == "disallowed_kind":
         (workspace / "report.json").write_text("{}", encoding="utf-8")
         write(result_path, {
-            "schema_version": 2, "status": "succeeded", "exit_code": 0,
+            "schema_version": 3, "status": "succeeded", "exit_code": 0,
             "started_at": "t0", "ended_at": "t1",
             "artifacts": [{"kind": "not-in-the-manifest", "path": "report.json"}],
         })
@@ -115,7 +115,7 @@ def main() -> int:
     if behaviour == "forge_authority":
         (workspace / "report.json").write_text("{}", encoding="utf-8")
         write(result_path, {
-            "schema_version": 2, "status": "succeeded", "exit_code": 0,
+            "schema_version": 3, "status": "succeeded", "exit_code": 0,
             "started_at": "t0", "ended_at": "t1",
             "artifacts": [{"kind": "report", "path": "report.json",
                            "metadata": {"official_qor": 1.0}}],
@@ -123,10 +123,22 @@ def main() -> int:
         return 0
 
     if behaviour == "fail":
+        # No ``retryable`` flag: a failure the plugin does not ask to repeat.
         write(result_path, {
-            "schema_version": 2, "status": "failed", "exit_code": 2,
+            "schema_version": 3, "status": "failed", "exit_code": 2,
             "started_at": "t0", "ended_at": "t1",
             "failure": {"category": "tool_error", "message": "the tool said no"},
+        })
+        return 2
+
+    if behaviour == "fail_retryable":
+        # The plugin asks for another attempt.  It is the only party that knows
+        # whether trying again could help; the platform only holds the budget.
+        write(result_path, {
+            "schema_version": 3, "status": "failed", "exit_code": 2,
+            "started_at": "t0", "ended_at": "t1",
+            "failure": {"category": "transient_error", "retryable": True,
+                        "message": "the tool was busy"},
         })
         return 2
 

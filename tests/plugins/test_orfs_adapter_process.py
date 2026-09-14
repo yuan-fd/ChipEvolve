@@ -164,7 +164,7 @@ def run_adapter(tmp_path: Path, toolchain: dict[str, Path],
         "schema_version": 1,
         "plugin": {"plugin_id": "orfs", "plugin_version": "1.0.0"},
         "task": {
-            "schema_version": 2, "task_id": "task-1", "project_id": "p",
+            "schema_version": 3, "task_id": "task-1", "project_id": "p",
             "design_id": "counter", "plugin_id": "orfs",
             "inputs": task_inputs, "parameters": {"or_seed": 1},
         },
