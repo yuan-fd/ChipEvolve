@@ -32,6 +32,7 @@ from pathlib import Path
 
 import pytest
 
+from openroad_platform_contracts import ResourceRequest
 from openroad_platform_runtime.guardian import ProcessGuardian
 
 pytestmark = pytest.mark.skipif(
@@ -234,3 +235,129 @@ def test_invalid_construction_is_refused():
         ProcessGuardian(poll_interval=0)
     with pytest.raises(ValueError, match="terminate_grace"):
         ProcessGuardian(terminate_grace=-1)
+
+
+# --------------------------------------------------------------------------
+# declared resource bounds
+# --------------------------------------------------------------------------
+#
+# The children here are written to breach a bound and then sit still, so the
+# assertion is about the *measurement* rather than about how fast the host
+# schedules a new process.  Every one of them touches what it allocates: a
+# reservation that is never written to holds no resident memory, and a limit on
+# resident memory is exactly what is under test.
+
+#: Spawn several children and wait, so the tree is wide rather than deep.
+FORK_AND_WAIT = (
+    "import subprocess, sys, time\n"
+    "kids = [subprocess.Popen([sys.executable, '-c', 'import time;time.sleep(60)'])\n"
+    "        for _ in range(6)]\n"
+    "print('READY', flush=True)\n"
+    "time.sleep(60)\n"
+)
+
+#: Take 400 MiB and write to every page of it.
+HOG_MEMORY = (
+    "import time\n"
+    "block = bytearray(400 * 1024 * 1024)\n"
+    "for offset in range(0, len(block), 4096):\n"
+    "    block[offset] = 1\n"
+    "print('READY', flush=True)\n"
+    "time.sleep(60)\n"
+)
+
+#: Burn CPU with one process, so the count is not what trips the limit.
+SPIN = "value = 0\nwhile True:\n    value += 1\n"
+
+
+def test_measure_counts_the_whole_tree(tmp_path: Path):
+    """Aggregate, not per-process: the case a per-process reading would miss."""
+    import subprocess
+
+    guardian = ProcessGuardian(poll_interval=0.02, terminate_grace=1.0)
+    process = subprocess.Popen(
+        [sys.executable, "-c", FORK_AND_WAIT], stdout=subprocess.PIPE,
+        text=True, start_new_session=True,
+    )
+    try:
+        deadline = time.monotonic() + 20
+        processes, cpu_seconds, memory_bytes = guardian.measure(process.pid)
+        while time.monotonic() < deadline and processes < 4:
+            time.sleep(0.05)
+            processes, cpu_seconds, memory_bytes = guardian.measure(process.pid)
+        assert processes >= 4, processes
+        assert memory_bytes > 0
+        assert cpu_seconds >= 0
+    finally:
+        guardian._kill_tree(process)  # noqa: SLF001 - the test owns this child
+        process.wait()
+
+
+def test_a_declared_process_limit_is_enforced(tmp_path: Path):
+    guardian = ProcessGuardian(poll_interval=0.02, terminate_grace=1.0,
+                               measure_interval=0.05)
+    outcome = guardian.run(
+        [sys.executable, "-c", FORK_AND_WAIT],
+        log_path=tmp_path / "fork.log", timeout_seconds=60,
+        limits=ResourceRequest(processes=3),
+    )
+    assert outcome.exceeded is not None, outcome
+    assert outcome.exceeded.startswith("processes:")
+    assert "above the requested 3" in outcome.exceeded
+    assert not outcome.timed_out
+
+
+def test_a_declared_memory_limit_is_enforced(tmp_path: Path):
+    guardian = ProcessGuardian(poll_interval=0.02, terminate_grace=1.0,
+                               measure_interval=0.05)
+    outcome = guardian.run(
+        [sys.executable, "-c", HOG_MEMORY],
+        log_path=tmp_path / "hog.log", timeout_seconds=60,
+        limits=ResourceRequest(memory_bytes=64 * 1024 * 1024),
+    )
+    assert outcome.exceeded is not None, outcome
+    assert outcome.exceeded.startswith("memory_bytes:")
+    assert not outcome.timed_out
+
+
+def test_a_declared_cpu_limit_is_enforced(tmp_path: Path):
+    guardian = ProcessGuardian(poll_interval=0.02, terminate_grace=1.0,
+                               measure_interval=0.05)
+    outcome = guardian.run(
+        [sys.executable, "-c", SPIN],
+        log_path=tmp_path / "spin.log", timeout_seconds=120,
+        limits=ResourceRequest(cpu_seconds=1.0),
+    )
+    assert outcome.exceeded is not None, outcome
+    assert outcome.exceeded.startswith("cpu_seconds:")
+    assert not outcome.timed_out
+
+
+def test_a_bounded_run_that_stays_inside_its_bounds_is_left_alone(
+    tmp_path: Path,
+):
+    """The check must not become a tripwire: a run inside its budget finishes."""
+    guardian = ProcessGuardian(poll_interval=0.02, terminate_grace=1.0,
+                               measure_interval=0.05)
+    outcome = guardian.run(
+        [sys.executable, "-c", "print('done')"],
+        log_path=tmp_path / "fine.log", timeout_seconds=60,
+        limits=ResourceRequest(cpu_seconds=30, memory_bytes=256 * 1024 * 1024,
+                               processes=10),
+    )
+    assert outcome.exceeded is None
+    assert outcome.returncode == 0
+    assert not outcome.timed_out
+
+
+def test_the_breach_is_written_to_the_adapter_log(tmp_path: Path):
+    """An operator reads the log; a kill with no reason in it is a mystery."""
+    log_path = tmp_path / "logged.log"
+    guardian = ProcessGuardian(poll_interval=0.02, terminate_grace=1.0,
+                               measure_interval=0.05)
+    guardian.run(
+        [sys.executable, "-c", SPIN],
+        log_path=log_path, timeout_seconds=120,
+        limits=ResourceRequest(cpu_seconds=1.0),
+    )
+    assert "resource limit exceeded" in log_path.read_text(encoding="utf-8")
