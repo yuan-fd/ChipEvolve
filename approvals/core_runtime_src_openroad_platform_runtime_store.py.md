@@ -96,3 +96,33 @@ Three parts, in the order they matter:
 an input that is absent.  An absent optional input has no digest on purpose:
 digesting the empty string would make two different absences indistinguishable
 from the same empty file.
+
+## 982 -> 1191: the objects, and the record of where they are
+
+Three parts, and the middle one is the reason the other two can be trusted.
+
+**The object store.**  `objects_root` sits beside the database, with two hex
+characters of fan-out -- a physical-design run produces thousands of reports, and
+a single flat directory is a listing nobody wants to wait for.  Publishing is by
+rename, because a reader that found a half-written object would find it under a
+valid name, which is the worst possible way to learn a copy was interrupted.  A
+digest that is already present is not copied again; its size is checked anyway,
+because a name that is a hash cannot honestly have two sizes.
+
+**The record.**  `storage` says whether an artifact's bytes are in the object
+store or in its attempt workspace, and `artifact_path` follows it.  The column
+exists because there have been two answers and only one of them is the current
+design: guessing would be guessing about evidence.  This is the same reason
+`describe_run` now projects it -- an app may not open this database (G5), so a
+fact the read model omits is a fact no application can show.
+
+**The migration.**  The first non-additive step in this store, and it is two:
+the new column arrives carrying `workspace` for existing rows, since that is
+where their bytes actually are; and `runtime_inputs` is rebuilt, because an
+input's bytes may now come from the object store and SQLite cannot relax a
+`NOT NULL` in place.  Both check before acting -- DDL commits as it goes, so a
+crash between the change and the version update leaves a root labelled 2 with a
+column already added, and reopening it must not die on that.  The table shape
+lives in one named constant used by both the DDL and the rebuild, because two
+copies of a shape eventually disagree and the one that disagreed would be the
+migration.

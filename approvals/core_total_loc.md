@@ -179,3 +179,62 @@ input, and a symlink would let it read outside the workspace, and there is no
 sandbox to prevent either.  The optimisation belongs to the artifact store
 (content addressing, one copy per distinct byte sequence), which is the next
 step and will lower this ceiling rather than raise it.
+
+## 7,159 -> 7,453: artifacts get a home, and an input may come from one
+
+The previous round gave an input an identity.  It left two things undone, and
+they were the same omission seen from two sides: an artifact's bytes still lived
+in the attempt workspace, and an input could still only come from a host path.
+So a run's evidence was as durable as a scratch directory, and the only way to
+feed one run's output into the next was for a caller to know where the platform
+had put it.
+
+The growth is itemised:
+
+| Where | Lines | What |
+| --- | ---: | --- |
+| `core/runtime/.../store.py` | +209 | the object store, the recorded storage location, the rebuild migration, and the reader that follows the record |
+| `core/runtime/.../runtime.py` | +56 | staging an input from an artifact, and checking it as it lands |
+| `contracts/.../input.py` | +26 | `artifact_id` as the second place an input's bytes may come from |
+| `gateway/.../bootstrap.py` | +3 | the state root says where its objects are |
+
+**What the object store buys, in one sentence each.**
+
+*An artifact is no longer a scratch file.*  It is copied, at registration, into
+`<state root>/runtime-objects/<first two hex>/<digest>`, named for the digest the
+platform measured.  A test deletes the attempt workspace and reads the artifact
+afterwards, which is the property stated without prose.
+
+*Identical bytes cost one copy.*  Two runs that emit the same report share one
+object and one digest; the second registration finds it and stops.
+
+*One run can consume another's output without knowing a path.*  An input may
+name `artifact_id` instead of `source`, and the bytes are copied out of the
+object store into the attempt workspace and verified against the record as they
+land.  A reference that does not verify fails the attempt rather than feeding a
+plugin the wrong design.
+
+**Why the kernel, again.**  Same answer as last round.  Custody of the bytes is
+the platform's because the platform is the party that measured them; a caller
+that kept them would be keeping a claim, and the plugin is the untrusted party.
+The only new question this round raised was *where*, and the answer is a design
+decision, not a domain one.
+
+**The migration is where the care went.**  2 -> 3 is the first step here that is
+not additive, and it is two of them: an existing artifact row has its bytes in a
+workspace and no object, so the new column arrives carrying `workspace` rather
+than a default that would claim otherwise; and `runtime_inputs` had to be
+*rebuilt*, because SQLite cannot relax the `NOT NULL` on `source` and an input's
+bytes may now come from the object store.  Both steps check before they act,
+because DDL commits as it goes and a crash between the change and the version
+update must leave a root that still opens.  Four tests cover the reshape, the
+rebuilt table, the interruption, and a root from the newer build being refused.
+
+**What is not being added.**  No capability, no parser, no vendor name, no
+algorithm.  The object store knows files and digests; it does not know what a
+report is.  G1, G2 and G13 remain zero across the kernel.
+
+**Cost accepted, and the debt it pays.**  There is still one copy per attempt on
+the way in, and now one on the way out -- but the way out is deduplicated, and
+the way in can be deduplicated the same way the moment the object store is used
+as the staging source, which is the next step rather than a redesign.

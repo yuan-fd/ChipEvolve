@@ -60,3 +60,27 @@ its records on something the platform actually measured.
 The tamper check is the one the receipt already had, now applied to both files
 through one loop instead of two near-identical branches.  An adapter that writes
 to the platform's own bookkeeping fails the attempt, loudly.
+
+## 729 -> 785: an input may come from an artifact
+
+`_stage_from_artifact` is the whole addition, and its shape is the point: it
+copies the bytes out of the object store and then **checks what landed against
+the artifact's own record**.  Not because the object store is suspected, but
+because a run that says "this came from artifact X" is a claim, and a claim
+nobody checks is decoration.  A digest or size that disagrees fails the attempt
+with the reason recorded.
+
+An optional reference whose bytes have gone is recorded as absent rather than
+failing, which is the same rule optional host inputs already follow.
+
+`_check_inputs` grew one branch.  An artifact id the platform has never
+registered is refused at submission *whether or not the input is required*: the
+id is part of the request, and a request naming an id that does not exist is
+malformed rather than merely unlucky.  An id it has registered, whose object has
+since gone, is a different thing -- an integrity problem, discovered as the
+bytes are copied.
+
+`read_artifact_excerpt` lost its workspace arithmetic and now asks the store
+where the bytes are.  The search over the run's own view stays, because that is
+a membership check: a caller authorised for one run must not read another's
+artifact by quoting its id.
