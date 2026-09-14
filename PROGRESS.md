@@ -14,8 +14,22 @@ apps.  v1 is archived read-only; nothing here migrates file by file.  Target:
 | Shape | Kernel library + independent app processes + gateway entry. |
 | Topology | One monorepo; each app is its own package, process, database. |
 | Algorithms | Return to upstream plugins. Local optimizers leave the product path. |
-| Research scripts | Move to a separate repository. |
+| Research scripts | **Withdrawn.** Do not move them, and do not create a separate repository for them. |
+| Deliverable | The platform base. v1, its `scripts/` and its experiment data are out of scope. |
 | Baseline | Kernel must be clean before structural work (see gate status). |
+
+### Why the research-scripts decision was withdrawn
+
+The original plan was to move v1's `scripts/` (138 files, 22,980 lines) into a
+separate `research-toolchain` repository.  It conflicted with the freeze on v1 --
+moving files out *is* modifying the archive -- and resolving that conflict is not
+worth doing: v2 contains no `scripts/` directory at all, so the migration was
+never about this repository.  Executing it would have touched a large tree for no
+benefit and put the delivery environment at risk.
+
+Recorded rather than deleted, so that a later reader does not re-derive the plan
+and carry it out.  v1's `scripts/` is **not** a migration candidate, and its
+experiment data is **not** evidence this platform needs to preserve.
 
 ## Done
 
@@ -668,16 +682,31 @@ sits beside the value.
 
 ## Next
 
-1. More applications, one per capability the objective names: RTL Studio,
-   Teaching Workbench, Knowledge Service, Extensions Console, Terminal Bench.
-2. Move `scripts/` to its own `research-toolchain` repository -- **blocked on a
-   decision**: that decision's wording says v1 is frozen read-only and must not
-   be modified, and moving its ``scripts/`` directory out modifies it.  Either
-   the new repository takes a copy and v1 keeps its own, or v1 is amended and the
-   freeze means "no new work on v1" rather than "no changes at all".
-3. A real multi-stage run with the reference designs (a bundle with include
-   directories and a synthesis frontend), which would exercise the restored
-   bundle path end to end rather than against a stub.
+The platform's structure is done; what remains is the part an outside team
+touches.  In the order it has to happen:
+
+1. **Settle the false contracts.** `input_schema` / `output_schema`,
+   `workflow_id`, the `append_stage` docstring and the two keys both named
+   `schema_version`.  Each is either implemented and tested or removed from the
+   public contract; none stays as "we may implement this later".
+2. **Split the manifest from the admission record.** A third party should
+   maintain only their own manifest; whether the platform trusts them is the
+   platform's file, under `<state-root>/admissions/`.
+3. **Write the plugin protocol down** (`docs/PLUGIN_PROTOCOL.md`): the wire
+   contract, language-independent, with the request and result envelopes that
+   already exist plus the compatibility statement that does not.
+4. **A conformance tool**, so a team can check its own plugin in its own CI
+   without reading this repository.
+5. **One real external plugin**, physically outside this repository and launched
+   from its own environment -- `edair` first (no toolchain needed, so it can run
+   in the default suite), then ORFS as the headline proof on the real toolchain.
+6. **Guardrails for the boundaries that are only true by convention today**,
+   above all that the kernel may not import an app or a plugin.
+
+Deliberately not next: more application development, and a workflow engine.  The
+orchestration question is a decision to record, not a feature to build -- an
+application can already sequence two runs through the client, and the platform
+should not grow a semantics it has not been shown to need.
 
 ## v1 knowledge that must be carried across by hand
 
