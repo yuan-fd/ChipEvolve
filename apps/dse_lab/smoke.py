@@ -147,7 +147,7 @@ def main() -> int:
 
         status, created = request("POST", f"{base}/sweeps", {
             "name": "smoke sweep",
-            "plugin_id": "orfs",
+            "plugin_id": "example-reporter",
             "inputs": {"rtl_path": "/tmp/x.v", "platform": "nangate45"},
             "points": [
                 {"core_utilization_pct": 40},

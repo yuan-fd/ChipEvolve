@@ -836,20 +836,78 @@ the gateway and the worker command line, and `core/runtime` depends on the
 contract and nothing else.  The worker's command line lives at the composition
 root, where knowing concrete implementations is the job.
 
+## The headline external proof
+
+`orfs` and `orfs-evaluator` left: 3,181 lines, a toolchain, a flow and a signoff
+evaluator, now in `agenticeda-orfs` beside this repository rather than inside it.
+This repository's `plugins/` contains `example` and nothing else -- a reference
+capability with no external dependency, which is what lets the platform's own
+suite stay meaningful without any real capability present.
+
+**The measurement this was for:** extracting the largest capability the platform
+knows required **zero kernel changes**.  Not one line of `contracts`, `core` or
+`gateway` was edited to accommodate it, and after the move the kernel is the same
+6,716 lines.  That is what "the platform does not grow when a capability is
+added" means when it is measured rather than asserted.
+
+What moved and what did not:
+
+| | |
+| --- | --- |
+| Moved | the two plugin directories and their 14 test files |
+| Stayed | `admissions/orfs.json` and `admissions/orfs-evaluator.json`, because a trust decision belongs to the platform |
+| Edited on the platform side | `pytest.ini` (three path lines) and one test that had depended on `orfs` being installed |
+
+That last one is worth recording.  `test_run_console.py` submitted an ORFS task
+to produce "a failed run with no progress events".  A platform test that depends
+on a particular capability being installed is a test that breaks when the
+capability leaves, so it now builds its own plugin -- one whose entrypoint does
+not exist -- in a plugin root the test owns.  The platform's tests now depend on
+no capability at all.
+
+**Running it found a defect in the plugin**, which is why the experiment is worth
+more than the assertion.  A `synth`-only run came back **rejected** by the
+evaluator (`missing_required_metrics, unverified_time_unit`), and the platform
+correctly treats a rejection as a failure -- so every partial run looked like a
+rejected design.  The verdict had two states where the domain has three: "no
+signoff data was produced" is *incomplete*, "the signoff data fails" is
+*rejected*.  Only the plugin can tell them apart, because only it knows what
+`finish` means.  Fixed there, with a test.
+
+## G17: the kernel's packages must form a DAG
+
+The cycle found last round was real, was hidden behind an import inside a
+function, and was invisible to every other gate here.  `G17` walks
+`KERNEL_DIRS`, builds the package import graph from the AST -- including imports
+inside functions -- and names the cycle it finds.
+
+Mutation-checked with exactly the hiding technique that concealed the original:
+a function-local import in `store.py` produces
+`openroad_platform_evaluator -> openroad_platform_runtime ->
+openroad_platform_evaluator`, and removing it returns the tree to green.
+
 ## Next
 
-1. **ORFS as the headline external proof**, on the real toolchain.  `edair`
-   proved the mechanism without needing anything installed; ORFS is the plugin
-   with the most surface (a toolchain, a flow, 2,363 lines) and the one whose
-   extraction would be the strongest evidence that this is an ecosystem rather
-   than a rearrangement.
-2. **A gate against cycles between kernel packages.**  The cycle above was real
-   and was hidden by a function-local import; nothing prevents the next one.  A
-   graph check over `KERNEL_DIRS` with a negative fixture would, and it is small.
-3. **Input staging**, if it turns out to be needed.  Today a plugin fetches its
-   own inputs from paths the task names; the protocol has no way for a task to
-   say "put this file in the workspace for me".  One external plugin is not
-   enough evidence to add it.
+**The platform project's remaining work is finished.**  Its completion criteria
+were: a new plugin requires no kernel change; the kernel does not grow with the
+number of plugins; deleting any plugin leaves the platform working.  All three
+now have evidence from two external repositories.
+
+What follows is not platform work:
+
+1. **More applications** -- the teaching workbench, RTL Studio, a knowledge
+   service.  These are products, they own their own processes and databases, and
+   they reach the platform only through the client.
+2. **More capabilities** -- including the research optimizers that left the
+   product path in the first decision.  Each is a repository, a manifest, an
+   adapter, and an admission review.
+3. **Input staging**, if a second plugin is written that has to implement it
+   itself.  One is not evidence, and the platform does not grow a semantics
+   nobody has needed yet.
+
+Three things will not be proposed without a new, concrete reason: a workflow
+engine, a plugin SDK, and any change that brings a capability back into this
+repository.
 
 Deliberately not next: more application development, and a workflow engine.  The
 orchestration question is a decision to record, not a feature to build -- an
@@ -896,7 +954,7 @@ reader does not have to re-derive the decision -- or, worse, port it by default.
   87 commits. It grew 49.6% *after* being labelled LEGACY.
 - Gate calibration: G1 fires **1,119 times** on v1's kernel-equivalent packages;
   G13 fires **147 times**. Both are zero in v2.
-- v2 size: 22760 Python lines including tests, against 102,852 in v1.
+- v2 size: 15606 Python lines including tests, against 102,852 in v1.
 
 ## How to run
 

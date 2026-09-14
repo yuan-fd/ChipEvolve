@@ -43,17 +43,17 @@ SUBMITTED: dict[str, dict] = {}
 #: running, and one malformed envelope.  Nothing here is a guess by the console.
 TIMELINE = [
     {"event_type": "stage.started", "occurred_at": "2026-01-01T00:00:00+00:00",
-     "producer": "orfs", "payload": {"stage": "synthesize"},
+     "producer": "example-reporter", "payload": {"stage": "synthesize"},
      "stage_run_id": "stage-1", "attempt_id": "attempt-1"},
     {"event_type": "stage.finished", "occurred_at": "2026-01-01T00:00:09+00:00",
-     "producer": "orfs",
+     "producer": "example-reporter",
      "payload": {"stage": "synthesize", "status": "succeeded", "seconds": 9.0},
      "stage_run_id": "stage-1", "attempt_id": "attempt-1"},
     {"event_type": "stage.started", "occurred_at": "2026-01-01T00:00:09+00:00",
-     "producer": "orfs", "payload": {"stage": "place"},
+     "producer": "example-reporter", "payload": {"stage": "place"},
      "stage_run_id": "stage-2", "attempt_id": "attempt-1"},
     {"event_type": "progress.malformed", "occurred_at": "2026-01-01T00:00:10+00:00",
-     "producer": "orfs", "payload": {"count": 2, "marker": "[progress]"},
+     "producer": "example-reporter", "payload": {"count": 2, "marker": "[progress]"},
      "stage_run_id": "stage-2", "attempt_id": "attempt-1"},
 ]
 
@@ -81,10 +81,10 @@ class StubKernel(BaseHTTPRequestHandler):
             return self._reply(200, {"service": "kernel", "status": "ok"})
         if path == "/kernel/plugins":
             return self._reply(200, {"plugins": [
-                {"plugin_id": "orfs", "admitted": True}]})
+                {"plugin_id": "example-reporter", "admitted": True}]})
         if path == "/kernel/runs":
             return self._reply(200, {"runs": [
-                {"run_id": run_id, "status": "running", "plugin_id": "orfs"}
+                {"run_id": run_id, "status": "running", "plugin_id": "example-reporter"}
                 for run_id in SUBMITTED]})
         if path.endswith("/timeline"):
             run_id = path[len("/kernel/runs/"):-len("/timeline")]
@@ -189,7 +189,7 @@ def main() -> int:
 
         status, created = request("POST", f"{base}/runs", {
             "task": {"schema_version": 3, "task_id": "t-1", "project_id": "p",
-                     "design_id": "gcd", "plugin_id": "orfs",
+                     "design_id": "gcd", "plugin_id": "example-reporter",
                      "inputs": {"rtl_path": "/tmp/x.v", "platform": "nangate45"},
                      "parameters": {}},
         })

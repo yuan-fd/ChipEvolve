@@ -1,6 +1,0 @@
-{
-  "license": "Apache-2.0",
-  "source_url": "https://github.com/The-OpenROAD-Project/OpenROAD-flow-scripts",
-  "source_commit": "0000000000000000000000000000000000000000",
-  "notes": "Parses the JSON reports ORFS emits. Does not run the flow."
-}

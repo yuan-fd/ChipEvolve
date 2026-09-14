@@ -898,6 +898,92 @@ def kernel_imports_capability_violations(root: Path) -> list[Violation]:
 
 
 # --------------------------------------------------------------------------
+# G17 - the kernel's packages form a directed acyclic graph
+# --------------------------------------------------------------------------
+
+KERNEL_PACKAGE_PREFIX = "openroad_platform_"
+
+
+def _kernel_packages(root: Path) -> dict[str, Path]:
+    """Package name -> its directory, for every kernel package in the tree."""
+    found: dict[str, Path] = {}
+    for area in KERNEL_DIRS:
+        base = root / area
+        if not base.is_dir():
+            continue
+        for path in sorted(base.rglob("__init__.py")):
+            name = path.parent.name
+            if name.startswith(KERNEL_PACKAGE_PREFIX):
+                found[name] = path.parent
+    return found
+
+
+def _package_edges(root: Path, packages: dict[str, Path]) -> dict[str, set[str]]:
+    """Which kernel packages each one imports, at any depth.
+
+    Imports inside functions count.  The cycle this gate was written for was
+    hidden behind exactly that: a function-local import in `worker.py` reached
+    the registry and the evaluator, while the module header showed neither.
+    """
+    edges: dict[str, set[str]] = {name: set() for name in packages}
+    for name, directory in packages.items():
+        for path in _walk_python(directory):
+            for module, _ in _imported_modules(path):
+                target = module.split(".")[0]
+                if target in packages and target != name:
+                    edges[name].add(target)
+    return edges
+
+
+def _find_cycle(edges: dict[str, set[str]]) -> list[str] | None:
+    """One cycle as a path, or None if the graph is acyclic."""
+    WHITE, GREY, BLACK = 0, 1, 2
+    colour = {name: WHITE for name in edges}
+    for start in sorted(edges):
+        if colour[start] != WHITE:
+            continue
+        stack: list[tuple[str, list[str]]] = [(start, [start])]
+        while stack:
+            node, path = stack[-1]
+            colour[node] = GREY
+            unvisited = sorted(t for t in edges[node] if colour[t] != BLACK)
+            advanced = False
+            for target in unvisited:
+                if colour[target] == GREY:
+                    return path[path.index(target):] + [target]
+                stack.append((target, path + [target]))
+                advanced = True
+                break
+            if not advanced:
+                colour[node] = BLACK
+                stack.pop()
+    return None
+
+
+def kernel_package_cycle_violations(root: Path) -> list[Violation]:
+    """G17: no two kernel packages may import each other.
+
+    A cycle is how a layered design quietly becomes one lump.  Two packages that
+    import each other cannot be tested alone, released alone, or reasoned about
+    one at a time, and the import graph stops telling a reader which way the
+    dependency goes.
+
+    It is also invisible to every other gate here.  The cycle this rule was
+    written for -- the runtime importing the evaluator while the evaluator
+    imported the runtime -- was hidden behind an import inside a function, so it
+    appeared in no module header, broke no test, and was found by accident.
+    """
+    packages = _kernel_packages(root)
+    cycle = _find_cycle(_package_edges(root, packages))
+    if cycle is None:
+        return []
+    return [Violation(
+        "G17", _rel(root, packages[cycle[0]]), 0,
+        "kernel packages import each other in a cycle: " + " -> ".join(cycle),
+    )]
+
+
+# --------------------------------------------------------------------------
 # G15 - every declared rule has a gate, and every gate can fail
 # --------------------------------------------------------------------------
 
@@ -955,6 +1041,7 @@ RULES: dict[str, object] = {
     "G13": duplicate_implementation_violations,
     "G15": rule_coverage_violations,
     "G16": kernel_imports_capability_violations,
+    "G17": kernel_package_cycle_violations,
 }
 
 #: Rules that operate on a supplied list rather than a static tree scan.

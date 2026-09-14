@@ -37,6 +37,7 @@ plugins/    external algorithms. Each owns its own adapter.
 | G14 | One change touches one layer. | `guardrails/test_g14_change_budget.py` |
 | G15 | Every rule here has a gate and a negative fixture. | `guardrails/test_g15_declared_rules_have_gates.py` |
 | G16 | The kernel must not import an app or a plugin. | `guardrails/test_g16_kernel_does_not_import_capabilities.py` |
+| G17 | No two kernel packages may import each other. | `guardrails/test_g17_kernel_packages_are_acyclic.py` |
 
 ## What "defensive" means here
 

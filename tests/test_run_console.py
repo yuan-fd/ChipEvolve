@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -75,7 +76,27 @@ def wait_for(url: str, timeout: float = 20.0) -> dict:
 @pytest.fixture()
 def console(tmp_path: Path):
     """A real kernel with a worker, and the console running as its own process."""
-    kernel = build_kernel(KernelPaths.of(tmp_path / "state", PLUGINS_ROOT, ADMISSIONS_ROOT))
+    # A plugin root this test owns: the shipped plugins, plus one that cannot
+    # start.  A platform test must not depend on a particular capability being
+    # installed -- the capabilities live in their own repositories now.
+    plugins = tmp_path / "plugins"
+    shutil.copytree(PLUGINS_ROOT, plugins)
+    broken = plugins / "cannot-start"
+    broken.mkdir()
+    (broken / "cannot-start.plugin.json").write_text(json.dumps({
+        "schema_version": 3, "plugin_id": "cannot-start", "plugin_version": "1.0.0",
+        "adapter_entry": ["/nonexistent/adapter"], "capabilities": ["never.runs"],
+        "supported_arch": ["aarch64", "x86_64", "arm64"],
+    }), encoding="utf-8")
+    admissions = tmp_path / "admissions"
+    shutil.copytree(ADMISSIONS_ROOT, admissions)
+    (admissions / "cannot-start.json").write_text(json.dumps({
+        "plugin_id": "cannot-start", "status": "admitted",
+        "license_review": "green", "approved_commit": "0" * 40,
+        "reviewer": "test", "reason": "admitted so its launch can fail",
+    }), encoding="utf-8")
+
+    kernel = build_kernel(KernelPaths.of(tmp_path / "state", plugins, admissions))
     router = build_router(GatewayConfig(), kernel)
     kernel_port = free_port()
     from http.server import ThreadingHTTPServer
@@ -229,22 +250,15 @@ def test_the_progress_payload_has_exactly_these_fields(console):
 def test_a_run_that_reported_nothing_says_so(console, tmp_path):
     """Absent stages are unreported, not zero.
 
-    An ORFS task whose toolchain cannot be resolved fails *before* its first
-    progress line, so the kernel holds no stage events for it.  The console must
-    say that, rather than showing an empty bar that reads as "not started".
+    A task whose plugin cannot be launched fails before emitting any progress
+    line, so the kernel holds no stage events for it.  The console must say
+    that, rather than showing an empty bar that reads as "not started".
     """
     base, token = console
     status, created = http("POST", f"{base}/runs", {"task": {
-        "schema_version": 3, "task_id": "no-toolchain", "project_id": "p",
-        "design_id": "d", "plugin_id": "orfs",
-        # Explicit paths always win over the environment, so this is
-        # deterministic whatever the host has configured: there is no Makefile
-        # under the root, and the failure happens before the first progress line.
-        "inputs": {"rtl_path": str(tmp_path / "x.v"), "platform": "nangate45",
-                   "orfs_root": str(tmp_path / "absent"),
-                   "openroad_bin": str(tmp_path / "no-openroad"),
-                   "yosys_bin": str(tmp_path / "no-yosys")},
-        "parameters": {},
+        "schema_version": 3, "task_id": "cannot-start", "project_id": "p",
+        "design_id": "d", "plugin_id": "cannot-start",
+        "inputs": {}, "parameters": {},
     }}, token=token)
     assert status == 201, created
     run_id = created["run"]["run_id"]
@@ -264,8 +278,10 @@ def test_a_run_that_reported_nothing_says_so(console, tmp_path):
     assert attempts, detail["run"]
     failure = attempts[-1]["failure"]
     assert failure, attempts
-    assert failure["category"] == "configuration_error", failure
-    assert "ORFS Makefile not found" in failure["message"], failure
+    # The platform could not start the plugin; the reason survives to the reader
+    # rather than being reduced to "the run failed".
+    assert failure["category"] == "runtime_error", failure
+    assert failure["message"], failure
 
 
 # --------------------------------------------------------------------------

@@ -14,6 +14,6 @@ def test_g14_change_budget_real_tree_is_clean() -> None:
 
 
 def test_g14_change_budget_gate_can_actually_fail() -> None:
-    across = ["core/runtime/store.py", "apps/alpha/main.py", "plugins/orfs/adapter.py"]
+    across = ["core/runtime/store.py", "apps/alpha/main.py", "plugins/example/adapter.py"]
     violations = rules.change_budget_violations(REPO_ROOT, across)
     assert violations, "G14 failed to detect a change spanning three layers"
