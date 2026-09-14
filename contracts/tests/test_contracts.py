@@ -12,6 +12,9 @@ import pytest
 
 from openroad_platform_contracts import (
     ArtifactDeclaration,
+    INPUT_MANIFEST_KIND,
+    InputFile,
+    StagedInput,
     AttemptStatus,
     ContractError,
     Event,
@@ -278,3 +281,92 @@ def test_primitive_output_is_json_serialisable():
     json.dumps(payload)
     assert payload["schema_version"] == 3
     assert payload["labels"] == {"a": "b"}
+
+
+# --------------------------------------------------------------------------
+# staged inputs
+# --------------------------------------------------------------------------
+
+def test_a_task_may_declare_the_files_the_platform_must_place():
+    spec = make_task(staged_inputs=(
+        InputFile(source="/data/netlist.v", destination="design/netlist.v"),
+    ))
+    spec.validate()
+    reloaded = TaskSpec.from_dict(spec.to_dict())
+    assert reloaded == spec
+    assert reloaded.staged_inputs[0].required is True
+
+
+def test_a_payload_without_staged_inputs_still_loads():
+    """Adding an optional field must not invalidate what was already written.
+
+    Every plugin shipped before this change emits a task payload with no
+    ``staged_inputs`` key, and the two external capabilities this platform is
+    built to host are exactly those.  A version bump here would have broken
+    them, and the field is genuinely optional, so there is none.
+    """
+    payload = make_task().to_dict()
+    del payload["staged_inputs"]
+    assert TaskSpec.from_dict(payload).staged_inputs == ()
+
+
+def test_an_input_source_must_be_absolute():
+    """A relative source resolves against whichever worker picked the run up.
+
+    Two workers with different working directories would then stage different
+    bytes for the same task while every record insisted it was the same task.
+    """
+    with pytest.raises(ContractError, match="absolute"):
+        make_task(staged_inputs=(
+            InputFile(source="design.v", destination="design.v"),
+        )).validate()
+
+
+def test_an_input_destination_may_not_leave_the_workspace():
+    for destination in ("../outside.v", "/etc/passwd"):
+        with pytest.raises(ContractError, match="attempt workspace"):
+            InputFile(source="/data/a.v", destination=destination).validate()
+
+
+def test_two_inputs_may_not_claim_the_same_destination():
+    with pytest.raises(ContractError, match="same destination"):
+        make_task(staged_inputs=(
+            InputFile(source="/data/a.v", destination="same.v"),
+            InputFile(source="/data/b.v", destination="same.v"),
+        )).validate()
+
+
+def test_the_manifest_kind_is_reserved_from_adapters():
+    """The input manifest is the platform's record of what it placed.
+
+    A plugin that could register it could make the record disagree with the
+    bytes, which is the one thing the record exists to prevent.
+    """
+    with pytest.raises(ContractError, match="reserved"):
+        ArtifactDeclaration(
+            kind=INPUT_MANIFEST_KIND, path="input_manifest.json",
+        ).validate()
+
+
+def test_a_staged_input_records_a_digest_only_when_it_is_present():
+    present = StagedInput(
+        destination="a.v", source="/data/a.v", present=True,
+        size_bytes=3, sha256="a" * 64,
+    )
+    present.validate()
+
+    absent = StagedInput(
+        destination="a.v", source="/data/a.v", present=False, size_bytes=0,
+    )
+    absent.validate()
+    assert absent.sha256 is None
+
+    with pytest.raises(ContractError, match="needs a sha256"):
+        StagedInput(
+            destination="a.v", source="/data/a.v", present=True, size_bytes=3,
+        ).validate()
+    with pytest.raises(ContractError, match="may not carry a sha256"):
+        StagedInput(
+            destination="a.v", source="/data/a.v", present=False, size_bytes=0,
+            sha256="a" * 64,
+        ).validate()

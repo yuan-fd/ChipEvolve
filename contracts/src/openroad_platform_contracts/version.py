@@ -57,6 +57,20 @@ def validate_sha256(name: str, value: str) -> None:
         raise ContractError(f"{name} must be a lowercase sha256 hex digest")
 
 
+def validate_relative_path(name: str, value: str, *, container: str) -> None:
+    """A path that names something *inside* ``container`` and cannot escape it.
+
+    One implementation, used by both artifact store keys and staged inputs.
+    Two copies of this rule would eventually disagree, and the one that
+    disagreed would be the one that let a path out of the workspace.
+    """
+    if not isinstance(value, str) or not value:
+        raise ContractError(f"{name} is required")
+    parts = value.split("/")
+    if value.startswith("/") or ".." in parts:
+        raise ContractError(f"{name} must stay inside the {container}: {value!r}")
+
+
 def primitive(value: Any) -> Any:
     """Convert a contract graph into JSON-serialisable primitives."""
     if dataclasses.is_dataclass(value):

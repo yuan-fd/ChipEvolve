@@ -236,6 +236,7 @@ One JSON object per line on stdout, prefixed with `manifest.progress_marker`.
 | J6 | Deadline = `min(task.timeout_seconds, manifest.default_timeout_seconds)`. On expiry the process **and all descendants** are terminated. |
 | J7 | Cancellation terminates the process group. The adapter is not required to handle a signal; it must not assume it will run to completion. |
 | J8 | A retried attempt gets a new workspace and a new attempt number. Files from the previous attempt are NOT visible in the new workspace. |
+| J9 | Files declared in `task.staged_inputs` are copied into the workspace before the request is written, and `input_manifest.json` is written at its root. |
 
 ---
 
@@ -248,14 +249,42 @@ One JSON object per line on stdout, prefixed with `manifest.progress_marker`.
 ```
 
 `task` fields the adapter receives: `schema_version`, `task_id`, `project_id`,
-`design_id`, `plugin_id`, `inputs`, `parameters`, `timeout_seconds`,
-`max_attempts`, `expected_artifacts`, `labels`. `inputs` and `parameters` are the
-plugin's own; the platform carries them and does not validate their shape.
+`design_id`, `plugin_id`, `inputs`, `parameters`, `staged_inputs`,
+`timeout_seconds`, `max_attempts`, `expected_artifacts`, `labels`. `inputs` and
+`parameters` are the plugin's own; the platform carries them and does not
+validate their shape.
+
+### Staged inputs (`staged_inputs`)
+
+Optional list. Each entry: `{"source": <absolute host path>, "destination":
+<relative workspace path>, "required": <bool, default true>}`.
+
+The platform copies each `source` to `destination` inside the workspace **before**
+the process starts, and digests the copy. The adapter reads the file at
+`destination` relative to its working directory; it MUST NOT search the host for
+it, and MUST NOT assume the source path is reachable.
+
+The platform writes `input_manifest.json` at the workspace root when the list is
+non-empty:
+
+```json
+{"schema_version": 3,
+ "inputs": [{"destination": "design/netlist.v", "present": true,
+             "size_bytes": 4096, "sha256": "<64 hex>"}]}
+```
+
+`source` is deliberately absent from the manifest: it is an identity document,
+and two runs that read the same bytes into the same destinations are the same
+design even if the files lived in different places. The source is recorded by the
+platform, not by the manifest.
 
 | ID | Rule |
 | --- | --- |
 | K1 | Inputs the adapter cannot use ⇒ fail with `configuration_error`. Do not guess, do not substitute a default silently. |
 | K2 | `expected_artifacts` lists kinds the task requires. Their presence is enforced as in F4. |
+| K3 | An entry with `required: false` whose source is absent MUST NOT fail the attempt; the manifest records `"present": false` and `"sha256": null`. |
+| K4 | The adapter MUST NOT write to `input_manifest.json` or `runtime_protocol_receipt.json`. Both are hashed before launch and re-hashed after exit; a mismatch fails the attempt. |
+| K5 | A digest in `input_manifest.json` is the platform's measurement and MAY be cited in the result's `provenance`. The adapter's own digest of the same file SHOULD agree with it. |
 
 ---
 
@@ -281,6 +310,10 @@ Run before submitting a plugin to a platform owner.
 [ ] if status == succeeded: every manifest rule with required:true has a
     declared, non-empty artifact
 [ ] no artifact declares a reserved kind
+[ ] if task.staged_inputs is non-empty: the adapter reads each file at its
+    destination, relative to cwd, and never at the source path
+[ ] the adapter never writes input_manifest.json or
+    runtime_protocol_receipt.json
 [ ] no metric context key is runtime_authority or official_qor
 [ ] every metric value is a JSON scalar and not NaN
 [ ] failure (when present) has a non-empty message and an identifier category

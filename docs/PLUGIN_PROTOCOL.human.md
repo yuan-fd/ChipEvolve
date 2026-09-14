@@ -160,7 +160,9 @@ in order.
 
 **3.1 A workspace is created.** A fresh directory per attempt. The plugin's
 working directory is this workspace, and every artifact path it reports is
-interpreted relative to it.
+interpreted relative to it. Any files the task declared in `staged_inputs` are
+copied into it before the request is written (§4.1), so the plugin never has to
+find an input for itself.
 
 **3.2 A request file is written.** `adapter_request.json`, atomically, before the
 process starts, so a plugin can never read a half-written request.
@@ -220,6 +222,10 @@ durable storage.
     "plugin_id": "my-capability",
     "inputs": { "...": "whatever this capability needs" },
     "parameters": { "...": "its tuning knobs" },
+    "staged_inputs": [
+      {"source": "/data/gcd/netlist.v", "destination": "design/netlist.v",
+       "required": true}
+    ],
     "timeout_seconds": 3600,
     "max_attempts": 1,
     "expected_artifacts": ["report"],
@@ -236,6 +242,49 @@ present so a plugin can tell which question it is being asked.
 and does not interpret them, and it does not validate their shape: only the
 plugin knows what they should contain. A plugin that receives input it cannot use
 must fail with a `configuration_error` (§4.4), not guess.
+
+### 4.1.1 Inputs the platform places (`staged_inputs`)
+
+A task may name files and ask the platform to put them in the workspace. The
+platform copies each `source` (an absolute path on the host) to `destination`
+(a relative path inside the workspace) and digests what it copied. By the time
+the process starts, the file is there and the plugin can simply open it:
+
+```python
+data = Path("design/netlist.v").read_bytes()     # always relative to cwd
+```
+
+| Field | Meaning |
+| --- | --- |
+| `source` | Absolute host path. Relative paths are refused: they would resolve against whichever worker picked the run up. |
+| `destination` | Relative path inside the attempt workspace. `..` and absolute paths are refused. Two inputs may not claim the same destination. |
+| `required` | Default `true`. A required input that is not a readable file is refused **at submission**, before a run exists. An optional one that is absent is recorded as absent and the attempt proceeds. |
+
+**What the platform records, and why it matters to you.** The platform measures
+each staged file with SHA-256 and writes `input_manifest.json` in the workspace:
+
+```json
+{
+  "schema_version": 3,
+  "inputs": [
+    {"destination": "design/netlist.v", "present": true,
+     "size_bytes": 4096, "sha256": "3f...c7"}
+  ]
+}
+```
+
+Two things follow. First, a run's inputs have an identity that does not depend on
+a name anyone chose: `design_id` is a label, a digest is not. Second, you may
+**cite that digest** in your result's `provenance`, and a reader can then tie
+your numbers to exactly the bytes you read.
+
+The manifest is written by the platform and is registered as a platform-owned
+artifact. **Do not write to it** — an attempt that does fails immediately (§5).
+There is nothing in it for you to change: it is the platform's measurement, and a
+measurement the measured party can edit is not a measurement.
+
+`staged_inputs` is optional, and a task payload without it is valid. A plugin
+that needs no files ignores it entirely.
 
 `max_attempts` is the attempt budget. A failure the plugin marks `retryable` will
 be retried until the budget is spent (§4.4).
@@ -436,6 +485,12 @@ platform runs a separate evaluator plugin afterwards and accepts its verdict onl
 if every metric cites an artifact that exists in the workspace. Adapters cannot
 produce that verdict for themselves — that is what "protected" means here.
 
+**5.6 Its own bookkeeping.** Two files in the workspace are written by the
+platform rather than the plugin: `runtime_protocol_receipt.json` when the
+manifest asks for one, and `input_manifest.json` when the task declared staged
+inputs. Both are hashed before the process starts and re-hashed after it exits.
+An adapter that writes to either fails the attempt with the reason recorded.
+
 ---
 
 ## 6. Writing a plugin
@@ -490,6 +545,15 @@ version is refused rather than migrated: the platform does not guess at a shape 
 was not built for, because a silently misread field becomes a wrong number that
 nobody can trace.
 
+`staged_inputs` was added at version `3` without a bump, and that is deliberate
+rather than an oversight. The field is optional and a payload that omits it is
+valid and means "no files to place", so every task written before this change
+still loads unchanged — including the tasks emitted by plugins shipped against
+the previous build. A bump would have invalidated exactly those payloads in
+exchange for nothing. The rule the platform follows is that a version changes
+when a *shape* changes in a way a reader could misread; adding an optional field
+with a defined absence is not that.
+
 `protocol_version` is `1`. The current protocol has no negotiation: a request
 carries the version the platform speaks, and a plugin that cannot speak it should
 fail with a `configuration_error` naming the versions involved. A declared
@@ -510,6 +574,7 @@ compatibility range in the manifest is a recognised gap, not a feature.
 | Marks failures `retryable` when they are | Owns the retry budget and bounds it |
 | Prints progress envelopes if useful | Records them as events, and tolerates their absence |
 | Uses its own environment | Passes only what the manifest asked for |
+| Names the files it needs placed | Copies and digests them, and publishes the digests |
 
 The one rule that explains most of the rest: **the platform owns the lifecycle,
 the plugin owns the meaning.** What a stage is called, what a metric means, what

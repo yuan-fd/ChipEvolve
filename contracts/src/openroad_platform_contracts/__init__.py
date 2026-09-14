@@ -20,6 +20,12 @@ from .evaluation import (
     Verdict,
     VerdictStatus,
 )
+from .input import (
+    INPUT_MANIFEST_FILENAME,
+    INPUT_MANIFEST_KIND,
+    InputFile,
+    StagedInput,
+)
 from .progress import (
     DEFAULT_PROGRESS_MARKER,
     MAX_ENVELOPE_BYTES,
@@ -56,6 +62,7 @@ from .version import (
     primitive,
     validate_identifier,
     validate_mapping,
+    validate_relative_path,
     validate_sha256,
     validate_version,
 )
@@ -64,9 +71,11 @@ __all__ = (
     # versioning
     "ContractError", "IDENTIFIER", "SCHEMA_VERSION", "SHA256_HEX",
     "known_payload", "primitive", "validate_identifier", "validate_mapping",
-    "validate_sha256", "validate_version",
+    "validate_relative_path", "validate_sha256", "validate_version",
     # task triangle
     "PluginManifest", "PluginResult", "RuntimeRequirements", "TaskSpec",
+    # staged inputs
+    "INPUT_MANIFEST_FILENAME", "INPUT_MANIFEST_KIND", "InputFile", "StagedInput",
     # runtime state
     "ACTIVE_RUNTIME_STATUSES", "ATTEMPT_TRANSITIONS", "RUN_TRANSITIONS",
     "AttemptStatus", "Event", "Failure", "RuntimeStatus",

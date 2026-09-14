@@ -13,6 +13,7 @@ from typing import Any, Mapping
 
 from .runtime import RuntimeStatus
 from .progress import DEFAULT_PROGRESS_MARKER
+from .input import InputFile
 from .version import (
     instantiate,
     ContractError,
@@ -48,6 +49,16 @@ class TaskSpec:
     plugin_id: str | None = None
     inputs: dict[str, Any] = field(default_factory=dict)
     parameters: dict[str, Any] = field(default_factory=dict)
+    #: Files the platform copies into the attempt workspace before the adapter
+    #: starts, and digests as it copies.  ``inputs`` carries domain parameters
+    #: whose meaning only the plugin knows; this carries bytes the platform --
+    #: not the plugin -- is responsible for placing and measuring.
+    #:
+    #: ``design_id`` above is a label the caller chooses and nothing more.  Two
+    #: runs sharing a label may have read different bytes, so a comparison
+    #: between them cannot be falsified.  These digests are the identity the
+    #: label was standing in for.
+    staged_inputs: tuple[InputFile, ...] = ()
     timeout_seconds: int = 3600
     #: How many attempts a *retryable* failure is allowed.  One means no retry,
     #: which is the default because a capability that cannot be re-run from its
@@ -66,6 +77,15 @@ class TaskSpec:
         validate_identifier("plugin_id", self.plugin_id, required=False)
         for name in ("inputs", "parameters", "labels"):
             validate_mapping(name, getattr(self, name))
+        if not all(isinstance(i, InputFile) for i in self.staged_inputs):
+            raise ContractError("staged_inputs must contain InputFile values")
+        for declaration in self.staged_inputs:
+            declaration.validate()
+        destinations = [i.destination for i in self.staged_inputs]
+        if len(set(destinations)) != len(destinations):
+            raise ContractError(
+                "two staged inputs would be placed at the same destination"
+            )
         if not isinstance(self.timeout_seconds, int) or self.timeout_seconds <= 0:
             raise ContractError("timeout_seconds must be a positive integer")
         if not isinstance(self.max_attempts, int) or self.max_attempts <= 0:
@@ -81,6 +101,10 @@ class TaskSpec:
     def from_dict(cls, payload: Mapping[str, Any]) -> "TaskSpec":
         value = known_payload(cls, payload)
         value["expected_artifacts"] = tuple(value.get("expected_artifacts", ()))
+        value["staged_inputs"] = tuple(
+            item if isinstance(item, InputFile) else InputFile.from_dict(item)
+            for item in value.get("staged_inputs", ())
+        )
         result = instantiate(cls, value)
         result.validate()
         return result

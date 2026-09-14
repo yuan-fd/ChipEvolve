@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
+from .input import INPUT_MANIFEST_KIND
 from .version import (
     instantiate,
     ContractError,
@@ -17,6 +18,7 @@ from .version import (
     primitive,
     validate_identifier,
     validate_mapping,
+    validate_relative_path,
     validate_sha256,
 )
 
@@ -25,6 +27,7 @@ from .version import (
 RESERVED_ARTIFACT_KINDS = frozenset({
     "runtime_protocol_receipt",
     "protected_evaluation",
+    INPUT_MANIFEST_KIND,
 })
 
 #: Metric context keys the kernel owns.  A plugin may not set these.
@@ -55,10 +58,9 @@ class ArtifactDeclaration:
             )
         if not isinstance(self.path, str) or not self.path:
             raise ContractError("artifact path is required")
-        if self.path.startswith("/") or ".." in self.path.split("/"):
-            raise ContractError(
-                f"artifact path must stay inside the attempt workspace: {self.path!r}"
-            )
+        validate_relative_path(
+            "artifact path", self.path, container="attempt workspace"
+        )
         if self.media_type is not None and not isinstance(self.media_type, str):
             raise ContractError("media_type must be a string")
         validate_mapping("metadata", self.metadata)
@@ -88,8 +90,9 @@ class Artifact:
         validate_identifier("kind", self.kind)
         if not isinstance(self.store_key, str) or not self.store_key:
             raise ContractError("store_key is required")
-        if self.store_key.startswith("/") or ".." in self.store_key.split("/"):
-            raise ContractError("store_key must be a relative, contained path")
+        validate_relative_path(
+            "store_key", self.store_key, container="artifact store"
+        )
         validate_sha256("sha256", self.sha256)
         if not isinstance(self.size_bytes, int) or self.size_bytes < 0:
             raise ContractError("size_bytes must be a non-negative integer")
