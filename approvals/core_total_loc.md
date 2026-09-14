@@ -238,3 +238,41 @@ report is.  G1, G2 and G13 remain zero across the kernel.
 the way in, and now one on the way out -- but the way out is deduplicated, and
 the way in can be deduplicated the same way the moment the object store is used
 as the staging source, which is the next step rather than a redesign.
+
+## 7,453 -> 7,755: a bound on what an attempt may consume
+
+Every round so far has added a way for the platform to *do* something.  This one
+adds a way for it to *stop* something, and it exists because of a sentence from
+the person who owns the machine: a plugin that is not bounded takes the service
+with it.
+
+The growth is itemised:
+
+| Where | Lines | What |
+| --- | ---: | --- |
+| `core/runtime/.../guardian.py` | +132 | the meter, the comparison, and the termination path |
+| `contracts/.../resources.py` | +105 | `ResourceRequest`, and the reasons for each of its three fields |
+| `core/runtime/.../adapter.py` | +24 | carrying the bounds to the supervisor, and turning a breach into a named failure |
+| `core/runtime/.../runtime.py` | +23 | refusing a bound this host cannot measure |
+| `gateway/.../kernel_api.py` | +2 | that refusal is a 400 |
+
+**A field returns, and the reason it is not the same field.**  `resources` was
+*deleted* from `TaskSpec` two rounds before this one, with a written reason: it
+was "declared, enforced nowhere".  It comes back now because the behaviour that
+makes it true exists -- and it comes back with a different shape, which is why
+the test that used to assert `resources` was an *unknown* field has been replaced
+by one asserting that the *old* shape is still refused.  Reading a field whose
+meaning has changed is how a caller keeps believing something is honoured.
+
+**Where the bound is declared, and where it is not.**  It is a task field, not a
+manifest field.  A manifest is written by the plugin, and an untrusted party
+setting its own ceiling is not a ceiling.  The manifest already answers "what
+does this capability need from the kernel"; this answers "how much of the machine
+may this experiment use", which belongs to whoever owns the machine.
+
+**What is deliberately not claimed.**  This is a bound, not isolation.  It is
+measured by polling, so a spike inside one interval is missed; it covers CPU,
+resident memory and process count, and not disk, descriptors or network.  Both
+limits are written into the protocol document's known-gaps table rather than
+left for someone to discover, because the next person to read "resource limits:
+done" will otherwise assume a sandbox.

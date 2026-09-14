@@ -6,10 +6,11 @@
     "past what was approved. Raising a number here without a reason beside it is",
     "the thing the ratchet exists to make impossible."
   ],
-  "core_total_loc": 7453,
-  "core/runtime/src/openroad_platform_runtime/store.py": 1191,
-  "core/runtime/src/openroad_platform_runtime/runtime.py": 785,
-  "core/runtime/src/openroad_platform_runtime/adapter.py": 374,
+  "core_total_loc": 7755,
   "core/registry/src/openroad_platform_registry/registry.py": 433,
-  "core/registry/src/openroad_platform_registry/validate.py": 247
+  "core/registry/src/openroad_platform_registry/validate.py": 247,
+  "core/runtime/src/openroad_platform_runtime/adapter.py": 398,
+  "core/runtime/src/openroad_platform_runtime/guardian.py": 451,
+  "core/runtime/src/openroad_platform_runtime/runtime.py": 808,
+  "core/runtime/src/openroad_platform_runtime/store.py": 1191
 }

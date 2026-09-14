@@ -84,3 +84,14 @@ bytes are copied.
 where the bytes are.  The search over the run's own view stays, because that is
 a membership check: a caller authorised for one run must not read another's
 artifact by quoting its id.
+
+## 785 -> 808: refusing a bound this host cannot keep
+
+`_check_resources` runs at submission, beside `_check_inputs`, and refuses a
+task whose declared bounds the backend cannot enforce.  The question is put to
+the adapter (`supports_limits`) rather than answered here, because a container
+backend will answer it differently -- and that is the seam this is for.
+
+A bound accepted and not applied is worse than no bound: the caller believes the
+machine is protected.  So the refusal is a 400 while the caller is still
+listening, not a run that quietly consumes everything.
