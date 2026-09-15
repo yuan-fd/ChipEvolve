@@ -276,3 +276,47 @@ resident memory and process count, and not disk, descriptors or network.  Both
 limits are written into the protocol document's known-gaps table rather than
 left for someone to discover, because the next person to read "resource limits:
 done" will otherwise assume a sandbox.
+
+## 7,755 -> 8,183: the execution API, reconciled
+
+A second agent worked directly in the deployment checkout on the server and
+reported four completed features.  The work was real, and it was **not in the
+repository**: 846 changed lines and nine new files existed in exactly one
+working copy, with the ratchet already red (8,434 against an approved 8,397).
+It was committed to `wip/execution-api-20260915` for safety and then reconciled
+here, which is what this section records.
+
+**Kept, because it is behaviour this platform needed and had promised:**
+
+| What | Where | Why it stays |
+| --- | ---: | --- |
+| `POST /kernel/runs/{id}/retry` | store + gateway + client | A failed-but-retryable run could only be retried by the automatic path. A human or an agent can now ask, and the request is recorded as an event |
+| Resource reservations | `store.py` | A task that declares resources now **reserves** them; an attempt that cannot fit stays queued instead of starting. This is the half of "do not take the machine from everyone else" that metering alone never provided |
+| Actual usage per attempt | `guardian.py` + `store.py` | `cpu_seconds`, `peak_memory_bytes`, `peak_processes`, persisted. Requested-versus-used is now answerable, which it was not |
+| `GET /runs/{id}/resources`, `/logs` | new query modules | Read models that keep the HTTP layer off the store's tables |
+
+**Dropped, with the reason:**
+
+* **`InputObjects` and `/kernel/inputs`** — a *third* way to name the bytes a
+  task consumes, beside `source` and `artifact_id`. Three answers to one
+  question is how a plugin author learns to guess. The agreed replacement is an
+  upload area, and it is a design, not a patch on top of three existing paths.
+* **`POST /kernel/approvals` and the two CPU/memory task ceilings** — the
+  platform deciding *who may run what* is a business rule, not an execution
+  fact, and it was not asked for. The capacity check against the machine's own
+  60% budget stays; that one is about not taking the machine from everyone else.
+* **`TaskSpec.extensions`** — a third free-form bag with no consumer. `inputs`
+  and `parameters` already pass an agent's or a plugin's own data through
+  untouched; a fourth place to put it is not extensibility, it is ambiguity.
+  When a real need appears it is one field to add back, with a written reason.
+
+**Also fixed while reconciling:** the branch had bumped `RUNTIME_SCHEMA_VERSION`
+to 7 with three of its four steps empty (`executescript(_DDL)` and nothing
+else). That is a version number claiming work that never happened. It is now 4,
+with one step that says what it does, and the three attempt columns guarded as
+the comment above requires.
+
+**Net effect on this ceiling: it goes down.** The branch's approval was 8,397 for
+a tree of 8,434 — over its own number. After the reconciliation the kernel is
+8,183, and that is what this key authorises. The ratchet moved in the direction
+it is allowed to move.

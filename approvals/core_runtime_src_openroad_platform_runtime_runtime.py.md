@@ -95,3 +95,11 @@ backend will answer it differently -- and that is the seam this is for.
 A bound accepted and not applied is worse than no bound: the caller believes the
 machine is protected.  So the refusal is a 400 while the caller is still
 listening, not a run that quietly consumes everything.
+
+## Reconciled ceiling
+
+This key's number was tightened to the tree as reconciled in
+`approvals/core_total_loc.md` ("the execution API, reconciled"): the branch
+raised it to cover input objects and a task-approval API that were dropped, and
+the ratchet may only shrink. The reason the remaining growth is authorised is in
+that section.

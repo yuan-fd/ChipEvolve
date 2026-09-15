@@ -50,3 +50,11 @@ most of it.
 No capability, no parser, no vendor name, no algorithm.  The meter reads
 `/proc/<pid>/stat` and `/proc/<pid>/statm`; it does not know what the process is
 doing.  G1, G2 and G13 remain zero across the kernel.
+
+## Reconciled ceiling
+
+This key's number was tightened to the tree as reconciled in
+`approvals/core_total_loc.md` ("the execution API, reconciled"): the branch
+raised it to cover input objects and a task-approval API that were dropped, and
+the ratchet may only shrink. The reason the remaining growth is authorised is in
+that section.

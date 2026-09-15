@@ -126,3 +126,11 @@ column already added, and reopening it must not die on that.  The table shape
 lives in one named constant used by both the DDL and the rebuild, because two
 copies of a shape eventually disagree and the one that disagreed would be the
 migration.
+
+## Reconciled ceiling
+
+This key's number was tightened to the tree as reconciled in
+`approvals/core_total_loc.md` ("the execution API, reconciled"): the branch
+raised it to cover input objects and a task-approval API that were dropped, and
+the ratchet may only shrink. The reason the remaining growth is authorised is in
+that section.
