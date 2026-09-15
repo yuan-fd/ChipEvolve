@@ -143,6 +143,13 @@ class RuntimeRequirements:
     #: The kernel must reject the run if the adapter reports success without
     #: the protected evaluator having produced a verdict.
     require_protected_evaluation: bool = False
+    #: Whether this capability can continue in a workspace it was already given.
+    #:
+    #: A flow that resumes by re-running its own makefile can: the results of
+    #: the stages it already finished are sitting there.  One that starts from
+    #: nothing cannot, and saying so is better than a platform guessing -- the
+    #: guess either restarts five hours of work or waits forever for a human.
+    resumable: bool = False
 
     def validate(self) -> None:
         if self.require_protocol_receipt and not self.environment_receipt_variable:

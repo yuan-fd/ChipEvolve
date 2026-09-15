@@ -76,7 +76,8 @@ to start it, and what it may produce.
     {"kind": "log", "required": false}
   ],
   "progress_marker": "[progress]",
-  "environment": {}
+  "environment": {},
+  "requirements": {"resumable": false}
 }
 ```
 
@@ -92,6 +93,22 @@ to start it, and what it may produce.
 | `artifact_rules` | no | The artifact kinds the plugin may declare, with `required` per kind. Declaring a kind outside this list is a protocol error. |
 | `progress_marker` | no | Line prefix for progress envelopes. Default `[progress]`. |
 | `environment` | no | Extra environment variables the plugin needs. Values only; they are passed through to the process. |
+| `requirements` | no | What this capability needs the kernel to do differently. Data, not code — the kernel honours each flag without learning the plugin's name. See below. |
+
+**`requirements`.** Every field is a boolean or a name, and each one the kernel
+honours has behaviour behind it:
+
+| Field | Default | What the kernel does because of it |
+| --- | --- | --- |
+| `resumable` | `false` | If the attempt's worker is lost, the run goes back to the queue and the next attempt continues **in the same workspace**, instead of the run being marked failed. A flow that resumes by re-running its own makefile finds its finished stages where it left them. Declare it only if that is true of your adapter: one that starts from nothing would restart, and the platform would have thrown away the hours it was trying to save. |
+| `require_protocol_receipt` | `false` | The kernel freezes the task's `inputs["experiment_protocol"]` into the workspace before launch and exposes the path through `environment_receipt_variable`, with its digest beside it. |
+| `environment_receipt_variable` | — | The variable name carrying that path. Required when `require_protocol_receipt` is set. |
+| `require_experiment_protocol` | `false` | The task must carry `inputs["experiment_protocol"]` as an object. Implies `require_protocol_receipt`. |
+| `require_protected_evaluation` | `false` | A run that reports success without the protected evaluator having produced a verdict is rejected. |
+
+`resumable` is the one that changes what a *lost worker* costs. It does not
+change the attempt budget: a lost lease is an attempt, because the host really
+did spend that time, so surviving one needs `max_attempts` with room for it.
 
 Unknown fields are **refused**, not ignored. A manifest from a newer schema fails
 loudly, because silently dropping a field a plugin depends on turns a version
@@ -340,6 +357,12 @@ entirely inside one polling interval is missed; and it bounds CPU, memory and
 process count, not disk, not file descriptors, and not network. Refusing to
 present it as isolation is deliberate: a plugin that needs a real boundary needs
 a container, which this platform does not yet run plugins in.
+
+**A run that has not started says why.**  `GET /kernel/runs/{id}` carries
+`waiting_for`: either `"claimable: ... waiting for a worker to claim it"` or
+`"resource: this run reserves N cores and M bytes, and the machine has X cores
+and Y bytes free within its budget"`.  `queued` on its own is not something
+anyone can act on.
 
 **A task that does not fit waits, it does not fail.**  If the machine has no
 room left within its budget, the attempt is not started and the run stays

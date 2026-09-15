@@ -291,6 +291,7 @@ platform, not by the manifest.
 | K5 | A digest in `input_manifest.json` is the platform's measurement and MAY be cited in the result's `provenance`. The adapter's own digest of the same file SHOULD agree with it. |
 | K6 | `resources` (optional object: `cpu_cores`, `cpu_seconds`, `memory_bytes`, `processes`) bounds the **whole process tree** the adapter starts, not each process. `cpu_cores` governs the reservation and whether the attempt is admitted; `cpu_seconds` governs when it is stopped; `memory_bytes` governs both; `processes` governs only the stop threshold. A task declaring no `resources` is still reserved at 1 core / 1 GiB. |
 | K8 | An attempt that does not fit the machine's budget is NOT started: the run stays `queued`. A `start_attempt` that returns nothing is not an error. |
+| K10 | A capability that sets `requirements.resumable: true` is telling the platform it can continue in a workspace it was already given. On a lost lease the run returns to the queue and the next attempt reuses that workspace; otherwise the run is marked `LOST`. A lost lease counts against `max_attempts`. |
 | K9 | A caller may request a retry of a failed run whose latest failure was `retryable` and whose attempt budget has room. The task is NOT modified and earlier attempts are kept. |
 | K7 | On a breach the attempt is `failed` with `failure.category == "resource_exceeded"`; the adapter's result file is NOT read and the attempt is NOT retried. An adapter that spawns a helper MUST count the helpers against `processes`. |
 
