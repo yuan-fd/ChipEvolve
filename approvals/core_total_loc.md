@@ -320,3 +320,42 @@ the comment above requires.
 a tree of 8,434 — over its own number. After the reconciliation the kernel is
 8,183, and that is what this key authorises. The ratchet moved in the direction
 it is allowed to move.
+
+## 8,183 -> 8,329: a queue that explains itself, and a lost worker that costs a lease
+
+Two gaps, both of which a person feels before any test does.
+
+**A run in `queued` said nothing about why.**  Three different situations look
+identical from outside -- the machine is full, nothing is running, something is
+stuck -- and they need three different responses from whoever is looking.  The
+platform knew and did not say, which sends an operator into the database to find
+out.  `ResourceQuery.waiting_for` answers in one line, with the numbers: what the
+run reserves, and what is left within the budget.
+
+**A lost worker cost the work.**  A five-hour flow whose worker reboots was
+marked failed and had to be started again.  Now the attempt is still marked
+`LOST` -- it did lose its worker, and that is evidence -- but the run returns to
+the queue and the next attempt continues **in the workspace it already had**, so
+a flow that resumes by re-running its own makefile finds its finished stages
+where it left them.
+
+Both conditions are required, and neither is a guess:
+
+* the capability must declare `requirements.resumable`.  One that cannot resume
+  would restart from nothing, and a platform guessing wrong throws away the five
+  hours it was trying to save;
+* the attempt budget must have room, because **a lost lease is an attempt** --
+  the host really did spend that time.  Without this a machine that loses its
+  worker every time would loop for ever, which is worse than stopping.
+
+Growth is itemised: `store.py` +55 (the decision, the requeue, the stage column
+and its migration), `runtime.py` +22 (the declaration travels from manifest to
+stage, and a resuming attempt reuses its workspace), `resource_query.py` +48
+(the explanation), `kernel_api.py` +23 (one read model, used by every route that
+returns a run), `contracts` +7 (`RuntimeRequirements.resumable`).
+
+**One thing moved rather than grew.**  `RuntimeConfig.reservation_for` is now the
+single place that decides what a task reserves, since the runtime reserves on
+that basis and the query explains a waiting run on the same basis.  Two copies
+would have disagreed, and the disagreement would have sent someone looking for a
+shortfall that was not there.

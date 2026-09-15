@@ -103,3 +103,10 @@ This key's number was tightened to the tree as reconciled in
 raised it to cover input objects and a task-approval API that were dropped, and
 the ratchet may only shrink. The reason the remaining growth is authorised is in
 that section.
+
+## Reconciled ceiling (second move)
+
+838 -> 860: the capability's `resumable` answer travels from the manifest to the
+stage, a resuming attempt reuses the workspace it already had, and the single
+reservation calculation moved onto `RuntimeConfig`.  The reason is in
+`approvals/core_total_loc.md`.

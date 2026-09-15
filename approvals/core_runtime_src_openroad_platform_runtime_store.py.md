@@ -134,3 +134,10 @@ This key's number was tightened to the tree as reconciled in
 raised it to cover input objects and a task-approval API that were dropped, and
 the ratchet may only shrink. The reason the remaining growth is authorised is in
 that section.
+
+## Reconciled ceiling (second move)
+
+1342 -> 1397: the resume decision, the requeue it performs, the `resumable`
+column on `runtime_stage_runs` and its migration.  The reason is in
+`approvals/core_total_loc.md` ("a queue that explains itself, and a lost worker
+that costs a lease").
