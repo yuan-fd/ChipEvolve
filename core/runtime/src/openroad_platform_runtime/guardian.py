@@ -70,6 +70,9 @@ class ProcessOutcome:
     #: Which declared limit the tree went past, named with the measurement and
     #: the request.  ``None`` when nothing was declared or nothing was breached.
     exceeded: str | None = None
+    cpu_seconds: float = 0.0
+    peak_memory_bytes: int = 0
+    peak_processes: int = 0
 
 
 class ProcessGuardian:
@@ -129,6 +132,9 @@ class ProcessGuardian:
         cancelled = False
         exceeded: str | None = None
         next_measurement = started
+        peak_cpu = 0.0
+        peak_memory = 0
+        peak_processes = 0
 
         with path.open("a", encoding="utf-8") as log:
             process = subprocess.Popen(
@@ -162,10 +168,14 @@ class ProcessGuardian:
                         self._terminate_tree(process)
                         break
                     now = time.monotonic()
-                    if (limits is not None and limits.declared
-                            and now >= next_measurement):
+                    if now >= next_measurement:
                         next_measurement = now + self.measure_interval
-                        exceeded = self._breach(process.pid, limits)
+                        measured = self.measure(process.pid)
+                        peak_processes = max(peak_processes, measured[0])
+                        peak_cpu = max(peak_cpu, measured[1])
+                        peak_memory = max(peak_memory, measured[2])
+                        if limits is not None and limits.declared:
+                            exceeded = self._breach_values(measured, limits)
                         if exceeded is not None:
                             self._terminate_tree(process)
                             break
@@ -201,6 +211,9 @@ class ProcessGuardian:
             timed_out=timed_out,
             cancelled=cancelled,
             exceeded=exceeded,
+            cpu_seconds=peak_cpu,
+            peak_memory_bytes=peak_memory,
+            peak_processes=peak_processes,
         )
 
     # -- output ------------------------------------------------------------
@@ -261,7 +274,11 @@ class ProcessGuardian:
         measurement and the request, because "limit exceeded" without the two
         numbers is not something an operator can act on.
         """
-        processes, cpu_seconds, memory_bytes = self.measure(root_pid)
+        return self._breach_values(self.measure(root_pid), limits)
+
+    @staticmethod
+    def _breach_values(measured: tuple[int, float, int], limits: ResourceRequest) -> str | None:
+        processes, cpu_seconds, memory_bytes = measured
         if limits.processes is not None and processes > limits.processes:
             return (
                 f"processes: the tree held {processes}, above the requested "

@@ -29,6 +29,9 @@ from .runtime import (
     WorkflowRuntime,
 )
 from .worker import CycleReport, RuntimeWorker
+from .resource_query import ResourceQuery
+from .log_query import LogQuery
+from .artifact_inventory import ArtifactInventory
 from .store import (
     Attempt,
     InvalidTransition,
@@ -55,6 +58,9 @@ __all__ = (
     "ProgressObserver",
     # stage progress
     "CycleReport", "RuntimeWorker",
+    "ResourceQuery",
+    "LogQuery",
+    "ArtifactInventory",
     # the one digest
     "sha256",
 )

@@ -26,6 +26,7 @@ in order to explain itself is still coupled to that vendor.
 from __future__ import annotations
 
 import json
+import os
 import platform
 import shutil
 import socket
@@ -46,6 +47,7 @@ from openroad_platform_contracts import (
     PluginResult,
     ProtectedEvaluator,
     RuntimeStatus,
+    ResourceRequest,
     SCHEMA_VERSION,
     StagedInput,
     TaskSpec,
@@ -106,10 +108,31 @@ class RuntimeConfig:
     workspace_root: Path
     lease_seconds: int = 30
     worker_id: str = ""
+    capacity_cpu_cores: int | None = None
+    capacity_memory_bytes: int | None = None
+    platform_fraction: float = 0.60
+    #: What a task that declares nothing still reserves.  Without this, a
+    #: task could opt out of the scheduler entirely by staying silent.
+    default_task_cpu_cores: int = 1
+    default_task_memory_bytes: int = 1 << 30
 
     def __post_init__(self) -> None:
         if self.lease_seconds <= 0:
             raise ValueError("lease_seconds must be positive")
+        if self.capacity_cpu_cores is not None and self.capacity_cpu_cores < 1:
+            raise ValueError("capacity_cpu_cores must be positive")
+        if self.capacity_memory_bytes is not None and self.capacity_memory_bytes < 1:
+            raise ValueError("capacity_memory_bytes must be positive")
+        if self.capacity_cpu_cores is None:
+            self.capacity_cpu_cores = os.cpu_count() or 1
+        if self.capacity_memory_bytes is None:
+            pages = os.sysconf("SC_PHYS_PAGES")
+            page_size = os.sysconf("SC_PAGE_SIZE")
+            self.capacity_memory_bytes = int(pages * page_size)
+        if self.default_task_cpu_cores < 1 or self.default_task_memory_bytes < 1:
+            raise ValueError("default task resource reservations must be positive")
+        if not 0 < self.platform_fraction <= 1:
+            raise ValueError("platform_fraction must be in (0, 1]")
         self.workspace_root = Path(self.workspace_root).expanduser().resolve()
         self.workspace_root.mkdir(parents=True, exist_ok=True)
         if not self.worker_id:
@@ -188,24 +211,10 @@ class WorkflowRuntime:
             task.plugin_id, version=plugin_version, capability=capability,
             arch=platform.machine(),
         )
-        existing = self.store.find_run_by_task_id(task.task_id)
-        if existing is None:
-            return self.store.submit_run(
-                task, stage_key="main",
-                plugin_version=manifest.plugin_version,
-            )
-        if existing.task_spec.to_dict() != task.to_dict():
-            raise RuntimeStoreError(
-                f"task_id {task.task_id!r} already exists with a different "
-                f"immutable TaskSpec"
-            )
-        stage = self.store.list_stages(existing.run_id)[0]
-        if stage.plugin_version != manifest.plugin_version:
-            raise RuntimeStoreError(
-                f"task_id {task.task_id!r} already exists at plugin version "
-                f"{stage.plugin_version!r}"
-            )
-        return existing
+        return self.store.submit_run(
+            task, stage_key="main", plugin_version=manifest.plugin_version,
+            idempotent=True,
+        )
 
     # -- inputs -----------------------------------------------------------
 
@@ -214,6 +223,12 @@ class WorkflowRuntime:
         resources = task.resources
         if resources is None or not resources.declared:
             return
+        if self.config.capacity_cpu_cores is not None and resources.cpu_cores is not None \
+                and resources.cpu_cores > int(self.config.capacity_cpu_cores * self.config.platform_fraction):
+            raise ValueError("requested cpu_cores exceed platform budget")
+        if self.config.capacity_memory_bytes is not None and resources.memory_bytes is not None \
+                and resources.memory_bytes > int(self.config.capacity_memory_bytes * self.config.platform_fraction):
+            raise ValueError("requested memory exceeds platform budget")
         if not self.adapter.supports_limits():
             raise ResourceLimitsUnsupported(
                 f"this host cannot measure a process tree, so the requested "
@@ -411,13 +426,25 @@ class WorkflowRuntime:
             self.config.workspace_root / run_id / stage.stage_run_id
             / f"attempt-{attempt_number}"
         )
-        workspace.mkdir(parents=True, exist_ok=True)
-
         try:
+            requested = run.task_spec.resources
+            reservation = ResourceRequest(
+                cpu_cores=(requested.cpu_cores if requested and requested.cpu_cores is not None
+                           else self.config.default_task_cpu_cores),
+                memory_bytes=(requested.memory_bytes if requested and requested.memory_bytes is not None
+                              else self.config.default_task_memory_bytes),
+            )
             attempt = self.store.start_attempt(
                 stage.stage_run_id, worker_id=self.config.worker_id,
                 workspace=workspace, lease_seconds=self.config.lease_seconds,
+                resources=reservation,
+                capacity_cpu_cores=self.config.capacity_cpu_cores,
+                capacity_memory_bytes=self.config.capacity_memory_bytes,
+                platform_fraction=self.config.platform_fraction,
             )
+            if attempt is None:
+                return self.store.get_run(run_id), False
+            workspace.mkdir(parents=True, exist_ok=True)
         except InvalidTransition:
             # Another worker won the race between selection and claim.  Return
             # the authoritative state, and report that we did nothing.
@@ -512,6 +539,9 @@ class WorkflowRuntime:
             _attempt_status(execution.result.status),
             exit_code=execution.result.exit_code,
             failure=execution.result.failure,
+            cpu_seconds=execution.outcome.cpu_seconds,
+            peak_memory_bytes=execution.outcome.peak_memory_bytes,
+            peak_processes=execution.outcome.peak_processes,
         )
         if self._should_retry(run, attempt, execution):
             self.store.schedule_retry(

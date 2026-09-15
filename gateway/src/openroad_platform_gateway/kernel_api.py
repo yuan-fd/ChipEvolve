@@ -27,6 +27,9 @@ from openroad_platform_runtime import (
     RuntimeStore,
     RuntimeStoreError,
     WorkflowRuntime,
+    ResourceQuery,
+    LogQuery,
+    ArtifactInventory,
 )
 
 from .router import HttpError, Request, Response, Router
@@ -67,9 +70,12 @@ class KernelApi:
         router.get("/kernel/runs", self._guarded(self.list_runs))
         router.get("/kernel/runs/{run_id}", self._guarded(self.get_run))
         router.post("/kernel/runs/{run_id}/cancel", self._guarded(self.cancel_run))
+        router.post("/kernel/runs/{run_id}/retry", self._guarded(self.retry_run))
         router.get("/kernel/runs/{run_id}/metrics", self._guarded(self.metrics))
         router.get("/kernel/runs/{run_id}/artifacts", self._guarded(self.artifacts))
         router.get("/kernel/runs/{run_id}/timeline", self._guarded(self.timeline))
+        router.get("/kernel/runs/{run_id}/resources", self._guarded(self.resources))
+        router.get("/kernel/runs/{run_id}/logs", self._guarded(self.logs))
         router.get("/kernel/runs/{run_id}/artifacts/{artifact_id}/excerpt",
                    self._guarded(self.artifact_excerpt))
         router.get("/kernel/graph", self._guarded(self.graph))
@@ -163,7 +169,7 @@ class KernelApi:
             run = (self.runtime.submit_idempotent(task)
                    if request.q("idempotent") else self.runtime.submit(task))
         except (RegistryError, InputStagingError,
-                ResourceLimitsUnsupported) as exc:
+                ResourceLimitsUnsupported, ValueError) as exc:
             # A task naming a capability that is not available, or inputs that
             # are not where it said, is the caller's mistake, not the server's.
             # Unhandled, this reached the client as a 500, which sends an
@@ -216,6 +222,18 @@ class KernelApi:
             raise HttpError(404, str(exc)) from exc
         return Response.json({"run": self.index.run_detail(run_id)})
 
+    def retry_run(self, request: Request, session: AuthSession | None) -> Response:
+        run_id = request.params["run_id"]
+        self._require_ownership(run_id, session)
+        body = _object(request)
+        reason = str(body.get("reason") or "")
+        requester = session.user_id if session else self.local_user_id
+        try:
+            detail = self.store.request_retry(run_id, requester=requester or "anonymous", reason=reason)
+        except (RuntimeStoreError, ValueError) as exc:
+            raise HttpError(400, str(exc)) from exc
+        return Response.json({"run": detail}, status=202)
+
     def metrics(self, request: Request, session: AuthSession | None) -> Response:
         run_id = request.params["run_id"]
         self._require_ownership(run_id, session)
@@ -225,12 +243,36 @@ class KernelApi:
     def artifacts(self, request: Request, session: AuthSession | None) -> Response:
         run_id = request.params["run_id"]
         self._require_ownership(run_id, session)
-        return Response.json({"artifacts": self.index.artifacts(run_id)})
+        return Response.json({"artifacts": ArtifactInventory(self.store).for_run(
+            run_id, category=request.q("category"), format=request.q("format"),
+            stage=request.q("stage"))})
 
     def timeline(self, request: Request, session: AuthSession | None) -> Response:
         run_id = request.params["run_id"]
         self._require_ownership(run_id, session)
         return Response.json({"timeline": self.index.timeline(run_id)})
+
+    def resources(self, request: Request, session: AuthSession | None) -> Response:
+        run_id = request.params["run_id"]
+        self._require_ownership(run_id, session)
+        try:
+            return Response.json({"resources": ResourceQuery(
+                self.store, self.runtime.config
+            ).run(run_id)})
+        except RuntimeStoreError as exc:
+            raise HttpError(404, str(exc)) from exc
+
+    def logs(self, request: Request, session: AuthSession | None) -> Response:
+        run_id = request.params["run_id"]
+        self._require_ownership(run_id, session)
+        try:
+            view = LogQuery(self.store).run(
+                run_id, offset=request.q_int("offset", 0) or 0,
+                max_bytes=request.q_int("max_bytes"),
+            )
+        except (RuntimeStoreError, ValueError) as exc:
+            raise HttpError(404 if isinstance(exc, RuntimeStoreError) else 400, str(exc)) from exc
+        return Response.json({"logs": view})
 
     def artifact_excerpt(self, request: Request,
                          session: AuthSession | None) -> Response:
@@ -256,6 +298,8 @@ class KernelApi:
         for run_id in run_ids:
             self._require_ownership(run_id, session)
         return Response.json({"graph": self.index.artifact_graph(run_ids).to_dict()})
+
+
 
     # -- ownership --------------------------------------------------------
 

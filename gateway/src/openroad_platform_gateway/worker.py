@@ -34,6 +34,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="the platform's own plugin trust records")
     parser.add_argument("--idle-seconds", type=float, default=0.5)
     parser.add_argument("--batch", type=int, default=8)
+    parser.add_argument("--capacity-cpu-cores", type=int)
+    parser.add_argument("--capacity-memory-bytes", type=int)
+    parser.add_argument("--platform-fraction", type=float, default=0.60)
     parser.add_argument("--once", action="store_true",
                         help="run one cycle and exit; used by tests and cron")
     parser.add_argument("--quiet", action="store_true")
@@ -45,7 +48,10 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     paths = KernelPaths.of(args.state_root, args.plugins_root,
-                           args.admissions_root)
+                           args.admissions_root,
+                           capacity_cpu_cores=args.capacity_cpu_cores,
+                           capacity_memory_bytes=args.capacity_memory_bytes,
+                           platform_fraction=args.platform_fraction)
     parts = build_kernel_parts(paths, worker_id=DEFAULT_WORKER_ID)
     worker = RuntimeWorker(
         parts.store, parts.runtime,
@@ -60,7 +66,7 @@ def main(argv: list[str] | None = None) -> int:
 
     stop = threading.Event()
 
-    def request_stop(signum, frame):  # noqa: ANN001, ARG001
+    def request_stop(signum, _frame):  # noqa: ANN001
         # A worker stops between attempts, never mid-attempt: an interrupted
         # attempt becomes a reclaimable lease, and killing the process would
         # orphan whatever it spawned.

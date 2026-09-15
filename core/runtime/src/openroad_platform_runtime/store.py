@@ -43,12 +43,13 @@ from openroad_platform_contracts import (
     RuntimeStatus,
     StagedInput,
     TaskSpec,
+    ResourceRequest,
     attempt_transition_allowed,
     is_terminal,
     run_transition_allowed,
 )
 
-RUNTIME_SCHEMA_VERSION = 3
+RUNTIME_SCHEMA_VERSION = 4
 
 #: Where an artifact's bytes are.  Recorded per artifact rather than assumed,
 #: because there have been two answers: artifacts registered before the object
@@ -117,7 +118,15 @@ CREATE TABLE IF NOT EXISTS runtime_attempts (
     ended_at TEXT,
     exit_code INTEGER,
     failure_json TEXT,
+    cpu_seconds REAL,
+    peak_memory_bytes INTEGER,
+    peak_processes INTEGER,
     UNIQUE(stage_run_id, attempt_number)
+);
+CREATE TABLE IF NOT EXISTS runtime_resource_reservations (
+    attempt_id TEXT PRIMARY KEY REFERENCES runtime_attempts(attempt_id),
+    cpu_cores INTEGER NOT NULL CHECK(cpu_cores > 0),
+    memory_bytes INTEGER NOT NULL CHECK(memory_bytes > 0)
 );
 CREATE TABLE IF NOT EXISTS runtime_artifacts (
     artifact_id TEXT PRIMARY KEY,
@@ -275,6 +284,21 @@ class RuntimeStore:
 
     # -- lifecycle ---------------------------------------------------------
 
+    def resource_totals(self) -> tuple[int, int]:
+        """Return currently reserved CPU cores and memory bytes."""
+        row = self._connection.execute(
+            "SELECT COALESCE(SUM(cpu_cores),0) cpu, COALESCE(SUM(memory_bytes),0) mem "
+            "FROM runtime_resource_reservations"
+        ).fetchone()
+        return int(row["cpu"]), int(row["mem"])
+
+    def release_resources(self, attempt_id: str) -> None:
+        with self._lock:
+            self._connection.execute(
+                "DELETE FROM runtime_resource_reservations WHERE attempt_id = ?",
+                (attempt_id,),
+            )
+
     def _initialise(self) -> None:
         with self._lock:
             existing = self._connection.execute(
@@ -353,6 +377,18 @@ class RuntimeStore:
                     "FROM runtime_inputs_v2;"
                     "DROP TABLE runtime_inputs_v2;"
                 )
+        if from_version < 4:
+            # 3 -> 4: the resource reservations, and what each attempt actually
+            # used.  Additive except for the three attempt columns, which are
+            # added here with the guard because DDL commits as it goes.
+            self._connection.executescript(_DDL)
+            for column, kind in (("cpu_seconds", "REAL"),
+                                 ("peak_memory_bytes", "INTEGER"),
+                                 ("peak_processes", "INTEGER")):
+                if not self._has_column("runtime_attempts", column):
+                    self._connection.execute(
+                        f"ALTER TABLE runtime_attempts ADD COLUMN {column} {kind}"
+                    )
         self._connection.execute(
             "UPDATE runtime_schema_meta SET value = ? WHERE key = 'schema_version'",
             (str(RUNTIME_SCHEMA_VERSION),),
@@ -375,7 +411,8 @@ class RuntimeStore:
     # -- submission --------------------------------------------------------
 
     def submit_run(
-        self, task: TaskSpec, *, stage_key: str, plugin_version: str
+        self, task: TaskSpec, *, stage_key: str, plugin_version: str,
+        idempotent: bool = False,
     ) -> RunRecord:
         """Create one run with a single stage.
 
@@ -391,6 +428,23 @@ class RuntimeStore:
         with self._lock:
             self._connection.execute("BEGIN IMMEDIATE")
             try:
+                # Lookup and creation share the write transaction so requests
+                # on separate connections cannot both create the same task.
+                existing = self.find_run_by_task_id(task.task_id) if idempotent else None
+                if existing is not None:
+                    if existing.task_spec.to_dict() != task.to_dict():
+                        raise RuntimeStoreError(
+                            f"task_id {task.task_id!r} already exists with a different "
+                            f"immutable TaskSpec"
+                        )
+                    stage = self.list_stages(existing.run_id)[0]
+                    if stage.plugin_version != plugin_version:
+                        raise RuntimeStoreError(
+                            f"task_id {task.task_id!r} already exists at plugin version "
+                            f"{stage.plugin_version!r}"
+                        )
+                    self._connection.execute("COMMIT")
+                    return existing
                 self._connection.execute(
                     "INSERT INTO runtime_runs (run_id, task_id, status, "
                     "task_spec_json, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -546,7 +600,11 @@ class RuntimeStore:
     def start_attempt(
         self, stage_run_id: str, *, worker_id: str, workspace: Path,
         lease_seconds: int,
-    ) -> Attempt:
+        resources: ResourceRequest | None = None,
+        capacity_cpu_cores: int | None = None,
+        capacity_memory_bytes: int | None = None,
+        platform_fraction: float = 0.60,
+    ) -> Attempt | None:
         """Claim the next attempt for a stage.  Transactional by construction."""
         if lease_seconds <= 0:
             raise RuntimeStoreError("lease_seconds must be positive")
@@ -581,6 +639,28 @@ class RuntimeStore:
                      str(workspace), worker_id, expires.isoformat(),
                      now.isoformat(), now.isoformat()),
                 )
+                if (resources is not None and resources.declared
+                        and capacity_cpu_cores is not None
+                        and capacity_memory_bytes is not None):
+                    cpu = resources.cpu_cores or 1
+                    memory = resources.memory_bytes or 0
+                    if memory <= 0:
+                        raise RuntimeStoreError(
+                            "memory_bytes is required for resource reservation"
+                        )
+                    totals = self._connection.execute(
+                        "SELECT COALESCE(SUM(cpu_cores),0) cpu, COALESCE(SUM(memory_bytes),0) mem "
+                        "FROM runtime_resource_reservations"
+                    ).fetchone()
+                    if (int(totals["cpu"]) + cpu > int(capacity_cpu_cores * platform_fraction)
+                            or int(totals["mem"]) + memory > int(capacity_memory_bytes * platform_fraction)):
+                        self._connection.execute("ROLLBACK")
+                        return None
+                    self._connection.execute(
+                        "INSERT INTO runtime_resource_reservations "
+                        "(attempt_id,cpu_cores,memory_bytes) VALUES (?,?,?)",
+                        (attempt_id, cpu, memory),
+                    )
                 self._connection.execute(
                     "UPDATE runtime_stage_runs SET status = ?, "
                     "started_at = COALESCE(started_at, ?) WHERE stage_run_id = ?",
@@ -630,6 +710,8 @@ class RuntimeStore:
     def finish_attempt(
         self, attempt_id: str, status: AttemptStatus, *,
         exit_code: int | None = None, failure: Mapping[str, Any] | None = None,
+        cpu_seconds: float | None = None, peak_memory_bytes: int | None = None,
+        peak_processes: int | None = None,
     ) -> None:
         with self._lock:
             self._connection.execute("BEGIN IMMEDIATE")
@@ -647,11 +729,16 @@ class RuntimeStore:
                     )
                 self._connection.execute(
                     "UPDATE runtime_attempts SET status = ?, ended_at = ?, "
-                    "exit_code = ?, failure_json = ?, lease_expires_at = NULL "
+                    "exit_code = ?, failure_json = ?, cpu_seconds = ?, "
+                    "peak_memory_bytes = ?, peak_processes = ?, lease_expires_at = NULL "
                     "WHERE attempt_id = ?",
                     (status.value, _now(), exit_code,
                      json.dumps(dict(failure), sort_keys=True) if failure else None,
-                     attempt_id),
+                     cpu_seconds, peak_memory_bytes, peak_processes, attempt_id),
+                )
+                self._connection.execute(
+                    "DELETE FROM runtime_resource_reservations WHERE attempt_id = ?",
+                    (attempt_id,),
                 )
                 self._connection.execute("COMMIT")
             except Exception:
@@ -707,6 +794,54 @@ class RuntimeStore:
                     (RuntimeStatus.RETRY_WAIT.value, reason, run_id),
                 )
                 self._connection.execute("COMMIT")
+            except Exception:
+                self._connection.execute("ROLLBACK")
+                raise
+
+    def request_retry(self, run_id: str, *, requester: str, reason: str) -> dict[str, Any]:
+        """Queue a completed retryable run without changing its immutable task."""
+        if not reason.strip() or not requester.strip():
+            raise RuntimeStoreError("retry reason and requester are required")
+        with self._lock:
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                run = self._connection.execute(
+                    "SELECT * FROM runtime_runs WHERE run_id = ?", (run_id,)
+                ).fetchone()
+                if run is None:
+                    raise RuntimeStoreError(f"unknown run {run_id!r}")
+                task = TaskSpec.from_dict(json.loads(run["task_spec_json"]))
+                stage = self._connection.execute(
+                    "SELECT * FROM runtime_stage_runs WHERE run_id = ?", (run_id,)
+                ).fetchone()
+                attempt = self._connection.execute(
+                    "SELECT * FROM runtime_attempts WHERE stage_run_id = ? "
+                    "ORDER BY attempt_number DESC LIMIT 1", (stage["stage_run_id"],)
+                ).fetchone() if stage else None
+                failure = _optional_json_object(attempt["failure_json"]) if attempt else None
+                if run["status"] != RuntimeStatus.FAILED.value:
+                    raise InvalidTransition("only failed runs may be retried")
+                if not failure or not failure.get("retryable"):
+                    raise RuntimeStoreError("the latest failure is not retryable")
+                if attempt["attempt_number"] >= task.max_attempts:
+                    raise RuntimeStoreError("retry budget exhausted")
+                now = _now()
+                self._connection.execute(
+                    "UPDATE runtime_runs SET status = ?, terminal_reason = ? WHERE run_id = ?",
+                    (RuntimeStatus.RETRY_WAIT.value, f"retry requested by {requester}: {reason}", run_id),
+                )
+                self._connection.execute(
+                    "UPDATE runtime_stage_runs SET status = ? WHERE stage_run_id = ?",
+                    (RuntimeStatus.RETRY_WAIT.value, stage["stage_run_id"]),
+                )
+                self._connection.execute(
+                    "INSERT INTO runtime_events (event_id,run_id,stage_run_id,attempt_id,event_type,producer,payload_json,occurred_at) "
+                    "VALUES (?,?,?,?,?,?,?,?)",
+                    (_new_id("event"), run_id, stage["stage_run_id"], attempt["attempt_id"],
+                     "run.retry_requested", requester, json.dumps({"reason": reason}, sort_keys=True), now),
+                )
+                self._connection.execute("COMMIT")
+                return self.describe_run(run_id)
             except Exception:
                 self._connection.execute("ROLLBACK")
                 raise
@@ -790,6 +925,10 @@ class RuntimeStore:
                         "message": "worker stopped heartbeating; outcome unknown",
                         "retryable": True,
                     }, sort_keys=True), attempt_id),
+                )
+                self._connection.execute(
+                    "DELETE FROM runtime_resource_reservations WHERE attempt_id = ?",
+                    (attempt_id,),
                 )
         for run_id in run_ids:
             try:
@@ -890,7 +1029,7 @@ class RuntimeStore:
         target = self.object_path(digest)
         if target.is_file():
             existing = target.stat().st_size
-            if existing != size_bytes:
+            if existing != size_bytes or sha256(target) != digest:
                 raise RuntimeStoreError(
                     f"object {digest} is {existing} bytes but the artifact is "
                     f"{size_bytes}: the object store is inconsistent"
@@ -900,6 +1039,8 @@ class RuntimeStore:
         partial = target.with_name(f"{target.name}.partial-{uuid.uuid4().hex[:8]}")
         try:
             shutil.copyfile(path, partial)
+            if partial.stat().st_size != size_bytes or sha256(partial) != digest:
+                raise RuntimeStoreError("source changed while publishing object")
             partial.replace(target)
         finally:
             if partial.exists():
@@ -1154,6 +1295,7 @@ class RuntimeStore:
                     "workspace": attempt.workspace,
                     "worker_id": attempt.worker_id,
                     "failure": attempt.failure,
+                    "resource_usage": self._attempt_usage(attempt.attempt_id),
                     "inputs": [
                         s.to_dict() for s in self.list_inputs(attempt.attempt_id)
                     ],
@@ -1189,3 +1331,12 @@ class RuntimeStore:
             "terminal_reason": run.terminal_reason,
             "stages": stages,
         }
+
+    def _attempt_usage(self, attempt_id: str) -> dict[str, Any] | None:
+        row = self._connection.execute(
+            "SELECT cpu_seconds, peak_memory_bytes, peak_processes FROM runtime_attempts WHERE attempt_id = ?",
+            (attempt_id,),
+        ).fetchone()
+        if row is None or all(row[key] is None for key in ("cpu_seconds", "peak_memory_bytes", "peak_processes")):
+            return None
+        return {"cpu_seconds": row["cpu_seconds"], "peak_memory_bytes": row["peak_memory_bytes"], "peak_processes": row["peak_processes"]}

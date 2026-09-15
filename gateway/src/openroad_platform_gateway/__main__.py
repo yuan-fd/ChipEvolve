@@ -22,6 +22,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="directory scanned for plugin manifests")
     parser.add_argument("--admissions-root", default="admissions",
                         help="directory holding the platform's own trust records")
+    parser.add_argument("--capacity-cpu-cores", type=int)
+    parser.add_argument("--capacity-memory-bytes", type=int)
+    parser.add_argument("--platform-fraction", type=float, default=0.60)
     parser.add_argument("--no-auth", action="store_true",
                         help="skip authentication; binds everything to local-user")
     parser.add_argument("--host", default="127.0.0.1")
@@ -31,7 +34,10 @@ def main(argv: list[str] | None = None) -> int:
     config = (GatewayConfig.from_file(args.config) if args.config
               else GatewayConfig())
     kernel = build_kernel(
-        KernelPaths.of(args.state_root, args.plugins_root, args.admissions_root),
+        KernelPaths.of(args.state_root, args.plugins_root, args.admissions_root,
+                       capacity_cpu_cores=args.capacity_cpu_cores,
+                       capacity_memory_bytes=args.capacity_memory_bytes,
+                       platform_fraction=args.platform_fraction),
         allow_anonymous=args.no_auth,
     )
     router = build_router(config, kernel)

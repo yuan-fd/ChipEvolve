@@ -62,7 +62,7 @@ class KernelClient:
 
     def _call(self, method: str, path: str, *,
               payload: Mapping[str, Any] | None = None,
-              query: Mapping[str, Any] | None = None) -> Any:
+              query: Mapping[str, Any] | None = None, want_bytes: bool = False) -> Any:
         url = f"{self.base_url}{path}"
         if query:
             cleaned = {
@@ -102,6 +102,8 @@ class KernelClient:
 
         if not raw:
             return None
+        if want_bytes:
+            return raw
         try:
             return json.loads(raw)
         except json.JSONDecodeError as exc:
@@ -169,19 +171,40 @@ class KernelClient:
     def cancel(self, run_id: str) -> dict[str, Any]:
         return self._call("POST", f"/kernel/runs/{_seg(run_id)}/cancel")
 
+    def retry(self, run_id: str, *, reason: str) -> dict[str, Any]:
+        return self._call("POST", f"/kernel/runs/{_seg(run_id)}/retry",
+                          payload={"reason": reason})
+
     def metrics(self, run_id: str, *, complete_only: bool = False
                 ) -> list[dict[str, Any]]:
         return self._call("GET", f"/kernel/runs/{_seg(run_id)}/metrics",
                           query={"complete_only": "1" if complete_only else None}
                           )["metrics"]
 
-    def artifacts(self, run_id: str) -> list[dict[str, Any]]:
-        return self._call("GET", f"/kernel/runs/{_seg(run_id)}/artifacts"
-                          )["artifacts"]
+    def artifacts(self, run_id: str, *, category: str | None = None,
+                  format: str | None = None, stage: str | None = None) -> list[dict[str, Any]]:
+        return self._call("GET", f"/kernel/runs/{_seg(run_id)}/artifacts",
+                          query={"category": category, "format": format, "stage": stage})["artifacts"]
 
     def timeline(self, run_id: str) -> list[dict[str, Any]]:
         return self._call("GET", f"/kernel/runs/{_seg(run_id)}/timeline"
                           )["timeline"]
+
+    def resources(self, run_id: str) -> dict[str, Any]:
+        """Return the platform capacity, reservations, and attempt usage view."""
+        return self._call("GET", f"/kernel/runs/{_seg(run_id)}/resources")["resources"]
+
+    def logs(self, run_id: str, *, offset: int = 0,
+             max_bytes: int | None = None) -> dict[str, Any]:
+        return self._call("GET", f"/kernel/runs/{_seg(run_id)}/logs",
+                          query={"offset": offset, "max_bytes": max_bytes})["logs"]
+
+    def approve(self, task_id: str, *, requested: Mapping[str, Any],
+                approved: Mapping[str, Any], reason: str) -> str:
+        return self._call("POST", "/kernel/approvals", payload={
+            "task_id": task_id, "requested": dict(requested),
+            "approved": dict(approved), "reason": reason,
+        })["approval_id"]
 
     def artifact_excerpt(self, run_id: str, artifact_id: str, *,
                          offset: int = 0, max_bytes: int = 8192

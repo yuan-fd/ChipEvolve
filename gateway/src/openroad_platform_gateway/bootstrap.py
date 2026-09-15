@@ -38,10 +38,16 @@ class KernelPaths:
     #: plugin directories on purpose: whether this platform admits a plugin is
     #: not the plugin's document to keep.
     admissions_root: Path
+    capacity_cpu_cores: int | None = None
+    capacity_memory_bytes: int | None = None
+    platform_fraction: float = 0.60
 
     @classmethod
     def of(cls, state_root: str | Path, plugins_root: str | Path,
-           admissions_root: str | Path | None = None) -> "KernelPaths":
+           admissions_root: str | Path | None = None,
+           capacity_cpu_cores: int | None = None,
+           capacity_memory_bytes: int | None = None,
+           platform_fraction: float = 0.60) -> "KernelPaths":
         state = Path(state_root).expanduser().resolve()
         return cls(
             state_root=state,
@@ -50,6 +56,9 @@ class KernelPaths:
                 admissions_root if admissions_root is not None
                 else state / "admissions"
             ).expanduser().resolve(),
+            capacity_cpu_cores=capacity_cpu_cores,
+            capacity_memory_bytes=capacity_memory_bytes,
+            platform_fraction=platform_fraction,
         )
 
 
@@ -102,6 +111,9 @@ def build_kernel_parts(
         config=RuntimeConfig(
             workspace_root=paths.state_root / "runtime-workspaces",
             worker_id=worker_id,
+            capacity_cpu_cores=paths.capacity_cpu_cores,
+            capacity_memory_bytes=paths.capacity_memory_bytes,
+            platform_fraction=paths.platform_fraction,
         ),
         protected_evaluator=evaluator,
     )
