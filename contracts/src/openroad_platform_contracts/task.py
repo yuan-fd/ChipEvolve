@@ -37,11 +37,9 @@ class TaskSpec:
     boundary: it is the only party that knows what they should contain, and it
     reports a ``configuration_error`` when they are wrong.
 
-    Two fields were removed rather than left as promises this platform does not
-    keep: ``workflow_id`` (validated, read by nothing, and fatal at the store)
-    and ``resources`` (declared, enforced nowhere).  Orchestration and resource
-    limits are real ideas; they come back when they are implemented, together
-    with the behaviour that makes them true.
+    ``workflow_id`` is deliberately absent: orchestration is an agent concern
+    in v1.  Resource limits are part of the task contract and are refused when
+    the selected execution backend cannot enforce them.
     """
 
     task_id: str

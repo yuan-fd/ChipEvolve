@@ -306,19 +306,27 @@ be retried until the budget is spent (§4.4).
 A task may bound what the attempt is allowed to consume:
 
 ```json
-"resources": {"cpu_seconds": 3600, "memory_bytes": 17179869184, "processes": 64}
+"resources": {"cpu_cores": 8, "cpu_seconds": 3600,
+              "memory_bytes": 17179869184, "processes": 64}
 ```
 
-Every field is optional; an absent field means "not bounded", and a task with no
-`resources` at all is unbounded — which is what every task was before this
-existed. All three bounds are **aggregate**: they apply to the whole process
-tree the attempt starts, not to each process in it.
+Every field is optional. All four bounds are **aggregate**: they apply to the
+whole process tree the attempt starts, not to each process in it.
 
-| Field | Bounds |
-| --- | --- |
-| `cpu_seconds` | CPU time used by the tree, in seconds |
-| `memory_bytes` | Resident memory held by the tree, in bytes |
-| `processes` | How many processes the tree may contain at once |
+Each field governs one thing and is not a substitute for another.  The two CPU
+fields in particular are separate questions that happen to share a word:
+
+| Field | Governs | Does **not** govern |
+| --- | --- | --- |
+| `cpu_cores` | what the attempt **reserves**, and therefore whether it starts now or waits for room | how much CPU time it may burn |
+| `cpu_seconds` | when it is **stopped** for using too much CPU time | how many cores it gets, or whether it is admitted |
+| `memory_bytes` | both the reservation and the stop threshold — holding memory and being allowed to hold it are the same question | |
+| `processes` | the stop threshold | it is not reserved; a process count cannot be set aside for a later attempt the way a core can |
+
+**Declaring nothing still reserves something.**  A task with no `resources` is
+reserved at **1 core and 1 GiB** for scheduling purposes.  Without that default,
+a task could step outside the scheduler entirely by staying silent, which is the
+opposite of what a shared machine needs.
 
 The platform measures the tree while the attempt runs and terminates it on a
 breach. The attempt becomes `failed` with `failure.category` of
@@ -333,6 +341,10 @@ process count, not disk, not file descriptors, and not network. Refusing to
 present it as isolation is deliberate: a plugin that needs a real boundary needs
 a container, which this platform does not yet run plugins in.
 
+**A task that does not fit waits, it does not fail.**  If the machine has no
+room left within its budget, the attempt is not started and the run stays
+queued.  Nothing is lost and nothing is half-run; it starts when room appears.
+
 **Why this is not a manifest field.** A manifest is written by the plugin, and
 an untrusted party setting its own ceiling is not a ceiling. What a capability
 *needs* from the kernel is declared in the manifest; how much of the machine it
@@ -340,6 +352,21 @@ an untrusted party setting its own ceiling is not a ceiling. What a capability
 
 **On a host that cannot measure a process tree, a task declaring bounds is
 refused at submission** rather than accepted and quietly left unenforced (§5.7).
+
+### 4.1.3 Retries, automatic and requested
+
+Two ways an attempt is tried again, and they are different mechanisms:
+
+| | Who starts it | What it needs |
+| --- | --- | --- |
+| **Automatic** | the platform, immediately | the plugin reported `failure.retryable: true`, and `max_attempts` has room |
+| **Requested** | a caller, later | the run is `failed`, its **latest** failure was `retryable`, and `max_attempts` has room |
+
+A requested retry moves the run back to `retry_wait` and records who asked and
+why.  The task is never modified: no new parameters, no different plugin
+version, no different input.  **A retry is another attempt at the same
+experiment**, not a way to change one.  Earlier attempts are kept — a retry adds
+an attempt, it does not erase one.
 
 ### 4.2 The result
 
@@ -641,7 +668,7 @@ compatibility range in the manifest is a recognised gap, not a feature.
 | Prints progress envelopes if useful | Records them as events, and tolerates their absence |
 | Uses its own environment | Passes only what the manifest asked for |
 | Names the files it needs placed | Copies and digests them, and publishes the digests |
-| (says nothing about how much it may use) | Bounds the process tree the caller asked for, and refuses a bound it cannot measure |
+| (says nothing about how much it may use) | Bounds the process tree the caller asked for, reserves it against the machine's budget, and refuses a bound it cannot measure |
 
 The one rule that explains most of the rest: **the platform owns the lifecycle,
 the plugin owns the meaning.** What a stage is called, what a metric means, what
