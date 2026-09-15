@@ -19,12 +19,41 @@ from openroad_platform_contracts import (
     RuntimeStatus,
     StagedInput,
     TaskSpec,
+    ResourceRequest,
 )
 from openroad_platform_runtime.store import (
     InvalidTransition,
     RuntimeStore,
     RuntimeStoreError,
 )
+
+
+def test_resource_claim_is_fifo_capacity_and_release(store: RuntimeStore, tmp_path: Path):
+    first = submit(store, task_id="resource-1", resources=ResourceRequest(
+        cpu_cores=3, memory_bytes=100))
+    second = submit(store, task_id="resource-2", resources=ResourceRequest(
+        cpu_cores=3, memory_bytes=100))
+    first_stage = store.list_stages(first.run_id)[0]
+    second_stage = store.list_stages(second.run_id)[0]
+    claimed = store.start_attempt(
+        first_stage.stage_run_id, worker_id="w1", workspace=tmp_path / "a",
+        lease_seconds=30, resources=first.task_spec.resources,
+        capacity_cpu_cores=8, capacity_memory_bytes=1000,
+    )
+    assert claimed is not None
+    blocked = store.start_attempt(
+        second_stage.stage_run_id, worker_id="w1", workspace=tmp_path / "b",
+        lease_seconds=30, resources=second.task_spec.resources,
+        capacity_cpu_cores=8, capacity_memory_bytes=1000,
+    )
+    assert blocked is None
+    store.finish_attempt(claimed.attempt_id, AttemptStatus.FAILED)
+    released = store.start_attempt(
+        second_stage.stage_run_id, worker_id="w1", workspace=tmp_path / "c",
+        lease_seconds=30, resources=second.task_spec.resources,
+        capacity_cpu_cores=8, capacity_memory_bytes=1000,
+    )
+    assert released is not None
 
 
 @pytest.fixture()

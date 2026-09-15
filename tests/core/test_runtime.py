@@ -131,6 +131,34 @@ def test_resubmitting_a_different_spec_under_the_same_id_is_refused(tmp_path):
         rt.submit_idempotent(task("ok", inputs={"behaviour": "fail"}))
 
 
+def test_concurrent_idempotent_submissions_create_one_run(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    runtimes = [runtime(tmp_path, manifest()) for _ in range(2)]
+    ready = Barrier(2, timeout=10)
+
+    def before_transaction(sql):
+        # Both connections reach their write transaction together. A lookup
+        # outside that transaction can otherwise let both decide to insert.
+        if sql == "BEGIN IMMEDIATE":
+            ready.wait()
+
+    try:
+        for rt in runtimes:
+            rt.store._connection.set_trace_callback(before_transaction)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            runs = list(pool.map(lambda rt: rt.submit_idempotent(task("ok")), runtimes))
+        assert runs[0].run_id == runs[1].run_id
+        rows = runtimes[0].store._connection.execute(
+            "SELECT run_id FROM runtime_runs WHERE task_id = ?", ("task-ok",)
+        ).fetchall()
+        assert len(rows) == 1
+    finally:
+        for rt in runtimes:
+            rt.store.close()
+
+
 # --------------------------------------------------------------------------
 # the happy path end to end
 # --------------------------------------------------------------------------

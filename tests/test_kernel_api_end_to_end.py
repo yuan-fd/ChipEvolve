@@ -72,6 +72,24 @@ def submit_example(client: KernelClient, *, records=None, task_id="t-1"):
     })
 
 
+def test_resource_query_is_available_through_public_client(platform):
+    client, _kernel = platform
+    client.register("alice", "a long enough password")
+    run = submit_example(client, task_id="resource-query")
+    resources = client.resources(run["run"]["run_id"])
+    assert resources["capacity"]["platform_fraction"] == 0.60
+    assert resources["reserved"]["cpu_cores"] >= 0
+    assert resources["run"] == run["run"]["run_id"]
+
+
+def test_artifact_inventory_supports_opaque_metadata_filters(platform):
+    client, _kernel = platform
+    client.register("alice", "a long enough password")
+    run = submit_example(client, task_id="inventory-query")
+    run_id = run["run"]["run_id"]
+    assert client.artifacts(run_id, category="report") == []
+
+
 # --------------------------------------------------------------------------
 # health and catalogue
 # --------------------------------------------------------------------------
@@ -494,3 +512,5 @@ def test_a_cancelled_queued_run_settles_instead_of_hanging(staffed_platform):
 
     detail = wait_for_status(client, run_id, "cancelled")
     assert detail["status"] in {"cancelled", "succeeded"}
+
+
