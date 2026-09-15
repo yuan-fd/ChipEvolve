@@ -116,6 +116,25 @@ class RuntimeConfig:
     default_task_cpu_cores: int = 1
     default_task_memory_bytes: int = 1 << 30
 
+    def reservation_for(self, task: TaskSpec) -> ResourceRequest:
+        """What this task will reserve, whether or not it asked for anything.
+
+        One implementation, because two would disagree: the runtime reserves on
+        this basis, and the query layer explains a waiting run on the same
+        basis.  A run whose explanation used different numbers than its
+        reservation would send an operator looking for a shortfall that is not
+        there.
+        """
+        requested = task.resources
+        return ResourceRequest(
+            cpu_cores=(requested.cpu_cores
+                       if requested and requested.cpu_cores is not None
+                       else self.default_task_cpu_cores),
+            memory_bytes=(requested.memory_bytes
+                          if requested and requested.memory_bytes is not None
+                          else self.default_task_memory_bytes),
+        )
+
     def __post_init__(self) -> None:
         if self.lease_seconds <= 0:
             raise ValueError("lease_seconds must be positive")
@@ -189,6 +208,7 @@ class WorkflowRuntime:
         )
         return self.store.submit_run(
             task, stage_key="main", plugin_version=manifest.plugin_version,
+            resumable=manifest.requirements.resumable,
         )
 
     def submit_idempotent(
@@ -213,7 +233,7 @@ class WorkflowRuntime:
         )
         return self.store.submit_run(
             task, stage_key="main", plugin_version=manifest.plugin_version,
-            idempotent=True,
+            idempotent=True, resumable=manifest.requirements.resumable,
         )
 
     # -- inputs -----------------------------------------------------------
@@ -421,19 +441,21 @@ class WorkflowRuntime:
             stage.plugin_id, version=stage.plugin_version,
             arch=platform.machine(),
         )
-        attempt_number = len(self.store.list_attempts(stage.stage_run_id)) + 1
-        workspace = (
-            self.config.workspace_root / run_id / stage.stage_run_id
-            / f"attempt-{attempt_number}"
-        )
-        try:
-            requested = run.task_spec.resources
-            reservation = ResourceRequest(
-                cpu_cores=(requested.cpu_cores if requested and requested.cpu_cores is not None
-                           else self.config.default_task_cpu_cores),
-                memory_bytes=(requested.memory_bytes if requested and requested.memory_bytes is not None
-                              else self.config.default_task_memory_bytes),
+        previous = self.store.list_attempts(stage.stage_run_id)
+        attempt_number = len(previous) + 1
+        if manifest.requirements.resumable and previous:
+            # Continue in the workspace the last attempt left behind.  A fresh
+            # empty directory would be the opposite of resuming: a flow that
+            # resumes by re-running its own makefile needs the results it
+            # already has, and those are here.
+            workspace = Path(previous[-1].workspace)
+        else:
+            workspace = (
+                self.config.workspace_root / run_id / stage.stage_run_id
+                / f"attempt-{attempt_number}"
             )
+        try:
+            reservation = self.config.reservation_for(run.task_spec)
             attempt = self.store.start_attempt(
                 stage.stage_run_id, worker_id=self.config.worker_id,
                 workspace=workspace, lease_seconds=self.config.lease_seconds,

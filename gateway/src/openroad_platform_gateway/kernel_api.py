@@ -179,7 +179,7 @@ class KernelApi:
         owner = session.user_id if session else self.local_user_id
         if owner:
             self.identity.bind_resource("run", run.run_id, owner)
-        return Response.json({"run": self.index.run_detail(run.run_id)}, status=201)
+        return Response.json({"run": self._run_detail(run.run_id)}, status=201)
 
     def list_runs(self, request: Request, session: AuthSession | None) -> Response:
         try:
@@ -209,9 +209,23 @@ class KernelApi:
         run_id = request.params["run_id"]
         self._require_ownership(run_id, session)
         try:
-            return Response.json({"run": self.index.run_detail(run_id)})
+            return Response.json({"run": self._run_detail(run_id)})
         except RuntimeStoreError as exc:
             raise HttpError(404, str(exc)) from exc
+
+    def _run_detail(self, run_id: str) -> dict[str, Any]:
+        """The run, plus the one thing a queued run cannot currently say.
+
+        ``queued`` looks the same whether the machine is full, whether no worker
+        is running, or whether something is stuck -- and those need three
+        different responses from whoever is looking.  The platform knows which,
+        so it says, rather than making an operator open the database to find out.
+        """
+        detail = self.index.run_detail(run_id)
+        detail["waiting_for"] = ResourceQuery(
+            self.store, self.runtime.config
+        ).waiting_for(run_id)
+        return detail
 
     def cancel_run(self, request: Request, session: AuthSession | None) -> Response:
         run_id = request.params["run_id"]
@@ -220,7 +234,7 @@ class KernelApi:
             self.store.request_cancel(run_id)
         except RuntimeStoreError as exc:
             raise HttpError(404, str(exc)) from exc
-        return Response.json({"run": self.index.run_detail(run_id)})
+        return Response.json({"run": self._run_detail(run_id)})
 
     def retry_run(self, request: Request, session: AuthSession | None) -> Response:
         run_id = request.params["run_id"]

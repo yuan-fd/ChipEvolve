@@ -49,7 +49,7 @@ from openroad_platform_contracts import (
     run_transition_allowed,
 )
 
-RUNTIME_SCHEMA_VERSION = 4
+RUNTIME_SCHEMA_VERSION = 5
 
 #: Where an artifact's bytes are.  Recorded per artifact rather than assumed,
 #: because there have been two answers: artifacts registered before the object
@@ -102,6 +102,7 @@ CREATE TABLE IF NOT EXISTS runtime_stage_runs (
     created_at TEXT NOT NULL,
     started_at TEXT,
     ended_at TEXT,
+    resumable INTEGER NOT NULL DEFAULT 0,
     UNIQUE(run_id, stage_key),
     UNIQUE(run_id, ordinal)
 );
@@ -389,6 +390,15 @@ class RuntimeStore:
                     self._connection.execute(
                         f"ALTER TABLE runtime_attempts ADD COLUMN {column} {kind}"
                     )
+        if from_version < 5:
+            # 4 -> 5: whether a stage's capability can continue in a workspace it
+            # was already given.  Existing stages say no, which is the safe
+            # answer: resuming something that cannot resume restarts it.
+            if not self._has_column("runtime_stage_runs", "resumable"):
+                self._connection.execute(
+                    "ALTER TABLE runtime_stage_runs ADD COLUMN resumable INTEGER "
+                    "NOT NULL DEFAULT 0"
+                )
         self._connection.execute(
             "UPDATE runtime_schema_meta SET value = ? WHERE key = 'schema_version'",
             (str(RUNTIME_SCHEMA_VERSION),),
@@ -412,7 +422,7 @@ class RuntimeStore:
 
     def submit_run(
         self, task: TaskSpec, *, stage_key: str, plugin_version: str,
-        idempotent: bool = False,
+        idempotent: bool = False, resumable: bool = False,
     ) -> RunRecord:
         """Create one run with a single stage.
 
@@ -454,9 +464,10 @@ class RuntimeStore:
                 self._connection.execute(
                     "INSERT INTO runtime_stage_runs (stage_run_id, run_id, "
                     "stage_key, ordinal, plugin_id, plugin_version, status, "
-                    "created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    "created_at, resumable) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (stage_run_id, run_id, stage_key, 0, task.plugin_id,
-                     plugin_version, RuntimeStatus.QUEUED.value, now),
+                     plugin_version, RuntimeStatus.QUEUED.value, now,
+                     1 if resumable else 0),
                 )
                 self._connection.execute("COMMIT")
             except Exception:
@@ -846,6 +857,43 @@ class RuntimeStore:
                 self._connection.execute("ROLLBACK")
                 raise
 
+    def _may_resume(self, run_id: str) -> bool:
+        """Return a lease-lost run to the queue, if it has both the right and the room.
+
+        Two conditions, and both are needed:
+
+        * the capability says it can continue in a workspace it already has.  A
+          capability that cannot would restart from nothing, which is not
+          resuming and may be five hours of work thrown away by a guess.
+        * the attempt budget has room.  A lost lease *is* an attempt -- the
+          machine really did spend that time -- so it counts against
+          ``max_attempts`` like any other.  Otherwise a host that loses its
+          worker every time would loop for ever.
+        """
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT s.stage_run_id, s.resumable, r.task_spec_json, "
+                "(SELECT COUNT(*) FROM runtime_attempts "
+                " WHERE stage_run_id = s.stage_run_id) AS made "
+                "FROM runtime_runs r JOIN runtime_stage_runs s "
+                "ON s.run_id = r.run_id WHERE r.run_id = ?",
+                (run_id,),
+            ).fetchone()
+        if row is None or not row["resumable"]:
+            return False
+        budget = TaskSpec.from_dict(json.loads(row["task_spec_json"])).max_attempts
+        if int(row["made"]) >= budget:
+            return False
+        try:
+            self.schedule_retry(
+                run_id, row["stage_run_id"],
+                reason="worker lost its lease; resuming in the same workspace",
+            )
+        except InvalidTransition:
+            # Another path settled it first.  Whatever it decided stands.
+            return False
+        return True
+
     def runnable_runs(self, *, limit: int = 50) -> list[str]:
         """Run ids that have a stage a worker may claim.
 
@@ -931,6 +979,13 @@ class RuntimeStore:
                     (attempt_id,),
                 )
         for run_id in run_ids:
+            if self._may_resume(run_id):
+                # The work is not lost, it is unattended.  A capability that can
+                # continue in the workspace it was given gets to: the run goes
+                # back to the queue and the next attempt picks up where the
+                # lease ran out.  The attempt itself stays LOST -- it did lose
+                # its worker, and that is evidence.
+                continue
             try:
                 self.transition_run(run_id, RuntimeStatus.LOST,
                                     reason="lease_expired")
