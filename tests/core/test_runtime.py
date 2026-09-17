@@ -337,6 +337,26 @@ def test_the_protected_evaluator_is_invoked_after_a_successful_adapter(tmp_path)
     assert evaluator.requests[0].task.task_id == "task-ok"
 
 
+def test_metrics_from_the_protected_evaluator_are_registered(tmp_path):
+    evaluator = RecordingEvaluator(lambda _request: Verdict(
+        status=VerdictStatus.ADMISSIBLE,
+        metrics=(Metric(
+            name="protected_wns_ns", value=-0.05, unit="ns",
+            context={"source_artifact_store_key": "report.json"},
+        ),),
+    ))
+    rt = runtime(tmp_path, manifest(), protected_evaluator=evaluator)
+    run = rt.submit(task("ok"))
+    rt.execute_once(run.run_id)
+
+    attempt = rt.describe(run.run_id)["stages"][0]["attempts"][0]
+    report = next(a for a in attempt["artifacts"] if a["kind"] == "report")
+    metric = next(
+        m for m in attempt["metrics"] if m["name"] == "protected_wns_ns"
+    )
+    assert metric["source_artifact_id"] == report["artifact_id"]
+
+
 def test_the_evaluator_is_not_invoked_for_a_failed_adapter(tmp_path):
     evaluator = RecordingEvaluator(lambda r: Verdict(
         status=VerdictStatus.INCOMPLETE, reason="should not be called"))

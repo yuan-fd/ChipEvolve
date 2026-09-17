@@ -541,10 +541,9 @@ class WorkflowRuntime:
             ),
             expected_kinds=(), require_expected=False, allow_reserved=True,
         )
-        evaluator_artifacts = self._evaluate(
+        evaluator_artifacts, evaluator_metrics = self._evaluate(
             execution, manifest, run, workspace, attempt.attempt_id
         )
-
         registered = (
             *runtime_artifacts, *execution.artifacts, *evaluator_artifacts
         )
@@ -553,7 +552,8 @@ class WorkflowRuntime:
         )
         if execution.result.status is RuntimeStatus.SUCCEEDED:
             self._register_metrics(
-                attempt, execution, registered, registered_ids
+                attempt, (*execution.result.metrics, *evaluator_metrics),
+                registered, registered_ids,
             )
 
         self.store.finish_attempt(
@@ -665,11 +665,10 @@ class WorkflowRuntime:
     def _evaluate(
         self, execution: AdapterExecution, manifest: PluginManifest,
         run: RunRecord, workspace: Path, attempt_id: str,
-    ) -> tuple[dict[str, Any], ...]:
-        if self.protected_evaluator is None:
-            return ()
-        if execution.result.status is not RuntimeStatus.SUCCEEDED:
-            return ()
+    ) -> tuple[tuple[dict[str, Any], ...], tuple[Metric, ...]]:
+        if (self.protected_evaluator is None
+                or execution.result.status is not RuntimeStatus.SUCCEEDED):
+            return (), ()
         verdict: Verdict = self.protected_evaluator.evaluate(EvaluationRequest(
             manifest=manifest, task=run.task_spec, workspace=str(workspace),
             attempt_id=attempt_id, declared_artifacts=(),
@@ -679,15 +678,16 @@ class WorkflowRuntime:
             raise RuntimeStoreError(
                 f"protected evaluator rejected the run: {verdict.reason}"
             )
-        return validate_artifact_declarations(
+        artifacts = validate_artifact_declarations(
             workspace, manifest,
             [{"kind": a.kind, "path": a.path, "metadata": a.metadata}
              for a in verdict.artifacts],
             expected_kinds=(), require_expected=False,
         )
+        return artifacts, verdict.metrics
 
     def _register_metrics(
-        self, attempt: Attempt, execution: AdapterExecution,
+        self, attempt: Attempt, raw_metrics: tuple[dict[str, Any] | Metric, ...],
         registered: tuple[dict[str, Any], ...], registered_ids: list[str],
     ) -> None:
         """Attach each metric to the artifact it was read from.
@@ -700,8 +700,8 @@ class WorkflowRuntime:
             for item, artifact_id in zip(registered, registered_ids)
         }
         metrics = []
-        for raw in execution.result.metrics:
-            item = dict(raw)
+        for raw in raw_metrics:
+            item = raw.to_dict() if isinstance(raw, Metric) else dict(raw)
             context = dict(item.get("context") or {})
             source_key = context.pop("source_artifact_store_key", None)
             if source_key is not None:
