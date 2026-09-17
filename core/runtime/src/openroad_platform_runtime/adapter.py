@@ -23,9 +23,10 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass, field
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, cast
 
 from openroad_platform_contracts import (
     ArtifactDeclaration,
@@ -35,7 +36,6 @@ from openroad_platform_contracts import (
     ResourceRequest,
     RuntimeStatus,
     TaskSpec,
-    validate_identifier,
 )
 
 from .digest import sha256
@@ -368,7 +368,7 @@ def validate_artifact_declarations(
         # are only enforced for a result that claims success.
         required = set(expected_kinds)
         required.update(
-            rule.get("kind")
+            cast(str, rule.get("kind"))
             for rule in manifest.artifact_rules
             if rule.get("required")
         )

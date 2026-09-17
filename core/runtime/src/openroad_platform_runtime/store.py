@@ -27,27 +27,27 @@ import shutil
 import sqlite3
 import threading
 import uuid
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
-
-from .digest import sha256
+from typing import Any
 
 from openroad_platform_contracts import (
     Artifact,
     AttemptStatus,
     Event,
     Metric,
-    PluginResult,
+    ResourceRequest,
     RuntimeStatus,
     StagedInput,
     TaskSpec,
-    ResourceRequest,
     attempt_transition_allowed,
     is_terminal,
     run_transition_allowed,
 )
+
+from .digest import sha256
 
 RUNTIME_SCHEMA_VERSION = 5
 
@@ -390,15 +390,14 @@ class RuntimeStore:
                     self._connection.execute(
                         f"ALTER TABLE runtime_attempts ADD COLUMN {column} {kind}"
                     )
-        if from_version < 5:
+        if from_version < 5 and not self._has_column("runtime_stage_runs", "resumable"):
             # 4 -> 5: whether a stage's capability can continue in a workspace it
             # was already given.  Existing stages say no, which is the safe
             # answer: resuming something that cannot resume restarts it.
-            if not self._has_column("runtime_stage_runs", "resumable"):
-                self._connection.execute(
-                    "ALTER TABLE runtime_stage_runs ADD COLUMN resumable INTEGER "
-                    "NOT NULL DEFAULT 0"
-                )
+            self._connection.execute(
+                "ALTER TABLE runtime_stage_runs ADD COLUMN resumable INTEGER "
+                "NOT NULL DEFAULT 0"
+            )
         self._connection.execute(
             "UPDATE runtime_schema_meta SET value = ? WHERE key = 'schema_version'",
             (str(RUNTIME_SCHEMA_VERSION),),
@@ -412,7 +411,7 @@ class RuntimeStore:
         with self._lock:
             self._connection.close()
 
-    def __enter__(self) -> "RuntimeStore":
+    def __enter__(self) -> RuntimeStore:  # noqa: PYI034 - Python 3.9 support
         return self
 
     def __exit__(self, *exc) -> None:
@@ -832,7 +831,7 @@ class RuntimeStore:
                 failure = _optional_json_object(attempt["failure_json"]) if attempt else None
                 if run["status"] != RuntimeStatus.FAILED.value:
                     raise InvalidTransition("only failed runs may be retried")
-                if not failure or not failure.get("retryable"):
+                if attempt is None or not failure or not failure.get("retryable"):
                     raise RuntimeStoreError("the latest failure is not retryable")
                 if attempt["attempt_number"] >= task.max_attempts:
                     raise RuntimeStoreError("retry budget exhausted")

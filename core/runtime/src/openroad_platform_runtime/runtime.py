@@ -34,7 +34,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from openroad_platform_contracts import (
     INPUT_MANIFEST_FILENAME,
@@ -281,7 +281,7 @@ class WorkflowRuntime:
                         f"have: {declaration.artifact_id!r}"
                     ) from exc
                 continue
-            if declaration.required and not Path(declaration.source).is_file():
+            if declaration.required and not Path(cast(str, declaration.source)).is_file():
                 raise InputStagingError(
                     f"required input is not a readable file: "
                     f"{declaration.source!r} (declared as "
@@ -315,7 +315,7 @@ class WorkflowRuntime:
                     self._stage_from_artifact(declaration, destination)
                 )
                 continue
-            source = Path(declaration.source)
+            source = Path(cast(str, declaration.source))
             if not source.is_file():
                 if declaration.required:
                     raise InputStagingError(
@@ -375,7 +375,7 @@ class WorkflowRuntime:
         """
         try:
             artifact = self.store.materialize_artifact(
-                declaration.artifact_id, destination
+                cast(str, declaration.artifact_id), destination
             )
         except RuntimeStoreError as exc:
             if declaration.required:

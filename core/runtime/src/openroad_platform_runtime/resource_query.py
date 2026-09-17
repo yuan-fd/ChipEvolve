@@ -13,7 +13,7 @@ so it says.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from openroad_platform_contracts import RuntimeStatus
 
@@ -44,14 +44,15 @@ class ResourceQuery:
 
         need = self.config.reservation_for(record.task_spec)
         have_cpu, have_memory = self.store.resource_totals()
-        budget_cpu = int(self.config.capacity_cpu_cores
+        budget_cpu = int(cast(int, self.config.capacity_cpu_cores)
                          * self.config.platform_fraction)
-        budget_memory = int(self.config.capacity_memory_bytes
+        budget_memory = int(cast(int, self.config.capacity_memory_bytes)
                             * self.config.platform_fraction)
         free_cpu = budget_cpu - have_cpu
         free_memory = budget_memory - have_memory
 
-        if need.cpu_cores > free_cpu or need.memory_bytes > free_memory:
+        if (cast(int, need.cpu_cores) > free_cpu
+                or cast(int, need.memory_bytes) > free_memory):
             return (
                 f"resource: this run reserves {need.cpu_cores} cores and "
                 f"{need.memory_bytes} bytes of memory, and the machine has "
@@ -76,8 +77,8 @@ class ResourceQuery:
                 "cpu_cores": self.config.capacity_cpu_cores,
                 "memory_bytes": self.config.capacity_memory_bytes,
                 "platform_fraction": self.config.platform_fraction,
-                "budget_cpu_cores": int(self.config.capacity_cpu_cores * self.config.platform_fraction),
-                "budget_memory_bytes": int(self.config.capacity_memory_bytes * self.config.platform_fraction),
+                "budget_cpu_cores": int(cast(int, self.config.capacity_cpu_cores) * self.config.platform_fraction),
+                "budget_memory_bytes": int(cast(int, self.config.capacity_memory_bytes) * self.config.platform_fraction),
             },
             "reserved": {
                 "cpu_cores": reserved_cpu,

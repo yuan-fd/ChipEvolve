@@ -16,7 +16,8 @@ must not produce two ``stage.started`` events for one attempt.
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
+from typing import Any
 
 from openroad_platform_contracts import (
     ContractError,
@@ -85,7 +86,7 @@ class ProgressObserver:
         if report.stage in self._finished:
             return
         self._finished.add(report.stage)
-        payload = {
+        payload: dict[str, Any] = {
             "stage": report.stage,
             "status": report.status.value if report.status else None,
         }
