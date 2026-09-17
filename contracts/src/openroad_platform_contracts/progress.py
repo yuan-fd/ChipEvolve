@@ -24,14 +24,15 @@ kernel file needs to change.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Mapping
+from typing import Any
 
 from .version import (
-    instantiate,
-    ContractError,
     SCHEMA_VERSION,
+    ContractError,
+    instantiate,
     known_payload,
     primitive,
     validate_mapping,
@@ -103,7 +104,7 @@ class ProgressReport:
         return primitive(self)
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "ProgressReport":
+    def from_dict(cls, payload: Mapping[str, Any]) -> ProgressReport:
         value = known_payload(cls, payload)
         for key, enum in (("phase", ProgressPhase), ("status", ProgressStatus)):
             if key in value and value[key] is not None:

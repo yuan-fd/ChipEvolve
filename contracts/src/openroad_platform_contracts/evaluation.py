@@ -17,13 +17,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Mapping, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from .artifact import ArtifactDeclaration, Metric
 from .task import PluginManifest, TaskSpec
 from .version import (
-    ContractError,
     SCHEMA_VERSION,
+    ContractError,
     primitive,
     validate_identifier,
     validate_mapping,
@@ -142,7 +142,7 @@ class EvaluatorPin:
         validate_sha256("manifest_sha256", self.manifest_sha256)
 
     @classmethod
-    def of(cls, manifest: PluginManifest) -> "EvaluatorPin":
+    def of(cls, manifest: PluginManifest) -> EvaluatorPin:
         import hashlib
         import json
 

@@ -7,14 +7,15 @@ and the platform does not treat assertions as evidence.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Any
 
 from .input import INPUT_MANIFEST_KIND
 from .version import (
-    instantiate,
-    ContractError,
     SCHEMA_VERSION,
+    ContractError,
+    instantiate,
     primitive,
     validate_identifier,
     validate_mapping,
@@ -140,7 +141,7 @@ class Metric:
         return primitive(self)
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "Metric":
+    def from_dict(cls, payload: Mapping[str, Any]) -> Metric:
         from .version import known_payload
         value = known_payload(cls, payload)
         value["context"] = dict(value.get("context") or {})

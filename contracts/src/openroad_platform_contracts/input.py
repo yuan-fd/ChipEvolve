@@ -19,8 +19,9 @@ them from a path on a host would be a worse way to get the same file.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 from .version import (
     ContractError,
@@ -98,7 +99,7 @@ class InputFile:
         }
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "InputFile":
+    def from_dict(cls, payload: Mapping[str, Any]) -> InputFile:
         allowed = {"destination", "source", "artifact_id", "required"}
         unknown = sorted(set(payload) - allowed)
         if unknown:
@@ -166,7 +167,7 @@ class StagedInput:
         }
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "StagedInput":
+    def from_dict(cls, payload: Mapping[str, Any]) -> StagedInput:
         allowed = {"destination", "present", "size_bytes", "sha256", "source",
                    "source_artifact_id"}
         unknown = sorted(set(payload) - allowed)

@@ -7,14 +7,15 @@ writer of a run's status; nobody else -- not a plugin, not an app, not a model
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Mapping
+from typing import Any
 
 from .version import (
-    instantiate,
-    ContractError,
     SCHEMA_VERSION,
+    ContractError,
+    instantiate,
     known_payload,
     primitive,
     validate_identifier,
@@ -162,7 +163,7 @@ class Event:
         return primitive(self)
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "Event":
+    def from_dict(cls, payload: Mapping[str, Any]) -> Event:
         result = instantiate(cls, known_payload(cls, payload))
         result.validate()
         return result

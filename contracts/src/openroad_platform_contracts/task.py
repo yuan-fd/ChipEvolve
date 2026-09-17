@@ -8,17 +8,18 @@ declared here as data, so the kernel never grows a branch per plugin.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Any
 
-from .runtime import RuntimeStatus
-from .progress import DEFAULT_PROGRESS_MARKER
 from .input import InputFile
+from .progress import DEFAULT_PROGRESS_MARKER
 from .resources import ResourceRequest
+from .runtime import RuntimeStatus
 from .version import (
-    instantiate,
-    ContractError,
     SCHEMA_VERSION,
+    ContractError,
+    instantiate,
     known_payload,
     primitive,
     validate_identifier,
@@ -104,7 +105,7 @@ class TaskSpec:
         return primitive(self)
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "TaskSpec":
+    def from_dict(cls, payload: Mapping[str, Any]) -> TaskSpec:
         value = known_payload(cls, payload)
         value["expected_artifacts"] = tuple(value.get("expected_artifacts", ()))
         value["staged_inputs"] = tuple(
@@ -166,7 +167,7 @@ class RuntimeRequirements:
             )
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any] | None) -> "RuntimeRequirements":
+    def from_dict(cls, payload: Mapping[str, Any] | None) -> RuntimeRequirements:
         if payload is None:
             return cls()
         import dataclasses
@@ -247,7 +248,7 @@ class PluginManifest:
         return primitive(self)
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "PluginManifest":
+    def from_dict(cls, payload: Mapping[str, Any]) -> PluginManifest:
         value = known_payload(cls, payload)
         for name in ("adapter_entry", "capabilities", "supported_arch"):
             value[name] = tuple(value.get(name, ()))
@@ -304,7 +305,7 @@ class PluginResult:
         return primitive(self)
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "PluginResult":
+    def from_dict(cls, payload: Mapping[str, Any]) -> PluginResult:
         value = known_payload(cls, payload)
         try:
             value["status"] = RuntimeStatus(value["status"])

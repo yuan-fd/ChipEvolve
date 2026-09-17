@@ -6,16 +6,16 @@ by G1 (no vendor names) and G2 (no adapters).
 """
 
 from .artifact import (
+    RESERVED_ARTIFACT_KINDS,
+    RESERVED_METRIC_CONTEXT_KEYS,
     Artifact,
     ArtifactDeclaration,
     Metric,
-    RESERVED_ARTIFACT_KINDS,
-    RESERVED_METRIC_CONTEXT_KEYS,
 )
 from .evaluation import (
+    PROTECTED_EVALUATOR_CAPABILITY,
     EvaluationRequest,
     EvaluatorPin,
-    PROTECTED_EVALUATOR_CAPABILITY,
     ProtectedEvaluator,
     Verdict,
     VerdictStatus,
@@ -39,11 +39,11 @@ from .runtime import (
     ACTIVE_RUNTIME_STATUSES,
     ATTEMPT_TRANSITIONS,
     RUN_TRANSITIONS,
+    TERMINAL_RUNTIME_STATUSES,
     AttemptStatus,
     Event,
     Failure,
     RuntimeStatus,
-    TERMINAL_RUNTIME_STATUSES,
     attempt_transition_allowed,
     is_terminal,
     run_transition_allowed,
@@ -55,10 +55,10 @@ from .task import (
     TaskSpec,
 )
 from .version import (
-    ContractError,
     IDENTIFIER,
     SCHEMA_VERSION,
     SHA256_HEX,
+    ContractError,
     known_payload,
     primitive,
     validate_identifier,
@@ -69,28 +69,17 @@ from .version import (
 )
 
 __all__ = (
-    # versioning
-    "ContractError", "IDENTIFIER", "SCHEMA_VERSION", "SHA256_HEX",
-    "known_payload", "primitive", "validate_identifier", "validate_mapping",
+    "ACTIVE_RUNTIME_STATUSES", "ATTEMPT_TRANSITIONS", "DEFAULT_PROGRESS_MARKER",
+    "IDENTIFIER", "INPUT_MANIFEST_FILENAME", "INPUT_MANIFEST_KIND",
+    "MAX_ENVELOPE_BYTES", "PROTECTED_EVALUATOR_CAPABILITY",
+    "RESERVED_ARTIFACT_KINDS", "RESERVED_METRIC_CONTEXT_KEYS", "RUN_TRANSITIONS",
+    "SCHEMA_VERSION", "SHA256_HEX", "TERMINAL_RUNTIME_STATUSES",
+    "Artifact", "ArtifactDeclaration", "AttemptStatus", "ContractError",
+    "EvaluationRequest", "EvaluatorPin", "Event", "Failure", "InputFile",
+    "Metric", "PluginManifest", "PluginResult", "ProgressPhase", "ProgressReport",
+    "ProgressStatus", "ProtectedEvaluator", "ResourceRequest", "RuntimeRequirements",
+    "RuntimeStatus", "StagedInput", "TaskSpec", "Verdict", "VerdictStatus",
+    "attempt_transition_allowed", "decode_progress_line", "is_terminal", "known_payload",
+    "primitive", "run_transition_allowed", "validate_identifier", "validate_mapping",
     "validate_relative_path", "validate_sha256", "validate_version",
-    # task triangle
-    "PluginManifest", "PluginResult", "RuntimeRequirements", "TaskSpec",
-    # resources
-    "ResourceRequest",
-    # staged inputs
-    "INPUT_MANIFEST_FILENAME", "INPUT_MANIFEST_KIND", "InputFile", "StagedInput",
-    # runtime state
-    "ACTIVE_RUNTIME_STATUSES", "ATTEMPT_TRANSITIONS", "RUN_TRANSITIONS",
-    "AttemptStatus", "Event", "Failure", "RuntimeStatus",
-    "TERMINAL_RUNTIME_STATUSES", "attempt_transition_allowed", "is_terminal",
-    "run_transition_allowed",
-    # artifacts and evidence
-    "Artifact", "ArtifactDeclaration", "Metric",
-    "RESERVED_ARTIFACT_KINDS", "RESERVED_METRIC_CONTEXT_KEYS",
-    # evaluation boundary
-    "EvaluationRequest", "EvaluatorPin", "PROTECTED_EVALUATOR_CAPABILITY",
-    "ProtectedEvaluator", "Verdict", "VerdictStatus",
-    # progress envelope
-    "DEFAULT_PROGRESS_MARKER", "MAX_ENVELOPE_BYTES", "ProgressPhase",
-    "ProgressReport", "ProgressStatus", "decode_progress_line",
 )

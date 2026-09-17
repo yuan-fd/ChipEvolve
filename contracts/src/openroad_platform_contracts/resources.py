@@ -13,8 +13,9 @@ cannot enforce is refused at submission rather than accepted and ignored -- see
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 from .version import ContractError, instantiate
 
@@ -113,7 +114,7 @@ class ResourceRequest:
         }
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "ResourceRequest":
+    def from_dict(cls, payload: Mapping[str, Any]) -> ResourceRequest:
         allowed = {"cpu_seconds", "cpu_cores", "memory_bytes", "processes"}
         unknown = sorted(set(payload) - allowed)
         if unknown:
