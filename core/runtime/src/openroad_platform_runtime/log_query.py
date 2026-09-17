@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .adapter import LOG_FILENAME
-from .store import RuntimeStore, RuntimeStoreError
+from .store import RuntimeStore
 
 
 class LogQuery:

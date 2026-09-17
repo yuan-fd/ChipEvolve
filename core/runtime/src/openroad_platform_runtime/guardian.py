@@ -11,9 +11,8 @@ Two properties are non-negotiable and each has a test:
 2. **The whole descendant tree dies, including children that called setsid().**
    A process that deliberately detaches is still ours to clean up.
 3. **A declared resource limit is enforced, or the task is refused.** A plugin
-   that grows without bound takes the machine from every other experiment on it,
-   so the caller may bound the attempt -- and a bound the platform cannot
-   measure is refused at submission rather than accepted and quietly ignored.
+   that grows without bound takes the machine from every other experiment, so a
+   bound the platform cannot measure is refused rather than quietly ignored.
 
 On testing style: v1's timeout tests asserted that a bash child had written a
 pid file within a 250 ms window.  On a loaded machine bash sometimes needed
@@ -31,9 +30,10 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Mapping, Sequence, TextIO
+from typing import TextIO
 
 from openroad_platform_contracts import ResourceRequest
 
@@ -219,7 +219,7 @@ class ProcessGuardian:
     # -- output ------------------------------------------------------------
 
     @staticmethod
-    def _read_output(stream: TextIO | None, lines: "queue.Queue[str | None]") -> None:
+    def _read_output(stream: TextIO | None, lines: queue.Queue[str | None]) -> None:
         try:
             if stream is not None:
                 for line in iter(stream.readline, ""):
@@ -231,7 +231,7 @@ class ProcessGuardian:
 
     @staticmethod
     def _drain(
-        lines: "queue.Queue[str | None]", log: TextIO,
+        lines: queue.Queue[str | None], log: TextIO,
         on_line: Callable[[str], None] | None, max_lines: int,
     ) -> int:
         count = 0
@@ -336,7 +336,7 @@ class ProcessGuardian:
 
     # -- process tree ------------------------------------------------------
 
-    def _terminate_tree(self, process: "subprocess.Popen[str]") -> None:
+    def _terminate_tree(self, process: subprocess.Popen[str]) -> None:
         if process.poll() is not None:
             return
         if os.name == "posix":
@@ -359,7 +359,7 @@ class ProcessGuardian:
 
     @classmethod
     def _kill_tree(
-        cls, process: "subprocess.Popen[str]", targets: set[int] | None = None
+        cls, process: subprocess.Popen[str], targets: set[int] | None = None
     ) -> None:
         if os.name == "posix":
             cls._signal_processes(

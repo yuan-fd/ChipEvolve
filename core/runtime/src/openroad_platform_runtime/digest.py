@@ -17,7 +17,7 @@ from typing import Union
 CHUNK_BYTES = 1024 * 1024
 
 
-def sha256(data: Union[bytes, bytearray, Path, str]) -> str:
+def sha256(data: Union[bytes, bytearray, Path, str]) -> str:  # noqa: UP007
     """Lowercase hex SHA-256 of bytes, or of a file's contents.
 
     A ``str`` is treated as a filesystem path, matching how the platform names

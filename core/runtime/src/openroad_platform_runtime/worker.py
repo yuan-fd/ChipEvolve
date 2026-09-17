@@ -23,14 +23,13 @@ from __future__ import annotations
 
 import logging
 import threading
-import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from openroad_platform_contracts import RuntimeStatus
 
 from .runtime import WorkflowRuntime
-from .store import InvalidTransition, RuntimeStore, RuntimeStoreError
+from .store import InvalidTransition, RuntimeStore
 
 LOGGER = logging.getLogger("openroad_platform_runtime.worker")
 
