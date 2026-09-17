@@ -18,9 +18,8 @@ The two v1 defects this file exists to fix are fixed structurally, not patched:
   contract.  The kernel learned the *shape* of a progress report and forgot the
   vocabulary; see ``openroad_platform_contracts.progress``.
 
-The old code is preserved verbatim in the archived v1 tree for anyone comparing
-behaviour.  It is deliberately not quoted here: a kernel that must name a vendor
-in order to explain itself is still coupled to that vendor.
+The old code is preserved in the archived v1 tree for comparison; it is not
+quoted here because a kernel that names a vendor is still coupled to it.
 """
 
 from __future__ import annotations
@@ -32,23 +31,24 @@ import shutil
 import socket
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
 from openroad_platform_contracts import (
-    AttemptStatus,
-    EvaluationRequest,
     INPUT_MANIFEST_FILENAME,
     INPUT_MANIFEST_KIND,
+    SCHEMA_VERSION,
+    AttemptStatus,
+    EvaluationRequest,
     InputFile,
     Metric,
     PluginManifest,
     PluginResult,
     ProtectedEvaluator,
-    RuntimeStatus,
     ResourceRequest,
-    SCHEMA_VERSION,
+    RuntimeStatus,
     StagedInput,
     TaskSpec,
     Verdict,
@@ -489,7 +489,7 @@ class WorkflowRuntime:
             self._run_attempt(
                 run, stage, attempt, manifest, workspace, pulse, observer,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - terminalize runtime failures
             self._record_runtime_failure(run, attempt, exc)
         finally:
             observer.record_summary()
@@ -498,7 +498,7 @@ class WorkflowRuntime:
     def _run_attempt(
         self, run: RunRecord, stage: StageRun, attempt: Attempt,
         manifest: PluginManifest, workspace: Path,
-        pulse: "_LeasePulse", observer: ProgressObserver,
+        pulse: _LeasePulse, observer: ProgressObserver,
     ) -> None:
         environment = dict(
             self.environment_resolver(run) if self.environment_resolver else {}
