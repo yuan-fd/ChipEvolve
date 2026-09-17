@@ -17,8 +17,9 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 #: How long a call may take.  Submitting a task is fast; reading a large
 #: artifact excerpt is bounded server-side, so this only has to cover the
@@ -198,13 +199,6 @@ class KernelClient:
              max_bytes: int | None = None) -> dict[str, Any]:
         return self._call("GET", f"/kernel/runs/{_seg(run_id)}/logs",
                           query={"offset": offset, "max_bytes": max_bytes})["logs"]
-
-    def approve(self, task_id: str, *, requested: Mapping[str, Any],
-                approved: Mapping[str, Any], reason: str) -> str:
-        return self._call("POST", "/kernel/approvals", payload={
-            "task_id": task_id, "requested": dict(requested),
-            "approved": dict(approved), "reason": reason,
-        })["approval_id"]
 
     def artifact_excerpt(self, run_id: str, artifact_id: str, *,
                          offset: int = 0, max_bytes: int = 8192

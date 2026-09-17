@@ -22,7 +22,6 @@ import time
 from pathlib import Path
 
 import pytest
-
 from openroad_platform_client import KernelClient, KernelError
 from openroad_platform_gateway import GatewayConfig, build_router, make_handler
 from openroad_platform_gateway.bootstrap import KernelPaths, build_kernel
@@ -212,6 +211,17 @@ def test_artifacts_are_listed_with_their_hashes(platform):
         assert artifact["attempt_id"]
 
 
+def test_adapter_logs_are_read_through_the_public_client(platform):
+    client, kernel = platform
+    client.register("alice", "a long enough password")
+    run_id = submit_example(client, task_id="logs-query")["run"]["run_id"]
+    kernel.runtime.execute_once(run_id)
+
+    logs = client.logs(run_id, offset=0, max_bytes=4096)
+    assert logs["run"] == run_id
+    assert "summarize" in logs["content"]
+
+
 def test_an_artifact_excerpt_is_read_through_the_kernel(platform):
     client, kernel = platform
     client.register("alice", "a long enough password")
@@ -350,7 +360,7 @@ def test_a_body_that_is_not_an_object_is_a_400(platform):
     client, _ = platform
     client.register("alice", "a long enough password")
     with pytest.raises(KernelError) as caught:
-        client._call("POST", "/kernel/runs", payload=None)  # noqa: SLF001
+        client._call("POST", "/kernel/runs", payload=None)
     # No body at all is empty, which is not an object.
     assert caught.value.status in {400, 500}
 
@@ -367,7 +377,7 @@ def test_an_unknown_route_is_a_404(platform):
     client, _ = platform
     client.register("alice", "a long enough password")
     with pytest.raises(KernelError) as caught:
-        client._call("GET", "/kernel/nonsense")  # noqa: SLF001
+        client._call("GET", "/kernel/nonsense")
     assert caught.value.status == 404
 
 
@@ -375,7 +385,7 @@ def test_a_wrong_method_is_a_405(platform):
     client, _ = platform
     client.register("alice", "a long enough password")
     with pytest.raises(KernelError) as caught:
-        client._call("POST", "/kernel/plugins")  # noqa: SLF001
+        client._call("POST", "/kernel/plugins")
     assert caught.value.status == 405
 
 
@@ -398,7 +408,7 @@ def test_an_invalid_limit_is_a_400(platform):
 # --------------------------------------------------------------------------
 
 def test_a_member_cannot_see_another_users_run(platform):
-    client, kernel = platform
+    client, _kernel = platform
     client.register("alice", "a long enough password")
     alice_run = submit_example(client, task_id="alice-1")["run"]["run_id"]
 
@@ -503,7 +513,7 @@ def test_evidence_from_a_worker_run_is_readable_through_the_api(staffed_platform
 def test_a_cancelled_queued_run_settles_instead_of_hanging(staffed_platform):
     """A cancellation for a run with no live attempt must still reach a terminal
     state, or the caller waits forever for something that will never happen."""
-    client, kernel = staffed_platform
+    client, _kernel = staffed_platform
     client.register("alice", "a long enough password")
 
     # Stop the worker so the run cannot be claimed before it is cancelled.
@@ -512,5 +522,3 @@ def test_a_cancelled_queued_run_settles_instead_of_hanging(staffed_platform):
 
     detail = wait_for_status(client, run_id, "cancelled")
     assert detail["status"] in {"cancelled", "succeeded"}
-
-
