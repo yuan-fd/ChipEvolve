@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sqlite3
 import threading
 import time
+import urllib.parse
 import uuid
 from collections.abc import Mapping
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+
+from openroad_platform_client import KernelClient, KernelError, KernelUnavailable
 
 SERVICE_NAME = "plan_executor"
 DEFAULT_PORT = 8840
@@ -170,10 +174,19 @@ class PlanStore:
     def active(self) -> list[str]:
         with self._connect() as connection:
             rows = connection.execute(
-                "SELECT plan_id FROM plans WHERE status IN ('queued','running') "
+                "SELECT plan_id FROM plans WHERE status IN "
+                "('queued','running','cancel_requested') "
                 "ORDER BY created_at"
             ).fetchall()
         return [str(row["plan_id"]) for row in rows]
+
+    def request_cancel(self, plan_id: str) -> None:
+        plan = self.get(plan_id)
+        if plan["status"] in FAILED | {"succeeded"}:
+            raise PlanError(
+                f"cannot cancel a plan in {plan['status']!r}", 409
+            )
+        self._update_plan(plan_id, "cancel_requested")
 
     def submitted(self, plan_id: str, step_id: str, run_id: str) -> None:
         self._update_step(plan_id, step_id, "queued", run_id=run_id)
@@ -223,6 +236,13 @@ class PlanExecutor:
         for plan_id in self.store.active():
             try:
                 self._advance(plan_id)
+            except KernelUnavailable:
+                continue
+            except KernelError as exc:
+                self.store.finish(plan_id, "failed", {
+                    "source": "platform", "category": "submission_refused",
+                    "message": str(exc), "retryable": False,
+                })
             except PlanError as exc:
                 self.store.finish(plan_id, "failed", {
                     "source": "platform", "category": "artifact_binding_error",
@@ -231,8 +251,20 @@ class PlanExecutor:
             advanced += 1
         return advanced
 
+    def serve_forever(self, stop: threading.Event, *, interval: float = 0.2) -> None:
+        while not stop.is_set():
+            try:
+                worked = self.cycle()
+            except KernelUnavailable:
+                worked = 0
+            if not worked:
+                stop.wait(interval)
+
     def _advance(self, plan_id: str) -> None:
         plan = self.store.get(plan_id)
+        if plan["status"] == "cancel_requested":
+            self._cancel(plan)
+            return
         pending = next(
             (step for step in plan["steps"] if step["status"] != "succeeded"),
             None,
@@ -264,6 +296,24 @@ class PlanExecutor:
         failure = classify_failure(detail)
         self.store.step_status(plan_id, pending["step_id"], status, failure)
         self.store.finish(plan_id, status if status in FAILED else "failed", failure)
+
+    def _cancel(self, plan: Mapping[str, Any]) -> None:
+        active = next(
+            (step for step in plan["steps"] if step["status"] != "succeeded"),
+            None,
+        )
+        if active is not None and active["run_id"] is not None:
+            self.client.cancel(active["run_id"])
+            self.store.step_status(
+                plan["plan_id"], active["step_id"], "cancelled",
+                {"source": "platform", "category": "cancelled",
+                 "message": "execution plan cancelled", "retryable": False},
+            )
+        self.store.finish(
+            plan["plan_id"], "cancelled",
+            {"source": "platform", "category": "cancelled",
+             "message": "execution plan cancelled", "retryable": False},
+        )
 
     def _task_for(self, plan: Mapping[str, Any], step: Mapping[str, Any]
                   ) -> dict[str, Any]:
@@ -316,13 +366,64 @@ def _json_or_none(raw: str | None) -> Any:
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "openroad-app-plan_executor/0.1"
+    store: PlanStore
+    executor: PlanExecutor
+    client: Any
 
     def do_GET(self) -> None:
-        if self.path != "/health":
-            self.send_error(404)
-            return
-        body = json.dumps({"app": SERVICE_NAME, "status": "ok"}).encode()
-        self.send_response(200)
+        path = urllib.parse.urlparse(self.path).path
+        try:
+            if path == "/health":
+                self._send(200, {
+                    "app": SERVICE_NAME, "status": "ok",
+                    "kernel": self.client.health(),
+                })
+                return
+            if path.startswith("/plans/"):
+                plan_id = urllib.parse.unquote(path[len("/plans/"):])
+                self._send(200, {"plan": self.store.get(plan_id)})
+                return
+            raise PlanError("not found", 404)
+        except PlanError as exc:
+            self._send(exc.status, {"error": str(exc)})
+        except KernelUnavailable as exc:
+            self._send(503, {"error": str(exc)})
+        except KernelError as exc:
+            self._send(exc.status or 502, {"error": str(exc)})
+
+    def do_POST(self) -> None:
+        path = urllib.parse.urlparse(self.path).path
+        try:
+            if path == "/plans":
+                plan_id = self.store.create(self._body())
+                self._send(201, {"plan": self.store.get(plan_id)})
+                return
+            if path.startswith("/plans/") and path.endswith("/cancel"):
+                plan_id = urllib.parse.unquote(
+                    path[len("/plans/"):-len("/cancel")]
+                ).strip("/")
+                self.store.request_cancel(plan_id)
+                self._send(202, {"plan": self.store.get(plan_id)})
+                return
+            raise PlanError("not found", 404)
+        except PlanError as exc:
+            self._send(exc.status, {"error": str(exc)})
+
+    def _body(self) -> dict[str, Any]:
+        length = int(self.headers.get("Content-Length") or 0)
+        if not 0 < length <= 1024 * 1024:
+            raise PlanError("request body must be non-empty and at most 1 MiB")
+        try:
+            payload = json.loads(self.rfile.read(length))
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise PlanError("request body must be JSON") from exc
+        if not isinstance(payload, dict):
+            raise PlanError("request body must be a JSON object")
+        return payload
+
+    def _send(self, status: int, payload: Any) -> None:
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -332,12 +433,43 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
+def build_handler(store: PlanStore, executor: PlanExecutor, client: Any):
+    return type("BoundPlanHandler", (Handler,), {
+        "store": store, "executor": executor, "client": client,
+    })
+
+
+def serve(*, host: str, port: int, db_path: Path, kernel_url: str,
+          token: str | None = None) -> None:
+    store = PlanStore(db_path)
+    client = KernelClient(kernel_url, token=token)
+    executor = PlanExecutor(store, client)
+    stop = threading.Event()
+    worker = threading.Thread(
+        target=executor.serve_forever, args=(stop,), daemon=True
+    )
+    worker.start()
+    try:
+        ThreadingHTTPServer(
+            (host, port), build_handler(store, executor, client)
+        ).serve_forever()
+    finally:
+        stop.set()
+        worker.join(timeout=5)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Execution Plan Service")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument("--kernel-url", default="http://127.0.0.1:8700")
+    parser.add_argument("--db", default=DB_FILENAME)
     args = parser.parse_args()
-    ThreadingHTTPServer((args.host, args.port), Handler).serve_forever()
+    serve(
+        host=args.host, port=args.port, db_path=Path(args.db),
+        kernel_url=args.kernel_url,
+        token=os.environ.get("OPENROAD_PLATFORM_TOKEN"),
+    )
     return 0
 
 

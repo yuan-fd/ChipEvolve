@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import threading
+import urllib.error
+import urllib.request
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -9,7 +14,9 @@ from openroad_app_plan_executor.__main__ import (
     PlanError,
     PlanExecutor,
     PlanStore,
+    build_handler,
 )
+from openroad_platform_client import KernelError
 
 
 class FakeKernel:
@@ -131,3 +138,87 @@ def test_a_binding_can_only_refer_to_an_earlier_step(tmp_path: Path):
                 {"step_id": "later", "task": task("later")},
             ],
         })
+
+
+def test_the_http_api_accepts_and_returns_a_plan(tmp_path: Path):
+    store = PlanStore(tmp_path / "plans.sqlite")
+    kernel = FakeKernel()
+    executor = PlanExecutor(store, kernel)
+    server = ThreadingHTTPServer(
+        ("127.0.0.1", 0), build_handler(store, executor, kernel)
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        status, created = http("POST", f"{base}/plans", {
+            "plan_id": "plan-http",
+            "steps": [{"step_id": "only", "task": task("only")}],
+        })
+        assert status == 201
+        assert created["plan"]["status"] == "queued"
+
+        executor.cycle()
+        status, detail = http("GET", f"{base}/plans/plan-http")
+        assert status == 200
+        assert detail["plan"]["steps"][0]["run_id"] == "run-1"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_cancelling_a_plan_cancels_the_active_run_and_never_starts_the_next(
+    tmp_path: Path,
+):
+    store = PlanStore(tmp_path / "plans.sqlite")
+    kernel = FakeKernel()
+    executor = PlanExecutor(store, kernel)
+    plan_id = store.create({
+        "plan_id": "plan-cancel",
+        "steps": [
+            {"step_id": "active", "task": task("active")},
+            {"step_id": "never", "task": task("never")},
+        ],
+    })
+    executor.cycle()
+
+    store.request_cancel(plan_id)
+    executor.cycle()
+
+    plan = store.get(plan_id)
+    assert plan["status"] == "cancelled"
+    assert kernel.statuses["run-1"] == "cancelled"
+    assert len(kernel.submitted) == 1
+
+
+def test_a_kernel_refusal_becomes_a_terminal_plan_failure(tmp_path: Path):
+    class RefusingKernel(FakeKernel):
+        def submit(self, task, *, idempotent=False):
+            raise KernelError("unknown plugin", status=400)
+
+    store = PlanStore(tmp_path / "plans.sqlite")
+    plan_id = store.create({
+        "plan_id": "plan-refused",
+        "steps": [{"step_id": "bad", "task": task("bad")}],
+    })
+
+    PlanExecutor(store, RefusingKernel()).cycle()
+
+    plan = store.get(plan_id)
+    assert plan["status"] == "failed"
+    assert plan["failure"]["source"] == "platform"
+    assert plan["failure"]["category"] == "submission_refused"
+    assert "unknown plugin" in plan["failure"]["message"]
+
+
+def http(method: str, url: str, payload: dict | None = None) -> tuple[int, dict]:
+    data = json.dumps(payload).encode() if payload is not None else None
+    request = urllib.request.Request(
+        url, data=data, method=method, headers={"Content-Type": "application/json"}
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            return response.status, json.loads(response.read())
+    except urllib.error.HTTPError as exc:
+        return exc.code, json.loads(exc.read())
