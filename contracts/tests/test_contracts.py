@@ -162,6 +162,33 @@ def test_manifest_requirements_are_declarative_not_hardcoded():
         "CAPABILITY_PROTOCOL_RECEIPT"
 
 
+def test_manifest_carries_toolkit_metadata_without_kernel_interpretation():
+    metadata = {
+        "toolkit_id": "cadence-innovus",
+        "version": "21.39",
+        "executable": "innovus",
+        "required_environment": ["module:cadence", "CDS_LIC_FILE"],
+        "input_contract": {"capability": "string", "script": "staged-file"},
+        "output_contract": {"artifacts": "declared", "metrics": "evidence"},
+        "script_execution": True,
+        "artifact_rules": ["toolchain", "tool_log"],
+        "metric_extraction": ["tool_version"],
+        "retryable_failure_categories": ["license_unavailable"],
+        "preflight_checks": ["version", "license"],
+        "tool_version_capture": "innovus -version",
+    }
+    manifest = PluginManifest(
+        plugin_id="cadence-innovus", plugin_version="1.0.0",
+        adapter_entry=("python3", "./adapter.py"),
+        capabilities=("preflight", "script"), supported_arch=("x86_64",),
+        toolkit=metadata,
+    )
+
+    restored = PluginManifest.from_dict(manifest.to_dict())
+
+    assert restored.toolkit == metadata
+
+
 def test_receipt_requirement_needs_a_variable_name():
     with pytest.raises(ContractError, match="environment_receipt_variable"):
         RuntimeRequirements(require_protocol_receipt=True).validate()

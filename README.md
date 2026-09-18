@@ -120,6 +120,15 @@ The wire identity is still called `plugin_id` for compatibility. In the
 architecture, it is the identity of the external Toolkit package. Capability
 names and their parameters remain opaque to the foundation.
 
+This checkout also contains a minimal Cadence Innovus Toolkit under
+[`plugins/cadence-innovus/`](plugins/cadence-innovus/). It exposes `preflight`
+and Agent-staged `script` capabilities. Supply the deployment's resolved
+`tool_path` and module name in task inputs; the adapter captures tool version,
+license/preflight output and script receipt as evidence. It deliberately does
+not store license endpoints or machine-specific paths in the repository. The
+same adapter can be reviewed and run through the normal worker lifecycle, so a
+commercial tool process is never launched directly by an Agent.
+
 ## Current evidence and limits
 
 The repository currently verifies the following:

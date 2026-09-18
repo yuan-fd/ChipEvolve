@@ -214,6 +214,7 @@ class PluginManifest:
     default_timeout_seconds: int = 3600
     artifact_rules: tuple[dict[str, Any], ...] = ()
     environment: dict[str, str] = field(default_factory=dict)
+    toolkit: dict[str, Any] = field(default_factory=dict)
     requirements: RuntimeRequirements = field(default_factory=RuntimeRequirements)
     #: Line prefix the adapter uses to report stage progress.  The kernel parses
     #: the envelope generically; the stage vocabulary stays inside the plugin.
@@ -240,6 +241,7 @@ class PluginManifest:
         if not all(isinstance(k, str) and isinstance(v, str)
                    for k, v in self.environment.items()):
             raise ContractError("environment must contain only string values")
+        validate_mapping("toolkit", self.toolkit)
         if self.default_timeout_seconds <= 0:
             raise ContractError("default_timeout_seconds must be positive")
         if not isinstance(self.progress_marker, str) or not self.progress_marker:

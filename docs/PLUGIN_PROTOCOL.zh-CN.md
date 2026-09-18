@@ -185,6 +185,8 @@ Metric value 必须是 JSON scalar，不能是 NaN。若提供 `context.source_a
 
 平台还会登记日志、进度、资源使用和状态 timeline。工具版本、动态库和 toolchain snapshot 不是这个通用协议自动生成的字段；需要它们的 Toolkit 应自行写入 artifact 或 provenance，并在自己的验收测试中证明内容来源。平台不会把任意 provenance 当成可信测量。
 
+Manifest 可选的 `toolkit` 对象用于携带 Toolkit 自己的接入声明：工具链/可执行文件、所需环境、输入输出契约、启动和脚本支持、产物与指标规则、可重试失败类别、preflight 检查和版本捕获命令。底座只原样传递和记录这个对象，不解释领域参数，也不替 Agent 规划流程。商业工具的许可证值和本机绝对路径不得写入仓库，应在部署环境或任务输入中提供。
+
 ## 失败怎么表达
 
 Toolkit 应该把领域失败写入 result 的 `failure`，例如：

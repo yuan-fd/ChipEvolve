@@ -1,0 +1,8 @@
+{
+  "plugin_id": "cadence-innovus",
+  "status": "admitted",
+  "license_review": "yellow",
+  "approved_commit": "5343acea0a916bd5b1542672bbd9b569566c9483",
+  "reviewer": "platform-owner",
+  "reason": "Adapter source is first-party and reviewed. Cadence binaries, OA libraries, PDKs and license service remain deployment-owned; each deployment must preflight its own tool path and license before execution."
+}

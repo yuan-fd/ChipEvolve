@@ -1,0 +1,37 @@
+{
+  "schema_version": 3,
+  "plugin_id": "cadence-innovus",
+  "plugin_version": "1.0.0",
+  "adapter_entry": ["python3", "./adapter.py"],
+  "capabilities": ["preflight", "script"],
+  "supported_arch": ["x86_64"],
+  "default_timeout_seconds": 600,
+  "artifact_rules": [
+    {"kind": "toolchain", "required": true},
+    {"kind": "tool_log", "required": true},
+    {"kind": "script_receipt", "required": false}
+  ],
+  "toolkit": {
+    "toolkit_id": "cadence-innovus",
+    "version": "1.0.0",
+    "executable": "innovus",
+    "required_environment": ["module:cadence", "CDS_LIC_FILE"],
+    "input_contract": {
+      "capability": "preflight|script",
+      "tool_path": "absolute path supplied by the deployment",
+      "script_path": "staged workspace path for script capability"
+    },
+    "output_contract": {
+      "artifacts": ["toolchain", "tool_log", "script_receipt"],
+      "metrics": ["tool_version"]
+    },
+    "launch_entry": "adapter.py --request <path> --result <path>",
+    "script_execution_support": true,
+    "artifact_rules": ["toolchain", "tool_log", "script_receipt"],
+    "metric_extraction": ["tool_version"],
+    "retryable_failure_categories": ["license_unavailable", "tool_launch"],
+    "preflight_checks": ["executable", "module", "license", "version"],
+    "tool_version_capture": "innovus -version"
+  },
+  "environment": {}
+}

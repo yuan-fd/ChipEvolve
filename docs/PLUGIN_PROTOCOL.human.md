@@ -77,6 +77,21 @@ to start it, and what it may produce.
     {"kind": "report", "required": true},
     {"kind": "log", "required": false}
   ],
+  "toolkit": {
+    "toolkit_id": "my-capability",
+    "version": "1.0.0",
+    "executable": "tool",
+    "required_environment": ["module:toolchain"],
+    "input_contract": {"capability": "opaque-to-foundation"},
+    "output_contract": {"artifacts": ["report"]},
+    "launch_entry": "adapter --request <path> --result <path>",
+    "script_execution_support": true,
+    "artifact_rules": ["report"],
+    "metric_extraction": ["report_parser"],
+    "retryable_failure_categories": ["license_unavailable"],
+    "preflight_checks": ["executable", "version", "license"],
+    "tool_version_capture": "tool --version"
+  },
   "progress_marker": "[progress]",
   "environment": {},
   "requirements": {"resumable": false}
@@ -93,6 +108,7 @@ to start it, and what it may produce.
 | `supported_arch` | yes | Architectures it runs on, e.g. `aarch64`. A mismatched host is refused before anything is launched. |
 | `default_timeout_seconds` | no | The plugin's own ceiling on one attempt. Default `3600`. The effective deadline is the smaller of this and the task's. |
 | `artifact_rules` | no | The artifact kinds the plugin may declare, with `required` per kind. Declaring a kind outside this list is a protocol error. |
+| `toolkit` | no | Toolkit-owned metadata: executable/toolchain, required environment, opaque input/output contract, launch and script support, artifact/metric rules, retryable failure categories, preflight checks and version capture. The foundation transports this object but does not interpret domain fields. |
 | `progress_marker` | no | Line prefix for progress envelopes. Default `[progress]`. |
 | `environment` | no | Extra environment variables the plugin needs. Values only; they are passed through to the process. |
 | `requirements` | no | What this capability needs the kernel to do differently. Data, not code — the kernel honours each flag without learning the plugin's name. See below. |

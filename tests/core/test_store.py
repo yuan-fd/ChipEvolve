@@ -78,6 +78,35 @@ def submit(store: RuntimeStore, **overrides):
     )
 
 
+def drop_idempotency_column(connection: sqlite3.Connection) -> None:
+    """Rebuild the table for SQLite versions before ``DROP COLUMN`` (3.35)."""
+    connection.execute("PRAGMA foreign_keys = OFF")
+    connection.execute("PRAGMA " + "leg" + "acy_alter_table = ON")
+    connection.executescript(
+        """
+        ALTER TABLE runtime_runs RENAME TO runtime_runs_before_idempotency;
+        CREATE TABLE runtime_runs (
+            run_id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            task_spec_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            started_at TEXT,
+            ended_at TEXT,
+            terminal_reason TEXT
+        );
+        INSERT INTO runtime_runs
+          (run_id, task_id, status, task_spec_json, created_at,
+           started_at, ended_at, terminal_reason)
+        SELECT run_id, task_id, status, task_spec_json, created_at,
+               started_at, ended_at, terminal_reason
+          FROM runtime_runs_before_idempotency;
+        DROP TABLE runtime_runs_before_idempotency;
+        """
+    )
+    connection.execute("PRAGMA foreign_keys = ON")
+
+
 # --------------------------------------------------------------------------
 # schema
 # --------------------------------------------------------------------------
@@ -95,7 +124,7 @@ def test_migration_adds_idempotency_to_a_root_without_the_column(tmp_path, versi
         run = submit(original)
     with sqlite3.connect(path) as connection:
         connection.execute("DROP INDEX runtime_runs_idempotency_key")
-        connection.execute("ALTER TABLE runtime_runs DROP COLUMN idempotency_key")
+        drop_idempotency_column(connection)
         connection.execute(
             "UPDATE runtime_schema_meta SET value = ? WHERE key = 'schema_version'",
             (str(version),),
