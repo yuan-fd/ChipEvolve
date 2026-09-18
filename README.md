@@ -141,7 +141,7 @@ The repository currently verifies the following:
 - Agent-authored script, patch, build and benchmark tasks;
 - cross-Toolkit artifact handoff;
 - cancellation, timeout, retry, lost-worker and idempotency behavior;
-- `438 passed, 1 skipped` in the full test suite and `39 passed` guardrails at
+- `476 passed, 1 skipped` in the full test suite and `40 passed` guardrails at
   the latest verification.
 
 The protocol remains `v1alpha1`. Cross-machine Toolkit preflight, immutable

@@ -4,7 +4,7 @@
 
 - remote：`https://github.com/yuan-fd/ChipEvolve.git`
 - branch：`main`
-- HEAD：`5343acea0a916bd5b1542672bbd9b569566c9483`
+- HEAD：以当前本地验收提交为准（未 push）
 - 初始工作区：干净；没有覆盖已有用户修改。
 
 ## 安装
@@ -17,12 +17,12 @@
 
 | 命令 | 结果 | 说明 |
 | --- | --- | --- |
-| `.venv/bin/python -m pytest -q` | 初始基线 `467 passed, 1 skipped, 3 failed`；兼容性夹具和 Toolkit smoke 加入后 `471 passed, 1 skipped` | Rocky 8 的 SQLite 3.26 不支持 `ALTER TABLE ... DROP COLUMN`；测试夹具改为兼容的表重建，未改变运行时代码 |
+| `.venv/bin/python -m pytest -q` | `476 passed, 1 skipped` | Rocky 8 的 SQLite 3.26 不支持 `ALTER TABLE ... DROP COLUMN`；测试夹具改为兼容的表重建，未改变运行时代码 |
 | `.venv/bin/python -m pytest -q guardrails` | `40 passed` | 架构边界和规模门禁通过 |
 | `.venv/bin/mypy ...` | `RC 0` | contracts/core/gateway/apps 正式源码通过 |
-| `.venv/bin/ruff check ...` | 未通过 | 当前 Ruff 0.16 报 94 个历史/测试/故意夹具问题，未全局 autofix |
-| `.venv/bin/black --check ...` | 未通过 | 83 个文件有历史格式差异；全局格式化会触碰负面夹具和规模门禁 |
-| `git diff --check` | 应在提交前复跑 | 本阶段不提交生成 workspace、日志或许可证值 |
+| `.venv/bin/ruff check`（本次变更文件及服务器 Toolkit） | 通过 | 仅检查本次变更文件，未对历史代码和故意负面 fixture 做全局 autofix |
+| `.venv/bin/black --check`（本次变更文件及服务器 Toolkit） | 通过 | 仅检查本次变更文件，未对历史代码和故意负面 fixture 做全局格式化 |
+| `git diff --check` | 通过 | 未提交生成 workspace、日志或许可证值 |
 
 ## 已修复/新增
 

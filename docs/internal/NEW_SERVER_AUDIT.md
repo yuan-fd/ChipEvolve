@@ -16,7 +16,7 @@
 | --- | --- |
 | 服务器 | Rocky 8.10、128 logical CPUs、314 GiB RAM、22 TiB `/home` 挂载 |
 | 项目安装 | `.venv` editable 安装成功；安装前需先提供 `setuptools/wheel` |
-| 测试 | 基线平台测试和服务器 Toolkit smoke 均已通过；完整结果以当前提交后的复跑为准 |
+| 测试 | 全量 `476 passed, 1 skipped`；服务器 Toolkit smoke 通过 |
 | Guardrails | `40 passed` |
 | mypy | 正式源码 `RC 0` |
 | Ruff/Black | 仓库全量未通过；见 baseline 报告，未自动格式化故意违规 fixture |
