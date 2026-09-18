@@ -21,7 +21,8 @@ experiment point.
 }
 ```
 
-The platform stores the payload unchanged. The Toolkit decides whether the
+The platform stores the payload unchanged. In the current protocol,
+`inputs.capability` is an opaque Toolkit field; the Adapter decides whether the
 capability and parameters are valid.
 
 ## Script request
@@ -45,14 +46,16 @@ workspace and executed by the Toolkit Adapter.
 }
 ```
 
-The foundation does not inspect TCL, Python, or shell semantics. It does
-validate the staged path, create the workspace, measure the input, control the
-process tree, and record the result.
+The foundation does not execute or inspect TCL, Python, or shell semantics. The
+Toolkit Adapter executes the script. The foundation validates the staged path,
+creates the workspace, measures the input, controls the process tree, and
+records the result.
 
 ## Patch, build, and benchmark
 
 An agent may stage a patch and build configuration as inputs to a Toolkit
-capability. Build, benchmark, and evaluation are separate Tasks when the agent
+capability. The Toolkit Adapter applies, builds, benchmarks, and evaluates the
+inputs. Build, benchmark, and evaluation are separate Tasks when the agent
 needs separate evidence or comparison points.
 
 ```text

@@ -7,7 +7,7 @@ resource reservations, process lifecycle, retries, logs, artifacts, metrics and
 provenance.
 
 The kernel contains no OpenROAD or ORFS logic. EDA integrations are external
-external Toolkit packages selected by the compatible `plugin_id` field. Ordered
+Toolkit packages selected by the compatible `plugin_id` field. Ordered
 task lists are agent-authored and owned by the independent `plan_executor`
 application; the application uses the kernel's normal task API and does not
 invent an EDA flow.
@@ -16,7 +16,8 @@ invent an EDA flow.
 
 Requirements: Linux, Bash, Python 3.9 or newer, and an external plugin checkout.
 For ORFS, the server also needs an ORFS checkout and executable OpenROAD, Yosys
-and KLayout builds.
+and KLayout builds. This is a single-host startup guide; the platform does not
+currently preflight a Toolkit on a new machine before the first execution.
 
 ```bash
 git clone <platform-repository-url> openroad-platform-v2

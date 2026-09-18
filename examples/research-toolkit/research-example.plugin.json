@@ -1,0 +1,11 @@
+{
+  "schema_version": 3,
+  "plugin_id": "research-example",
+  "plugin_version": "1.0.0",
+  "adapter_entry": ["python3", "./adapter.py"],
+  "capabilities": ["script", "patch_benchmark"],
+  "supported_arch": ["aarch64", "x86_64", "arm64"],
+  "artifact_rules": [
+    {"kind": "report", "required": true}
+  ]
+}

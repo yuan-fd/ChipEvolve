@@ -43,6 +43,11 @@ The platform currently keeps `inputs` and `parameters` opaque. A Toolkit owns
 their meaning and rejects values it cannot use; the foundation only validates
 the execution envelope, paths, resources, and lifecycle constraints.
 
+In the current protocol, `inputs.capability` is also a Toolkit convention. The
+kernel selects the package by `plugin_id` and does not authorize or validate an
+individual capability name. A Toolkit that needs capability validation performs
+it in its Adapter and reports a configuration failure.
+
 ## Three execution modes
 
 ### Capability experiment
@@ -59,13 +64,14 @@ An agent chooses a Toolkit capability and supplies domain parameters:
 
 ### Agent-authored script
 
-An agent stages a script and asks the Toolkit to execute it. The foundation
-records the script bytes, workspace, process, environment, logs, and outputs;
-it does not parse the script or decide what it means.
+An agent stages a script and asks the Toolkit Adapter to execute it. The
+foundation transports, hashes, and records the script bytes, workspace,
+process, environment, logs, and outputs; it does not execute or parse the
+script itself.
 
 ### Agent-authored patch and benchmark
 
-An agent stages a patch and build configuration. A Toolkit performs build,
+An agent stages a patch and build configuration. A Toolkit Adapter performs build,
 benchmark, and evaluation as ordinary Tasks. The patch, toolchain snapshot,
 build logs, reports, and metrics remain linked evidence that can be compared to
 another run.

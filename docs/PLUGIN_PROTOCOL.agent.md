@@ -55,7 +55,7 @@ Fields. Unknown fields are a hard error (`unknown PluginManifest fields: ...`).
 | `capabilities` | list[str] | Y | Non-empty. Free-form capability names. |
 | `supported_arch` | list[str] | Y | Non-empty. Compared against `platform.machine()`. |
 | `default_timeout_seconds` | int | N | > 0. Default 3600. |
-| `artifact_rules` | list[obj] | N | Each `{"kind": str, "required": bool}`. `kind` MUST match IDENTIFIER and MUST NOT be reserved (§E5). |
+| `artifact_rules` | list[obj] | N | Each `{"kind": str, "required": bool}`. `kind` MUST match IDENTIFIER. A platform-reserved kind may be listed as an allowlist entry, but an ordinary adapter still may not declare it in its result. |
 | `progress_marker` | str | N | Non-empty, ≤ 32 chars. Default `[progress]`. |
 | `environment` | obj[str,str] | N | String keys and values only. |
 
@@ -93,7 +93,7 @@ Fields, all optional, all strings. Unknown fields are a hard error.
 | ID | Rule |
 | --- | --- |
 | C1 | Absent file = unstated. Not an error. |
-| C2 | Malformed or unreadable file = unstated, with a note. Not an error. |
+| C2 | Malformed or unreadable file is a validation error. |
 | C3 | `source_commit` is compared with the platform's `approved_commit`. If both are present and differ, loading FAILS: `declares source_commit X but the admitted revision is Y`. |
 | C4 | Provenance grants nothing. It cannot admit a plugin. |
 
@@ -318,7 +318,7 @@ Run before submitting a plugin to a platform owner.
 [ ] every declared artifact kind is in manifest.artifact_rules
 [ ] if status == succeeded: every manifest rule with required:true has a
     declared, non-empty artifact
-[ ] no artifact declares a reserved kind
+[ ] an ordinary adapter does not declare a platform-reserved kind in its result
 [ ] if task.staged_inputs is non-empty: the adapter reads each file at its
     destination, relative to cwd, and never at the source path
 [ ] the adapter never writes input_manifest.json or
