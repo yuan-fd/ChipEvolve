@@ -118,6 +118,19 @@ def test_task_round_trips():
     assert TaskSpec.from_dict(task.to_dict()) == task
 
 
+def test_task_can_pin_an_external_toolkit_version():
+    task = make_task(plugin_version="2.1.0")
+
+    restored = TaskSpec.from_dict(task.to_dict())
+
+    assert restored.plugin_version == "2.1.0"
+
+
+def test_task_rejects_an_invalid_toolkit_version():
+    with pytest.raises(ContractError, match="plugin_version"):
+        make_task(plugin_version="../latest").validate()
+
+
 def test_manifest_rejects_reserved_artifact_kind():
     manifest = PluginManifest(
         plugin_id="x", plugin_version="1",

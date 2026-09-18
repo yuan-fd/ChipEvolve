@@ -203,8 +203,14 @@ class WorkflowRuntime:
         self._check_resources(task)
         if task.plugin_id is None:
             raise ValueError("this runtime executes direct plugin tasks only")
+        if (plugin_version is not None and task.plugin_version is not None
+                and plugin_version != task.plugin_version):
+            raise ValueError(
+                "plugin_version argument conflicts with the task plugin_version"
+            )
+        requested_version = plugin_version or task.plugin_version
         manifest = self.resolver.resolve(
-            task.plugin_id, version=plugin_version, capability=capability,
+            task.plugin_id, version=requested_version, capability=capability,
             arch=platform.machine(),
         )
         return self.store.submit_run(

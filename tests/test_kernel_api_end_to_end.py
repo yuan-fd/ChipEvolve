@@ -305,6 +305,22 @@ def test_idempotent_submission_returns_the_same_run(platform):
     assert first["run"]["run_id"] == second["run"]["run_id"]
 
 
+def test_public_client_can_pin_a_toolkit_version(platform):
+    client, _ = platform
+    client.register("alice", "a long enough password")
+    result = client.submit(
+        {
+            "schema_version": 3, "task_id": "pinned-version",
+            "project_id": "demo", "design_id": "demo-design",
+            "plugin_id": "example-reporter", "inputs": {"records": [1]},
+            "timeout_seconds": 30,
+        },
+        plugin_version="1.0.0",
+    )
+
+    assert result["run"]["stages"][0]["plugin_version"] == "1.0.0"
+
+
 def test_plan_scoped_idempotency_keys_isolate_same_agent_task_ids(platform):
     client, _ = platform
     client.register("alice", "a long enough password")

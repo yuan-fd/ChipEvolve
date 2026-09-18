@@ -117,6 +117,7 @@ def test_plan_preserves_agent_capability_script_and_patch_inputs(tmp_path: Path)
         "patch_path": "inputs/candidate.patch",
     }
     payload["parameters"] = {"density": 0.72, "strategy": "timing_driven"}
+    payload["plugin_version"] = "2.0.0"
     payload["staged_inputs"] = [
         {"source": str(script), "destination": "inputs/place.tcl"},
         {"source": str(patch), "destination": "inputs/candidate.patch"},
@@ -132,6 +133,7 @@ def test_plan_preserves_agent_capability_script_and_patch_inputs(tmp_path: Path)
     executor.cycle()
 
     assert kernel.submitted == [payload]
+    assert kernel.submitted[0]["plugin_version"] == "2.0.0"
 
 
 def test_a_failed_step_stops_the_plan_and_names_the_failure_source(tmp_path: Path):

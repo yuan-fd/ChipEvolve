@@ -47,6 +47,10 @@ class TaskSpec:
     project_id: str
     design_id: str
     plugin_id: str | None = None
+    #: Optional pin for a registered Toolkit release.  ``None`` preserves the
+    #: existing resolution rule: a registry with several versions refuses the
+    #: task until the Agent chooses one.
+    plugin_version: str | None = None
     inputs: dict[str, Any] = field(default_factory=dict)
     parameters: dict[str, Any] = field(default_factory=dict)
     #: Files the platform copies into the attempt workspace before the adapter
@@ -78,6 +82,7 @@ class TaskSpec:
         if self.plugin_id is None:
             raise ContractError("TaskSpec must name the plugin it runs")
         validate_identifier("plugin_id", self.plugin_id, required=False)
+        validate_identifier("plugin_version", self.plugin_version, required=False)
         for name in ("inputs", "parameters", "labels"):
             validate_mapping(name, getattr(self, name))
         if not all(isinstance(i, InputFile) for i in self.staged_inputs):

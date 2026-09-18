@@ -115,6 +115,16 @@ def test_submit_uses_the_registry_version_not_the_callers(tmp_path):
     assert stage.plugin_version == "1.0.0"
 
 
+def test_submit_uses_the_version_pinned_by_the_task(tmp_path):
+    resolver = Resolver(manifest())
+    rt = WorkflowRuntime(RuntimeStore(tmp_path / "r.db"), resolver,
+                         workspace_root=tmp_path / "ws")
+
+    rt.submit(task("ok", plugin_version="1.0.0"))
+
+    assert resolver.calls[-1] == ("fake-capability", "1.0.0")
+
+
 def test_resubmitting_an_identical_task_is_idempotent(tmp_path):
     rt = runtime(tmp_path, manifest())
     first = rt.submit_idempotent(task("ok"))

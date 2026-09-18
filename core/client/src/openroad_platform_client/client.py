@@ -147,10 +147,19 @@ class KernelClient:
 
     def submit(self, task: Mapping[str, Any], *,
                idempotent: bool = False,
-               idempotency_key: str | None = None) -> dict[str, Any]:
+               idempotency_key: str | None = None,
+               plugin_version: str | None = None) -> dict[str, Any]:
         """Submit a task, optionally deduplicated by task id or stable key."""
+        task_payload = dict(task)
+        if plugin_version is not None:
+            existing_version = task_payload.get("plugin_version")
+            if existing_version is not None and existing_version != plugin_version:
+                raise ValueError(
+                    "plugin_version argument conflicts with the task payload"
+                )
+            task_payload["plugin_version"] = plugin_version
         return self._call("POST", "/kernel/runs",
-                          payload={"task": dict(task)},
+                          payload={"task": task_payload},
                           query={"idempotent": "1" if idempotent else None,
                                  "idempotency_key": idempotency_key})
 
