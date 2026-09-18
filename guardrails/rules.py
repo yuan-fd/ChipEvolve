@@ -300,9 +300,14 @@ def app_forbidden_core_import_violations(root: Path) -> list[Violation]:
     out: list[Violation] = []
     for app in _app_dirs(root):
         for path in _walk_python(app):
+            # Integration tests may assemble the in-process gateway and worker
+            # to verify the public boundary.  They are not application runtime
+            # code; production modules remain subject to this rule.
+            if path.name.startswith("test_"):
+                continue
             for module, lineno in _imported_modules(path):
                 top = module.split(".")[0]
-                if not top.startswith("openroad_core"):
+                if not top.startswith("openroad_platform_"):
                     continue
                 if any(top == allowed or module.startswith(allowed + ".")
                        for allowed in APP_ALLOWED_PLATFORM_IMPORTS):
