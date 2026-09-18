@@ -11,6 +11,8 @@
 
 `tools/install-local.sh` 首次在 Rocky 8 的 Python 3.12 venv 中因缺少 `setuptools` 失败；在项目 `.venv` 安装 `setuptools`/`wheel` 后，脚本成功完成 9 个 editable package 安装。系统 Python 没有 pytest，因此检查工具只安装到项目 `.venv`，没有修改系统 Python。
 
+随后修复了安装入口：脚本恢复可执行位，并在 venv 内自动 bootstrap `setuptools/wheel`。用全新临时 venv 复跑 `OPENROAD_PLATFORM_VENV=<tmp> tools/install-local.sh` 成功；不要求修改系统 Python。
+
 ## 测试与门禁
 
 | 命令 | 结果 | 说明 |
