@@ -112,3 +112,32 @@ findings; its medium/low findings are the expected subprocess, URL client and
 SQL migration/query construction sites and are recorded for a later
 boundary-specific review. Vulture findings are only the four deliberate
 `guardrails/negative` fixtures and were retained.
+
+## 2026-09-18 final verification update
+
+After the earlier audit snapshot, the independent review found three execution
+correctness gaps and the checkout now contains their regression tests and fixes:
+
+- a cancellation request could be overwritten by the submit-to-running update;
+- cancelling before the first submission could leave later plan steps pending;
+- reusing an idempotency key for a different task was reported as an internal
+  server error instead of a conflict.
+
+The fixes preserve `cancel_requested` across the submission race, mark every
+unsuccessful step cancelled when a plan is cancelled before submission, and
+return HTTP 409 for an idempotency conflict while retaining HTTP 500 for an
+unrelated runtime-store failure.
+
+Final verification for commit `9a9f8a8`:
+
+- full suite: `438 passed, 1 skipped`;
+- Guardrails: `39 passed`;
+- Ruff: passed for the touched implementation and regression tests;
+- mypy: passed for `contracts/src`, `core/*/src`, `gateway/src` and
+  `apps/*/src`.
+
+The skipped test is the deliberate negative branch for hosts that cannot
+measure a process tree; this host supports that measurement. These results do
+not turn the historical repository-wide Ruff/Black debt into a clean-slate
+claim, and they do not resolve the documented multi-user idempotency ownership
+boundary.
