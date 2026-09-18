@@ -172,8 +172,11 @@ class KernelApi:
             raise HttpError(400, str(exc)) from exc
 
         try:
-            run = (self.runtime.submit_idempotent(task)
-                   if request.q("idempotent") else self.runtime.submit(task))
+            idempotency_key = request.q("idempotency_key")
+            run = (self.runtime.submit_idempotent(
+                task, idempotency_key=idempotency_key
+            ) if request.q("idempotent") or idempotency_key
+                   else self.runtime.submit(task))
         except (RegistryError, InputStagingError,
                 ResourceLimitsUnsupported, ValueError) as exc:
             # A task naming a capability that is not available, or inputs that

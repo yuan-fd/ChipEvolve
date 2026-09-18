@@ -131,6 +131,22 @@ def test_resubmitting_a_different_spec_under_the_same_id_is_refused(tmp_path):
         rt.submit_idempotent(task("ok", inputs={"behaviour": "fail"}))
 
 
+def test_plan_scoped_idempotency_key_does_not_reuse_another_plan_run(tmp_path):
+    rt = runtime(tmp_path, manifest())
+    first = rt.submit_idempotent(
+        task("ok"), idempotency_key="plan:one:step:run"
+    )
+    repeated = rt.submit_idempotent(
+        task("ok"), idempotency_key="plan:one:step:run"
+    )
+    second_plan = rt.submit_idempotent(
+        task("ok"), idempotency_key="plan:two:step:run"
+    )
+
+    assert repeated.run_id == first.run_id
+    assert second_plan.run_id != first.run_id
+
+
 def test_concurrent_idempotent_submissions_create_one_run(tmp_path):
     from concurrent.futures import ThreadPoolExecutor
     from threading import Barrier

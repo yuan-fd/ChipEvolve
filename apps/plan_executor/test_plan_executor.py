@@ -27,11 +27,17 @@ class FakeKernel:
         self.statuses: dict[str, str] = {}
         self.outputs: dict[str, list[dict]] = {}
         self.failures: dict[str, dict] = {}
+        self.by_idempotency_key: dict[str, str] = {}
 
-    def submit(self, task, *, idempotent=False):
+    def submit(self, task, *, idempotent=False, idempotency_key=None):
+        if idempotency_key in self.by_idempotency_key:
+            run_id = self.by_idempotency_key[idempotency_key]
+            return {"run": {"run_id": run_id, "status": self.statuses[run_id]}}
         self.submitted.append(dict(task))
         run_id = f"run-{len(self.submitted)}"
         self.statuses[run_id] = "queued"
+        if idempotency_key is not None:
+            self.by_idempotency_key[idempotency_key] = run_id
         return {"run": {"run_id": run_id, "status": "queued"}}
 
     def run(self, run_id):
@@ -224,7 +230,7 @@ def test_cancelling_a_plan_cancels_the_active_run_and_never_starts_the_next(
 
 def test_a_kernel_refusal_becomes_a_terminal_plan_failure(tmp_path: Path):
     class RefusingKernel(FakeKernel):
-        def submit(self, task, *, idempotent=False):
+        def submit(self, task, *, idempotent=False, idempotency_key=None):
             raise KernelError("unknown plugin", status=400)
 
     store = PlanStore(tmp_path / "plans.sqlite")
@@ -314,6 +320,32 @@ def test_cancellation_race_does_not_skip_queued_steps(tmp_path: Path):
     assert plan["execution_valid"] is False
     assert plan["steps"][0]["status"] == "succeeded"
     assert plan["steps"][1]["status"] == "cancelled"
+    assert len(kernel.submitted) == 1
+
+
+def test_plan_submission_recovery_reuses_the_same_kernel_run(tmp_path: Path):
+    class CrashAfterSubmitStore(PlanStore):
+        failed_once = False
+
+        def submitted(self, plan_id, step_id, run_id):
+            if not self.failed_once:
+                self.failed_once = True
+                raise RuntimeError("simulated executor crash")
+            super().submitted(plan_id, step_id, run_id)
+
+    store = CrashAfterSubmitStore(tmp_path / "plans.sqlite")
+    kernel = FakeKernel()
+    plan_id = store.create({
+        "plan_id": "plan-recovery",
+        "steps": [{"step_id": "only", "task": task("same-task")}],
+    })
+    with pytest.raises(RuntimeError, match="simulated executor crash"):
+        PlanExecutor(store, kernel).cycle()
+
+    PlanExecutor(store, kernel).cycle()
+
+    plan = store.get(plan_id)
+    assert plan["steps"][0]["run_id"] == "run-1"
     assert len(kernel.submitted) == 1
 
 

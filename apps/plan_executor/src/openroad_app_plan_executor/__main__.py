@@ -287,7 +287,10 @@ class PlanExecutor:
             return
         if pending["run_id"] is None:
             submitted = self.client.submit(
-                self._task_for(plan, pending), idempotent=False
+                self._task_for(plan, pending), idempotent=True,
+                idempotency_key=(
+                    f"plan:{plan_id}:step:{pending['step_id']}"
+                ),
             )
             self.store.submitted(
                 plan_id, pending["step_id"], submitted["run"]["run_id"]

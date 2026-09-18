@@ -213,7 +213,7 @@ class WorkflowRuntime:
 
     def submit_idempotent(
         self, task: TaskSpec, *, plugin_version: str | None = None,
-        capability: str | None = None,
+        capability: str | None = None, idempotency_key: str | None = None,
     ) -> RunRecord:
         """Submit once by stable task id.
 
@@ -233,7 +233,8 @@ class WorkflowRuntime:
         )
         return self.store.submit_run(
             task, stage_key="main", plugin_version=manifest.plugin_version,
-            idempotent=True, resumable=manifest.requirements.resumable,
+            idempotent=True, idempotency_key=idempotency_key,
+            resumable=manifest.requirements.resumable,
         )
 
     # -- inputs -----------------------------------------------------------

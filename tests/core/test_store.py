@@ -323,6 +323,29 @@ def test_find_by_task_id_returns_none_when_absent(store: RuntimeStore):
     assert store.find_run_by_task_id("task-1").run_id == run.run_id
 
 
+def test_plan_scoped_idempotency_key_allows_reusing_an_agent_task_id(
+    store: RuntimeStore,
+):
+    first = store.submit_run(
+        task(), stage_key="main", plugin_version="1.0.0",
+        idempotency_key="plan:one:step:run",
+    )
+    repeated = store.submit_run(
+        task(), stage_key="main", plugin_version="1.0.0",
+        idempotency_key="plan:one:step:run",
+    )
+    second_plan = store.submit_run(
+        task(), stage_key="main", plugin_version="1.0.0",
+        idempotency_key="plan:two:step:run",
+    )
+
+    assert repeated.run_id == first.run_id
+    assert second_plan.run_id != first.run_id
+    assert store.find_run_by_idempotency_key(
+        "plan:one:step:run"
+    ).run_id == first.run_id
+
+
 def test_unknown_run_is_an_error_not_an_empty_result(store: RuntimeStore):
     with pytest.raises(RuntimeStoreError, match="unknown run"):
         store.get_run("run-nope")

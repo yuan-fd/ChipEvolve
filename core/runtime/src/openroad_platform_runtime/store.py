@@ -49,7 +49,7 @@ from openroad_platform_contracts import (
 
 from .digest import sha256
 
-RUNTIME_SCHEMA_VERSION = 5
+RUNTIME_SCHEMA_VERSION = 6
 
 #: Where an artifact's bytes are.  Recorded per artifact rather than assumed,
 #: because there have been two answers: artifacts registered before the object
@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS runtime_schema_meta (
 CREATE TABLE IF NOT EXISTS runtime_runs (
     run_id TEXT PRIMARY KEY,
     task_id TEXT NOT NULL,
+    idempotency_key TEXT,
     status TEXT NOT NULL,
     task_spec_json TEXT NOT NULL,
     created_at TEXT NOT NULL,
@@ -166,6 +167,8 @@ CREATE TABLE IF NOT EXISTS runtime_events (
 );
 CREATE INDEX IF NOT EXISTS runtime_events_run ON runtime_events(run_id, occurred_at);
 CREATE INDEX IF NOT EXISTS runtime_metrics_attempt ON runtime_metrics(attempt_id);
+CREATE UNIQUE INDEX IF NOT EXISTS runtime_runs_idempotency_key
+    ON runtime_runs(idempotency_key) WHERE idempotency_key IS NOT NULL;
 """
 
 
@@ -397,6 +400,16 @@ class RuntimeStore:
                 "ALTER TABLE runtime_stage_runs ADD COLUMN resumable INTEGER "
                 "NOT NULL DEFAULT 0"
             )
+        if from_version < 6:
+            if not self._has_column("runtime_runs", "idempotency_key"):
+                self._connection.execute(
+                    "ALTER TABLE runtime_runs ADD COLUMN idempotency_key TEXT"
+                )
+            self._connection.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS runtime_runs_idempotency_key "
+                "ON runtime_runs(idempotency_key) "
+                "WHERE idempotency_key IS NOT NULL"
+            )
         self._connection.execute(
             "UPDATE runtime_schema_meta SET value = ? WHERE key = 'schema_version'",
             (str(RUNTIME_SCHEMA_VERSION),),
@@ -420,7 +433,8 @@ class RuntimeStore:
 
     def submit_run(
         self, task: TaskSpec, *, stage_key: str, plugin_version: str,
-        idempotent: bool = False, resumable: bool = False,
+        idempotent: bool = False, idempotency_key: str | None = None,
+        resumable: bool = False,
     ) -> RunRecord:
         """Create one run with a single stage.
 
@@ -430,6 +444,8 @@ class RuntimeStore:
         task.validate()
         if task.plugin_id is None:
             raise RuntimeStoreError("a run stage requires a plugin_id")
+        if idempotency_key is not None and not idempotency_key:
+            raise RuntimeStoreError("idempotency_key must not be empty")
         now = _now()
         run_id = _new_id("run")
         stage_run_id = _new_id("stage")
@@ -438,7 +454,11 @@ class RuntimeStore:
             try:
                 # Lookup and creation share the write transaction so requests
                 # on separate connections cannot both create the same task.
-                existing = self.find_run_by_task_id(task.task_id) if idempotent else None
+                existing = None
+                if idempotency_key is not None:
+                    existing = self.find_run_by_idempotency_key(idempotency_key)
+                elif idempotent:
+                    existing = self.find_run_by_task_id(task.task_id)
                 if existing is not None:
                     if existing.task_spec.to_dict() != task.to_dict():
                         raise RuntimeStoreError(
@@ -454,9 +474,11 @@ class RuntimeStore:
                     self._connection.execute("COMMIT")
                     return existing
                 self._connection.execute(
-                    "INSERT INTO runtime_runs (run_id, task_id, status, "
-                    "task_spec_json, created_at) VALUES (?, ?, ?, ?, ?)",
-                    (run_id, task.task_id, RuntimeStatus.QUEUED.value,
+                    "INSERT INTO runtime_runs (run_id, task_id, idempotency_key, "
+                    "status, task_spec_json, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (run_id, task.task_id, idempotency_key,
+                     RuntimeStatus.QUEUED.value,
                      json.dumps(task.to_dict(), sort_keys=True), now),
                 )
                 self._connection.execute(
@@ -478,6 +500,14 @@ class RuntimeStore:
             row = self._connection.execute(
                 "SELECT * FROM runtime_runs WHERE task_id = ? ORDER BY created_at LIMIT 1",
                 (task_id,),
+            ).fetchone()
+        return self._run_from_row(row) if row else None
+
+    def find_run_by_idempotency_key(self, idempotency_key: str) -> RunRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM runtime_runs WHERE idempotency_key = ?",
+                (idempotency_key,),
             ).fetchone()
         return self._run_from_row(row) if row else None
 

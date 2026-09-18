@@ -305,6 +305,23 @@ def test_idempotent_submission_returns_the_same_run(platform):
     assert first["run"]["run_id"] == second["run"]["run_id"]
 
 
+def test_plan_scoped_idempotency_keys_isolate_same_agent_task_ids(platform):
+    client, _ = platform
+    client.register("alice", "a long enough password")
+    task = {
+        "schema_version": 3, "task_id": "agent-task", "project_id": "demo",
+        "design_id": "demo-design", "plugin_id": "example-reporter",
+        "inputs": {"records": [1, 2, 3, 4]}, "timeout_seconds": 30,
+    }
+
+    first = client.submit(task, idempotency_key="plan:one:step:run")
+    repeated = client.submit(task, idempotency_key="plan:one:step:run")
+    second_plan = client.submit(task, idempotency_key="plan:two:step:run")
+
+    assert repeated["run"]["run_id"] == first["run"]["run_id"]
+    assert second_plan["run"]["run_id"] != first["run"]["run_id"]
+
+
 # --------------------------------------------------------------------------
 # refusal behaviour
 # --------------------------------------------------------------------------
