@@ -184,6 +184,8 @@ class KernelApi:
             # operator to investigate the platform for a problem that is in
             # their own request.
             raise HttpError(400, str(exc)) from exc
+        except RuntimeStoreError as exc:
+            raise HttpError(409 if idempotency_key else 500, str(exc)) from exc
         owner = session.user_id if session else self.local_user_id
         if owner:
             self.identity.bind_resource("run", run.run_id, owner)

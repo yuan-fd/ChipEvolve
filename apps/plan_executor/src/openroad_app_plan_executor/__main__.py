@@ -196,8 +196,17 @@ class PlanStore:
         self._update_plan(plan_id, "cancel_requested")
 
     def submitted(self, plan_id: str, step_id: str, run_id: str) -> None:
-        self._update_step(plan_id, step_id, "queued", run_id=run_id)
-        self._update_plan(plan_id, "running")
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                "UPDATE plan_steps SET status = ?, failure_json = NULL, run_id = ? "
+                "WHERE plan_id = ? AND step_id = ?",
+                ("queued", run_id, plan_id, step_id),
+            )
+            connection.execute(
+                "UPDATE plans SET status = 'running' "
+                "WHERE plan_id = ? AND status != 'cancel_requested'",
+                (plan_id,),
+            )
 
     def step_status(self, plan_id: str, step_id: str, status: str,
                     failure: Mapping[str, Any] | None = None) -> None:
@@ -359,11 +368,15 @@ class PlanExecutor:
                     plan["plan_id"], status if status in FAILED else "failed", failure
                 )
                 return
-        self.store.step_status(
-            plan["plan_id"], active["step_id"], "cancelled",
-            {"source": "platform", "category": "cancelled",
-             "message": "execution plan cancelled", "retryable": False},
-        )
+        cancellation = {
+            "source": "platform", "category": "cancelled",
+            "message": "execution plan cancelled", "retryable": False,
+        }
+        for step in plan["steps"]:
+            if step["status"] != "succeeded":
+                self.store.step_status(
+                    plan["plan_id"], step["step_id"], "cancelled", cancellation
+                )
         self.store.finish(
             plan["plan_id"], "cancelled",
             {"source": "platform", "category": "cancelled",

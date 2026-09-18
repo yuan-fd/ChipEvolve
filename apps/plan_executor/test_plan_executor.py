@@ -228,6 +228,44 @@ def test_cancelling_a_plan_cancels_the_active_run_and_never_starts_the_next(
     assert len(kernel.submitted) == 1
 
 
+def test_cancelling_before_submission_marks_every_step_cancelled(tmp_path: Path):
+    store = PlanStore(tmp_path / "plans.sqlite")
+    kernel = FakeKernel()
+    executor = PlanExecutor(store, kernel)
+    plan_id = store.create({
+        "plan_id": "plan-cancel-before-submit",
+        "steps": [
+            {"step_id": "first", "task": task("first")},
+            {"step_id": "second", "task": task("second")},
+        ],
+    })
+
+    store.request_cancel(plan_id)
+    executor.cycle()
+
+    plan = store.get(plan_id)
+    assert plan["status"] == "cancelled"
+    assert [step["status"] for step in plan["steps"]] == [
+        "cancelled", "cancelled"
+    ]
+    assert len(kernel.submitted) == 0
+
+
+def test_submission_after_cancel_keeps_the_cancel_request(tmp_path: Path):
+    store = PlanStore(tmp_path / "plans.sqlite")
+    plan_id = store.create({
+        "plan_id": "plan-cancel-in-flight",
+        "steps": [{"step_id": "only", "task": task("only")}],
+    })
+
+    store.request_cancel(plan_id)
+    store.submitted(plan_id, "only", "run-1")
+
+    plan = store.get(plan_id)
+    assert plan["status"] == "cancel_requested"
+    assert plan["steps"][0]["run_id"] == "run-1"
+
+
 def test_a_kernel_refusal_becomes_a_terminal_plan_failure(tmp_path: Path):
     class RefusingKernel(FakeKernel):
         def submit(self, task, *, idempotent=False, idempotency_key=None):

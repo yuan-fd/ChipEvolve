@@ -322,6 +322,23 @@ def test_plan_scoped_idempotency_keys_isolate_same_agent_task_ids(platform):
     assert second_plan["run"]["run_id"] != first["run"]["run_id"]
 
 
+def test_reusing_a_plan_key_for_a_different_task_is_a_conflict(platform):
+    client, _ = platform
+    client.register("alice", "a long enough password")
+    task = {
+        "schema_version": 3, "task_id": "agent-task", "project_id": "demo",
+        "design_id": "demo-design", "plugin_id": "example-reporter",
+        "inputs": {"records": [1, 2, 3, 4]}, "timeout_seconds": 30,
+    }
+    client.submit(task, idempotency_key="plan:conflict:step:run")
+    task["inputs"] = {"records": [5, 6, 7, 8]}
+
+    with pytest.raises(KernelError) as caught:
+        client.submit(task, idempotency_key="plan:conflict:step:run")
+
+    assert caught.value.status == 409
+
+
 # --------------------------------------------------------------------------
 # refusal behaviour
 # --------------------------------------------------------------------------
