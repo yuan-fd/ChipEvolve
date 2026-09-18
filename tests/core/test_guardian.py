@@ -31,9 +31,11 @@ import time
 from pathlib import Path
 
 import pytest
-
 from openroad_platform_contracts import ResourceRequest
-from openroad_platform_runtime.guardian import ProcessGuardian
+from openroad_platform_runtime.guardian import (
+    TELEMETRY_QUEUE_SIZE,
+    ProcessGuardian,
+)
 
 pytestmark = pytest.mark.skipif(
     os.name != "posix" or not Path("/proc").is_dir(),
@@ -84,6 +86,31 @@ def test_a_noisy_child_cannot_starve_its_own_deadline(tmp_path: Path):
         timeout_seconds=0.5,
     )
     assert outcome.timed_out is True
+
+
+def test_raw_log_keeps_the_tail_when_telemetry_is_noisy(tmp_path: Path):
+    """Raw evidence is complete even when progress delivery is bounded."""
+    lines = TELEMETRY_QUEUE_SIZE * 8
+    script = (
+        "import sys, time\n"
+        f"for index in range({lines}): print(f'line-{{index}}')\n"
+        "print('TAIL-MARKER', flush=True)\n"
+        "time.sleep(60)\n"
+    )
+    seen: list[str] = []
+    guardian = ProcessGuardian(poll_interval=0.01, terminate_grace=1.0)
+
+    outcome = guardian.run(
+        [sys.executable, "-u", "-c", script],
+        log_path=tmp_path / "noisy-tail.log",
+        timeout_seconds=1.0,
+        on_line=seen.append,
+    )
+
+    raw_log = (tmp_path / "noisy-tail.log").read_text(encoding="utf-8")
+    assert outcome.timed_out is True
+    assert "TAIL-MARKER" in raw_log
+    assert len(seen) < lines
 
 
 def stop_once_the_tree_is_visible(guardian: ProcessGuardian, script: str,
@@ -289,7 +316,7 @@ def test_measure_counts_the_whole_tree(tmp_path: Path):
         assert memory_bytes > 0
         assert cpu_seconds >= 0
     finally:
-        guardian._kill_tree(process)  # noqa: SLF001 - the test owns this child
+        guardian._kill_tree(process)
         process.wait()
 
 
