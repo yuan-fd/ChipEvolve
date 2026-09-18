@@ -196,6 +196,7 @@ class WorkflowRuntime:
     def submit(
         self, task: TaskSpec, *, plugin_version: str | None = None,
         capability: str | None = None,
+        idempotent: bool = False, idempotency_key: str | None = None,
     ) -> RunRecord:
         task.validate()
         self._check_inputs(task)
@@ -208,6 +209,7 @@ class WorkflowRuntime:
         )
         return self.store.submit_run(
             task, stage_key="main", plugin_version=manifest.plugin_version,
+            idempotent=idempotent, idempotency_key=idempotency_key,
             resumable=manifest.requirements.resumable,
         )
 
@@ -215,26 +217,10 @@ class WorkflowRuntime:
         self, task: TaskSpec, *, plugin_version: str | None = None,
         capability: str | None = None, idempotency_key: str | None = None,
     ) -> RunRecord:
-        """Submit once by stable task id.
-
-        A worker may restart after Runtime accepted a task but before it
-        recorded the back-reference.  Reusing the id is safe only when the whole
-        immutable TaskSpec matches; a different spec is an error, not an
-        overwrite.
-        """
-        task.validate()
-        self._check_inputs(task)
-        self._check_resources(task)
-        if task.plugin_id is None:
-            raise ValueError("this runtime executes direct plugin tasks only")
-        manifest = self.resolver.resolve(
-            task.plugin_id, version=plugin_version, capability=capability,
-            arch=platform.machine(),
-        )
-        return self.store.submit_run(
-            task, stage_key="main", plugin_version=manifest.plugin_version,
+        """Submit once by explicit key, or by task id when no key is supplied."""
+        return self.submit(
+            task, plugin_version=plugin_version, capability=capability,
             idempotent=True, idempotency_key=idempotency_key,
-            resumable=manifest.requirements.resumable,
         )
 
     # -- inputs -----------------------------------------------------------
@@ -665,9 +651,11 @@ class WorkflowRuntime:
         self, execution: AdapterExecution, manifest: PluginManifest,
         run: RunRecord, workspace: Path, attempt_id: str,
     ) -> tuple[tuple[dict[str, Any], ...], tuple[Metric, ...]]:
-        if self.protected_evaluator is None and manifest.requirements.require_protected_evaluation:
-            raise RuntimeStoreError("protected evaluator is unavailable")
-        if self.protected_evaluator is None or execution.result.status is not RuntimeStatus.SUCCEEDED:
+        if execution.result.status is not RuntimeStatus.SUCCEEDED:
+            return (), ()
+        if self.protected_evaluator is None:
+            if manifest.requirements.require_protected_evaluation:
+                raise RuntimeStoreError("protected evaluator is unavailable")
             return (), ()
         verdict: Verdict = self.protected_evaluator.evaluate(EvaluationRequest(
             manifest=manifest, task=run.task_spec, workspace=str(workspace),

@@ -395,6 +395,15 @@ def test_required_evaluator_unavailable_fails_a_successful_adapter(tmp_path):
     assert "protected evaluator is unavailable" in attempt["failure"]["message"]
 
 
+def test_unavailable_evaluator_preserves_the_original_tool_failure(tmp_path):
+    rt = runtime(tmp_path, manifest(requirements=RuntimeRequirements(
+        require_protected_evaluation=True,
+    )))
+    finished = rt.execute_once(rt.submit(task("fail")).run_id)
+    assert finished.status is RuntimeStatus.FAILED
+    assert finished.terminal_reason == "tool_error"
+
+
 def test_a_rejecting_evaluator_fails_the_run(tmp_path):
     evaluator = RecordingEvaluator(lambda r: Verdict(
         status=VerdictStatus.REJECTED, reason="artifact hash mismatch"))

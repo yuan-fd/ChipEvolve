@@ -88,6 +88,26 @@ def test_reopening_the_same_database_is_fine(tmp_path: Path):
     RuntimeStore(path).close()
 
 
+@pytest.mark.parametrize("version", [1, 3, 5])
+def test_migration_adds_idempotency_to_a_root_without_the_column(tmp_path, version):
+    path = tmp_path / "old.db"
+    with RuntimeStore(path) as original:
+        run = submit(original)
+    with sqlite3.connect(path) as connection:
+        connection.execute("DROP INDEX runtime_runs_idempotency_key")
+        connection.execute("ALTER TABLE runtime_runs DROP COLUMN idempotency_key")
+        connection.execute(
+            "UPDATE runtime_schema_meta SET value = ? WHERE key = 'schema_version'",
+            (str(version),),
+        )
+    with RuntimeStore(path) as migrated:
+        assert migrated.get_run(run.run_id).task_spec == task()
+        kwargs = {"stage_key": "main", "plugin_version": "1.0.0",
+                  "idempotency_key": "k"}
+        first = migrated.submit_run(task(), **kwargs)
+        assert migrated.submit_run(task(), **kwargs).run_id == first.run_id
+
+
 def test_a_newer_schema_version_is_refused(tmp_path: Path):
     """A root written by a later build is refused, not guessed at.
 

@@ -346,6 +346,10 @@ class RuntimeStore:
         """
         if from_version < 1:
             raise RuntimeStoreError(f"unsupported runtime schema {from_version!r}")
+        if from_version < 6 and not self._has_column("runtime_runs", "idempotency_key"):
+            self._connection.execute(
+                "ALTER TABLE runtime_runs ADD COLUMN idempotency_key TEXT"
+            )
         if from_version < 2:
             self._connection.executescript(_DDL)
         if from_version < 3:
@@ -380,10 +384,6 @@ class RuntimeStore:
                 "NOT NULL DEFAULT 0"
             )
         if from_version < 6:
-            if not self._has_column("runtime_runs", "idempotency_key"):
-                self._connection.execute(
-                    "ALTER TABLE runtime_runs ADD COLUMN idempotency_key TEXT"
-                )
             self._connection.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS runtime_runs_idempotency_key "
                 "ON runtime_runs(idempotency_key) WHERE idempotency_key IS NOT NULL"
