@@ -47,3 +47,34 @@ from the assertion code.
 
 This proves execution success and evidence collection. It does not by itself
 claim that the design meets a separate physical signoff policy.
+
+## Agent plan acceptance
+
+The same GCD flow was submitted through the independent Agent plan service,
+not directly through the kernel run endpoint:
+
+```text
+plan gcd-agent-plan-evidence
+  → plan_executor
+  → kernel API
+  → worker
+  → external ORFS Toolkit adapter
+  → ORFS finish
+```
+
+Observed result:
+
+- plan status: `succeeded`
+- `execution_valid`: `true`
+- child run: `run-7340509f8b3b461aa4cdd6110acb5d38`
+- child run status: `succeeded`
+- attempt workspace: `/tmp/plan-orfs-evidence-s_ddqik5/state/runtime-workspaces/run-7340509f8b3b461aa4cdd6110acb5d38/stage-128d564389d94231ad4f3913b97d2223/attempt-1`
+- artifact kinds: `def`, `gds`, `log`, `netlist`, `odb`, `report`, `runtime_input_manifest`
+- hashed artifacts: 24
+- complete metrics: 9
+
+The plan task carried the Agent-selected `target_stage=finish`, tool paths,
+clock parameters, seed, and staged GCD RTL. The plan executor persisted and
+submitted that task without adding an EDA flow or interpreting its parameters.
+The temporary acceptance services and tool processes were stopped after the
+run.
