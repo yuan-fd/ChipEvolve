@@ -72,9 +72,10 @@ another run.
 
 ## Toolkit contract
 
-A Toolkit manifest declares its identity and capabilities, adapter entry point,
-environment requirements, artifact rules, progress format, failure categories,
-and toolchain provenance. It may expose both high-level capabilities and a
+A Toolkit package declares its identity and capabilities, adapter entry point,
+environment requirements, artifact rules, and progress format. Its adapter
+reports failure categories, while its provenance and toolchain snapshot provide
+the version evidence. It may expose both high-level capabilities and a
 low-level script entry point. The foundation does not require an agent to use a
 high-level flow.
 
