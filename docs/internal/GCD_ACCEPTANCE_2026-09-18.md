@@ -11,6 +11,7 @@ The real ORFS GCD flow passed through the platform public API:
 Command:
 
 ```bash
+cd /share/home/yuanwenjie/agenticeda-orfs && \
 AGENTICEDA_PLATFORM=/share/home/yuanwenjie/openroad-platform-v2 \
 OPENROAD_PLATFORM_ORFS_ROOT=/share/home/yuanwenjie/OpenROAD-flow-scripts \
 OPENROAD_PLATFORM_OPENROAD_BIN=/share/home/yuanwenjie/bin/openroad \

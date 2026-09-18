@@ -22,6 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 APP_DIR = REPO_ROOT / "apps" / "plan_executor"
 FAKE_ADAPTER = REPO_ROOT / "tests" / "fixtures" / "fake_adapter.py"
 CLIENT_SRC = REPO_ROOT / "core" / "client" / "src"
+CONTRACTS_SRC = REPO_ROOT / "contracts" / "src"
 REVIEWED_COMMIT = "0" * 40
 
 
@@ -137,7 +138,7 @@ def test_two_plugins_exchange_a_measured_artifact_through_a_plan(tmp_path: Path)
     env["NO_PROXY"] = "127.0.0.1,localhost"
     env["no_proxy"] = "127.0.0.1,localhost"
     env["PYTHONPATH"] = os.pathsep.join(
-        [str(APP_DIR / "src"), str(CLIENT_SRC)]
+        [str(APP_DIR / "src"), str(CLIENT_SRC), str(CONTRACTS_SRC)]
         + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else [])
     )
     app = subprocess.Popen(

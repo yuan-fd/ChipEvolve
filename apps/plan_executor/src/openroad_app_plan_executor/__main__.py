@@ -316,7 +316,10 @@ class PlanExecutor:
             None,
         )
         if active is None:
-            self.store.finish(plan["plan_id"], "cancelled")
+            status = "succeeded" if all(
+                step["status"] == "succeeded" for step in plan["steps"]
+            ) else "cancelled"
+            self.store.finish(plan["plan_id"], status)
             return
         if active["run_id"] is not None:
             self.client.cancel(active["run_id"])
@@ -324,6 +327,10 @@ class PlanExecutor:
             status = str(detail["status"])
             if status in ACTIVE:
                 self.store.step_status(plan["plan_id"], active["step_id"], status)
+                return
+            if status == "succeeded":
+                self.store.step_status(plan["plan_id"], active["step_id"], status)
+                self.store.finish(plan["plan_id"], "succeeded")
                 return
             if status != "cancelled":
                 failure = classify_failure(detail)

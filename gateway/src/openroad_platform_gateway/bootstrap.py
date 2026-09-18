@@ -68,17 +68,12 @@ class KernelPaths:
 
 @dataclass(frozen=True)
 class Kernel:
-    """The assembled kernel, before anything is wrapped around it.
-
-    Every entry point builds the same three objects from the same function.
-    A second assembly elsewhere would be a copy of this one, free to drift --
-    and the worker's command line used to be exactly that copy, down to a
-    repeated docstring claiming it was the same as the kernel's.
-    """
+    """The assembled kernel shared by every entry point."""
 
     store: RuntimeStore
     registry: PluginRegistry
     runtime: WorkflowRuntime
+    evaluator_error: str | None = None
 
 
 def build_kernel_parts(
@@ -102,10 +97,12 @@ def build_kernel_parts(
         paths.plugins_root, admissions_root=paths.admissions_root,
     )
 
+    evaluator_error = None
     try:
         manifest = resolve_evaluator(registry)
-    except EvaluationError:
+    except EvaluationError as exc:
         manifest = None
+        evaluator_error = str(exc)
     evaluator = (
         PluginBackedEvaluator(adapter=ProcessAdapter(), manifest=manifest)
         if manifest is not None
@@ -123,7 +120,8 @@ def build_kernel_parts(
         ),
         protected_evaluator=evaluator,
     )
-    return Kernel(store=store, registry=registry, runtime=runtime)
+    return Kernel(store=store, registry=registry, runtime=runtime,
+                  evaluator_error=evaluator_error)
 
 
 def build_kernel(paths: KernelPaths, *, allow_anonymous: bool = False
@@ -145,6 +143,7 @@ def build_kernel(paths: KernelPaths, *, allow_anonymous: bool = False
         store=store, runtime=runtime, registry=registry, identity=identity,
         index=EvidenceIndex(store), allow_anonymous=allow_anonymous,
         local_user_id=local_user_id,
+        evaluator_error=parts.evaluator_error,
     )
 
 

@@ -55,6 +55,7 @@ class KernelApi:
     #: When true, requests without a token act as the shared local user.
     allow_anonymous: bool = False
     local_user_id: str | None = None
+    evaluator_error: str | None = None
 
     # -- registration -----------------------------------------------------
 
@@ -117,6 +118,10 @@ class KernelApi:
             "status": "ok",
             "plugins": len(self.registry.list()),
             "admitted": sum(1 for p in self.registry.list() if p.executable),
+            "evaluator": {
+                "status": "ready" if self.evaluator_error is None else "unavailable",
+                **({"error": self.evaluator_error} if self.evaluator_error else {}),
+            },
         })
 
     def plugins(self, request: Request, session: AuthSession | None) -> Response:
