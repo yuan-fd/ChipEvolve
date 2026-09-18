@@ -13,7 +13,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from openroad_platform_contracts import (
     ArtifactDeclaration,
     AttemptStatus,
@@ -23,18 +22,17 @@ from openroad_platform_contracts import (
     RuntimeRequirements,
     RuntimeStatus,
     TaskSpec,
-    is_terminal,
     Verdict,
     VerdictStatus,
+    is_terminal,
 )
 from openroad_platform_runtime import (
-    InvalidTransition,
     RuntimeStore,
     RuntimeStoreError,
     WorkflowRuntime,
 )
-from openroad_platform_runtime.guardian import ProcessGuardian
 from openroad_platform_runtime.adapter import ProcessAdapter
+from openroad_platform_runtime.guardian import ProcessGuardian
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "fake_adapter.py"
 
@@ -56,29 +54,29 @@ class Resolver:
 
 
 def manifest(**overrides) -> PluginManifest:
-    base = dict(
-        plugin_id="fake-capability",
-        plugin_version="1.0.0",
-        adapter_entry=(sys.executable, str(FIXTURE)),
-        capabilities=("do.thing",),
-        supported_arch=("aarch64", "x86_64", "arm64"),
-        artifact_rules=(
+    base = {
+        "plugin_id": "fake-capability",
+        "plugin_version": "1.0.0",
+        "adapter_entry": (sys.executable, str(FIXTURE)),
+        "capabilities": ("do.thing",),
+        "supported_arch": ("aarch64", "x86_64", "arm64"),
+        "artifact_rules": (
             {"kind": "report", "required": True},
             {"kind": "log", "required": False},
         ),
-        default_timeout_seconds=60,
-    )
+        "default_timeout_seconds": 60,
+    }
     base.update(overrides)
     return PluginManifest(**base)
 
 
 def task(behaviour: str, **overrides) -> TaskSpec:
-    base = dict(
-        task_id=f"task-{behaviour}", project_id="p", design_id="d",
-        plugin_id="fake-capability",
-        inputs={"behaviour": behaviour},
-        timeout_seconds=30,
-    )
+    base = {
+        "task_id": f"task-{behaviour}", "project_id": "p", "design_id": "d",
+        "plugin_id": "fake-capability",
+        "inputs": {"behaviour": behaviour},
+        "timeout_seconds": 30,
+    }
     base.update(overrides)
     return TaskSpec(**base)
 

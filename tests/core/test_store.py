@@ -7,19 +7,19 @@ it produces a plausible-looking result that nobody can audit.
 from __future__ import annotations
 
 import hashlib
+import sqlite3
 import threading
 from pathlib import Path
 
 import pytest
-
 from openroad_platform_contracts import (
     AttemptStatus,
     ContractError,
     Metric,
+    ResourceRequest,
     RuntimeStatus,
     StagedInput,
     TaskSpec,
-    ResourceRequest,
 )
 from openroad_platform_runtime.store import (
     InvalidTransition,
@@ -64,10 +64,10 @@ def store(tmp_path: Path) -> RuntimeStore:
 
 
 def task(**overrides) -> TaskSpec:
-    base = dict(
-        task_id="task-1", project_id="p", design_id="d",
-        plugin_id="some-capability",
-    )
+    base = {
+        "task_id": "task-1", "project_id": "p", "design_id": "d",
+        "plugin_id": "some-capability",
+    }
     base.update(overrides)
     return TaskSpec(**base)
 
@@ -96,8 +96,6 @@ def test_a_newer_schema_version_is_refused(tmp_path: Path):
     migrated instead -- and a newer one must still stop the build, because this
     build cannot know what a later one wrote.
     """
-    import sqlite3
-
     path = tmp_path / "r.db"
     store = RuntimeStore(path)
     store.close()
@@ -165,13 +163,13 @@ def make_root_look_older(path: Path, *, version: str = "1") -> None:
     statements.extend([
         "ALTER TABLE runtime_artifacts RENAME TO runtime_artifacts_current;",
         ARTIFACTS_BEFORE_THE_OBJECT_STORE + ";",
-        "INSERT INTO runtime_artifacts (artifact_id, attempt_id, kind, store_key,"
-        " size_bytes, sha256, metadata_json, created_at)"
-        " SELECT artifact_id, attempt_id, kind, store_key, size_bytes, sha256,"
-        " metadata_json, created_at FROM runtime_artifacts_current;",
+        ("INSERT INTO runtime_artifacts (artifact_id, attempt_id, kind, store_key,"
+         " size_bytes, sha256, metadata_json, created_at)"
+         " SELECT artifact_id, attempt_id, kind, store_key, size_bytes, sha256,"
+         " metadata_json, created_at FROM runtime_artifacts_current;"),
         "DROP TABLE runtime_artifacts_current;",
-        f"UPDATE runtime_schema_meta SET value = '{version}'"
-        " WHERE key = 'schema_version';",
+        (f"UPDATE runtime_schema_meta SET value = '{version}'"
+         " WHERE key = 'schema_version';"),
     ])
     connection = sqlite3.connect(str(path))
     connection.executescript("".join(statements))
@@ -208,8 +206,6 @@ def test_an_artifact_from_before_the_object_store_is_still_readable(tmp_path):
     rather than assume the new layout, because assuming is how a state root ends
     up full of artifacts that cannot be read.
     """
-    import sqlite3
-
     path = tmp_path / "r.db"
     workspace = tmp_path / "old-workspace"
     workspace.mkdir()
@@ -771,7 +767,6 @@ def test_an_input_from_before_the_object_store_survives_the_upgrade(tmp_path):
     most worth a test: a copy that silently dropped rows would leave a run whose
     inputs vanished from its own record.
     """
-    import sqlite3
 
     path = tmp_path / "r.db"
     store = RuntimeStore(path)
