@@ -112,6 +112,10 @@ def task(task_id: str, plugin_id: str, behaviour: str) -> dict:
 def test_two_plugins_exchange_a_measured_artifact_through_a_plan(tmp_path: Path):
     write_plugin(tmp_path, "producer")
     write_plugin(tmp_path, "consumer")
+    script = tmp_path / "place.tcl"
+    patch = tmp_path / "candidate.patch"
+    script.write_text("set place_density 0.72\n", encoding="utf-8")
+    patch.write_text("candidate patch\n", encoding="utf-8")
     kernel = build_kernel(
         KernelPaths.of(
             tmp_path / "state", tmp_path / "plugins", tmp_path / "admissions"
@@ -155,7 +159,20 @@ def test_two_plugins_exchange_a_measured_artifact_through_a_plan(tmp_path: Path)
             "plan_id": "real-kernel-plan",
             "steps": [
                 {"step_id": "produce",
-                 "task": task("produce-task", "producer", "ok")},
+                 "task": {
+                     **task("produce-task", "producer", "echo_agent_inputs"),
+                     "inputs": {
+                         "behaviour": "echo_agent_inputs",
+                         "capability": "script_execution",
+                         "script_path": "inputs/place.tcl",
+                         "patch_path": "inputs/candidate.patch",
+                     },
+                     "parameters": {"density": 0.72},
+                     "staged_inputs": [
+                         {"source": str(script), "destination": "inputs/place.tcl"},
+                         {"source": str(patch), "destination": "inputs/candidate.patch"},
+                     ],
+                 }},
                 {"step_id": "consume",
                  "task": task("consume-task", "consumer", "echo_input"),
                  "bindings": [{
@@ -171,8 +188,21 @@ def test_two_plugins_exchange_a_measured_artifact_through_a_plan(tmp_path: Path)
         assert plan["status"] == "succeeded", plan
         assert plan["execution_valid"] is True
 
+        producer_run = plan["steps"][0]["run_id"]
+        _, producer_detail = http(
+            "GET", f"http://127.0.0.1:{kernel_port}/kernel/runs/{producer_run}/artifacts"
+        )
+        producer_artifacts = producer_detail["artifacts"]
+        report = next(a for a in producer_artifacts if a["kind"] == "report")
+        assert report["sha256"]
+
         consumer_run = plan["steps"][1]["run_id"]
         client = KernelClient(f"http://127.0.0.1:{kernel_port}")
+        report_excerpt = client.artifact_excerpt(
+            producer_run, report["artifact_id"]
+        )
+        assert '"capability": "script_execution"' in report_excerpt["text"]
+        assert '"density": 0.72' in report_excerpt["text"]
         detail = client.run(consumer_run)
         attempt = detail["stages"][0]["attempts"][0]
         assert attempt["inputs"][0]["source_artifact_id"]

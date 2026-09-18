@@ -147,6 +147,26 @@ def main() -> int:
         })
         return 0
 
+    if behaviour == "echo_agent_inputs":
+        script = (workspace / task["inputs"]["script_path"]).read_text(
+            encoding="utf-8"
+        )
+        patch = (workspace / task["inputs"]["patch_path"]).read_text(
+            encoding="utf-8"
+        )
+        (workspace / "report.json").write_text(json.dumps({
+            "capability": task["inputs"]["capability"],
+            "script_bytes": len(script.encode()),
+            "patch_bytes": len(patch.encode()),
+            "density": task["parameters"]["density"],
+        }), encoding="utf-8")
+        write(result_path, {
+            "schema_version": 3, "status": "succeeded", "exit_code": 0,
+            "started_at": "t0", "ended_at": "t1",
+            "artifacts": [{"kind": "report", "path": "report.json"}],
+        })
+        return 0
+
     if behaviour == "tamper_with_input_manifest":
         # The platform's own bookkeeping is not the adapter's to edit.
         (workspace / "input_manifest.json").write_text(
