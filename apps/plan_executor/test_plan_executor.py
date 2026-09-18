@@ -16,7 +16,7 @@ from openroad_app_plan_executor.__main__ import (
     PlanStore,
     build_handler,
 )
-from openroad_platform_client import KernelError
+from openroad_platform_client import KernelError, KernelUnavailable
 
 
 class FakeKernel:
@@ -286,6 +286,45 @@ def test_a_kernel_refusal_becomes_a_terminal_plan_failure(tmp_path: Path):
     assert plan["failure"]["source"] == "platform"
     assert plan["failure"]["category"] == "submission_refused"
     assert "unknown plugin" in plan["failure"]["message"]
+
+
+def test_a_temporarily_unavailable_kernel_keeps_the_plan_retryable(
+    tmp_path: Path,
+):
+    class RecoveringKernel(FakeKernel):
+        available = False
+
+        def submit(self, task, *, idempotent=False, idempotency_key=None):
+            if not self.available:
+                raise KernelUnavailable("gateway is restarting")
+            return super().submit(
+                task, idempotent=idempotent, idempotency_key=idempotency_key
+            )
+
+    store = PlanStore(tmp_path / "plans.sqlite")
+    kernel = RecoveringKernel()
+    executor = PlanExecutor(store, kernel, kernel_retry_delay=0)
+    plan_id = store.create({
+        "plan_id": "plan-kernel-restarts",
+        "steps": [{"step_id": "only", "task": task("only")}],
+    })
+
+    executor.cycle()
+
+    waiting = store.get(plan_id)
+    assert waiting["status"] == "retry_wait"
+    assert waiting["failure"] == {
+        "source": "platform",
+        "category": "kernel_unavailable",
+        "message": "gateway is restarting",
+        "retryable": True,
+    }
+
+    kernel.available = True
+    executor.cycle()
+
+    assert store.get(plan_id)["status"] == "running"
+    assert kernel.submitted == [task("only")]
 
 
 def test_a_plan_does_not_claim_cancellation_before_the_kernel_settles(

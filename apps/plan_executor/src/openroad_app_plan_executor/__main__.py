@@ -182,7 +182,7 @@ class PlanStore:
         with self._connect() as connection:
             rows = connection.execute(
                 "SELECT plan_id FROM plans WHERE status IN "
-                "('queued','running','cancel_requested') "
+                "('queued','running','retry_wait','cancel_requested') "
                 "ORDER BY created_at"
             ).fetchall()
         return [str(row["plan_id"]) for row in rows]
@@ -203,10 +203,13 @@ class PlanStore:
                 ("queued", run_id, plan_id, step_id),
             )
             connection.execute(
-                "UPDATE plans SET status = 'running' "
+                "UPDATE plans SET status = 'running', failure_json = NULL "
                 "WHERE plan_id = ? AND status != 'cancel_requested'",
                 (plan_id,),
             )
+
+    def retry_wait(self, plan_id: str, failure: Mapping[str, Any]) -> None:
+        self._update_plan(plan_id, "retry_wait", failure)
 
     def step_status(self, plan_id: str, step_id: str, status: str,
                     failure: Mapping[str, Any] | None = None) -> None:
@@ -243,22 +246,35 @@ class PlanStore:
 class PlanExecutor:
     """Advance each plan by one observable transition per cycle."""
 
-    def __init__(self, store: PlanStore, client: Any):
+    def __init__(self, store: PlanStore, client: Any,
+                 *, kernel_retry_delay: float = 0.2):
+        if kernel_retry_delay < 0:
+            raise ValueError("kernel_retry_delay must not be negative")
         self.store = store
         self.client = client
+        self.kernel_retry_delay = kernel_retry_delay
+        self._kernel_retry_at: dict[str, float] = {}
 
     def cycle(self) -> int:
         advanced = 0
         for plan_id in self.store.active():
+            retry_at = self._kernel_retry_at.get(plan_id)
+            if retry_at is not None and time.monotonic() < retry_at:
+                continue
             try:
                 self._advance(plan_id)
+                self._kernel_retry_at.pop(plan_id, None)
             except KernelUnavailable as exc:
-                self.store.finish(plan_id, "failed", {
+                failure = {
                     "source": "platform",
                     "category": "kernel_unavailable",
                     "message": str(exc),
                     "retryable": True,
-                })
+                }
+                self.store.retry_wait(plan_id, failure)
+                self._kernel_retry_at[plan_id] = (
+                    time.monotonic() + self.kernel_retry_delay
+                )
                 continue
             except KernelError as exc:
                 self.store.finish(plan_id, "failed", {
@@ -304,6 +320,7 @@ class PlanExecutor:
             self.store.submitted(
                 plan_id, pending["step_id"], submitted["run"]["run_id"]
             )
+            self._kernel_retry_at.pop(plan_id, None)
             return
 
         detail = self.client.run(pending["run_id"])
