@@ -117,7 +117,7 @@ class ProcessAdapter:
         request_path = root / REQUEST_FILENAME
         result_path = root / RESULT_FILENAME
         log_path = root / LOG_FILENAME
-
+        result_path.unlink(missing_ok=True)
         self._write_request(request_path, manifest, task)
 
         started_at = _now()

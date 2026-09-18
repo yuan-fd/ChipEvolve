@@ -444,10 +444,6 @@ class WorkflowRuntime:
         previous = self.store.list_attempts(stage.stage_run_id)
         attempt_number = len(previous) + 1
         if manifest.requirements.resumable and previous:
-            # Continue in the workspace the last attempt left behind.  A fresh
-            # empty directory would be the opposite of resuming: a flow that
-            # resumes by re-running its own makefile needs the results it
-            # already has, and those are here.
             workspace = Path(previous[-1].workspace)
         else:
             workspace = (
@@ -466,10 +462,12 @@ class WorkflowRuntime:
             )
             if attempt is None:
                 return self.store.get_run(run_id), False
-            workspace.mkdir(parents=True, exist_ok=True)
+            try:
+                workspace.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                self._record_runtime_failure(run, attempt, exc)
+                return self.store.get_run(run_id), True
         except InvalidTransition:
-            # Another worker won the race between selection and claim.  Return
-            # the authoritative state, and report that we did nothing.
             return self.store.get_run(run_id), False
 
         pulse = _LeasePulse(

@@ -15,9 +15,10 @@ from __future__ import annotations
 import json
 import re
 import urllib.parse
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any
 
 #: A request body larger than this is refused rather than buffered.  The kernel
 #: accepts small documents; an unbounded read is a way to exhaust it.
@@ -80,11 +81,11 @@ class Response:
     headers: dict[str, str] = field(default_factory=dict)
 
     @classmethod
-    def json(cls, body: Any, status: int = 200) -> "Response":
+    def json(cls, body: Any, status: int = 200) -> Response:
         return cls(status=status, body=body)
 
     @classmethod
-    def error(cls, status: int, message: str) -> "Response":
+    def error(cls, status: int, message: str) -> Response:
         return cls(status=status, body={"error": message})
 
 
@@ -155,10 +156,10 @@ def make_handler(router: Router):
         server_version = "openroad-platform/0.2"
         protocol_version = "HTTP/1.1"
 
-        def do_GET(self) -> None:  # noqa: N802 - required by the base class
+        def do_GET(self) -> None:
             self._handle("GET")
 
-        def do_POST(self) -> None:  # noqa: N802 - required by the base class
+        def do_POST(self) -> None:
             self._handle("POST")
 
         def _handle(self, method: str) -> None:

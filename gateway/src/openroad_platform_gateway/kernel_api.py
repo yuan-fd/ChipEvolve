@@ -14,22 +14,23 @@ check happens in one place: ``register`` wraps each handler.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from openroad_platform_contracts import ContractError, TaskSpec
 from openroad_platform_identity import AuthSession, IdentityStore
 from openroad_platform_provenance import EvidenceIndex
 from openroad_platform_registry import PluginRegistry, RegistryError
 from openroad_platform_runtime import (
+    ArtifactInventory,
     InputStagingError,
+    LogQuery,
     ResourceLimitsUnsupported,
+    ResourceQuery,
     RuntimeStore,
     RuntimeStoreError,
     WorkflowRuntime,
-    ResourceQuery,
-    LogQuery,
-    ArtifactInventory,
 )
 
 from .router import HttpError, Request, Response, Router
@@ -182,10 +183,7 @@ class KernelApi:
         return Response.json({"run": self._run_detail(run.run_id)}, status=201)
 
     def list_runs(self, request: Request, session: AuthSession | None) -> Response:
-        try:
-            limit = request.q_int("limit")
-        except HttpError:
-            raise
+        limit = request.q_int("limit")
         try:
             summaries = self.index.runs(
                 project_id=request.q("project_id"),

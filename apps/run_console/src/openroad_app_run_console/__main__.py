@@ -30,8 +30,9 @@ from __future__ import annotations
 import argparse
 import json
 import urllib.parse
+from collections.abc import Iterable, Mapping
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 from openroad_platform_client import KernelClient, KernelError, KernelUnavailable
 
@@ -158,7 +159,7 @@ class Handler(BaseHTTPRequestHandler):
     #: token, so it can never see more than the person using it.
     client: KernelClient
 
-    def do_GET(self) -> None:  # noqa: N802 - required by the base class
+    def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
         try:
             payload = self._route(parsed.path, urllib.parse.parse_qs(parsed.query))
@@ -173,7 +174,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._send(200, payload)
 
-    def do_POST(self) -> None:  # noqa: N802 - required by the base class
+    def do_POST(self) -> None:
         path = urllib.parse.urlparse(self.path).path
         try:
             payload = self._body()

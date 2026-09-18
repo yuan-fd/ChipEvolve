@@ -128,6 +128,27 @@ def test_a_declared_input_lands_where_the_task_said_it_would(tmp_path):
     assert recorded[0].sha256 is not None
 
 
+def test_workspace_creation_failure_releases_the_attempt(tmp_path):
+    rt = runtime(tmp_path)
+    run = rt.submit(task("blocked-workspace"))
+    stage = rt.store.list_stages(run.run_id)[0]
+    blocked = tmp_path / "ws" / run.run_id / stage.stage_run_id / "attempt-1"
+    blocked.parent.mkdir(parents=True)
+    blocked.write_text("a file blocks the workspace", encoding="utf-8")
+
+    result = rt.execute_once(run.run_id)
+
+    assert result.status is RuntimeStatus.FAILED
+    attempt = only_attempt(rt, run.run_id)
+    assert attempt.status.value == "failed"
+    with rt.store._connection:  # noqa: SLF001 - inspect the durable reservation
+        reservations = rt.store._connection.execute(
+            "SELECT * FROM runtime_resource_reservations WHERE attempt_id = ?",
+            (attempt.attempt_id,),
+        ).fetchall()
+    assert reservations == []
+
+
 def test_the_plugin_and_the_platform_measure_the_same_bytes(tmp_path):
     """The strongest form of the claim: two independent measurements agree.
 

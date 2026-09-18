@@ -42,7 +42,6 @@ from openroad_platform_contracts import (
 
 from openroad_platform_runtime import (
     ProcessAdapter,
-    RuntimeStoreError,
     sha256,
 )
 

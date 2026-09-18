@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from openroad_platform_client import KernelClient, KernelError, KernelUnavailable
+from openroad_platform_contracts import ContractError, TaskSpec
 
 SERVICE_NAME = "plan_executor"
 DEFAULT_PORT = 8840
@@ -118,6 +119,12 @@ class PlanStore:
                 raise PlanError(f"duplicate step_id {step_id!r}")
             if not isinstance(step.get("task"), dict):
                 raise PlanError(f"step {step_id!r} needs a task object")
+            try:
+                TaskSpec.from_dict(step["task"])
+            except (ContractError, TypeError, ValueError) as exc:
+                raise PlanError(
+                    f"step {step_id!r} has an invalid task: {exc}"
+                ) from exc
             bindings = step.get("bindings", [])
             if not isinstance(bindings, list):
                 raise PlanError(f"step {step_id!r} bindings must be a list")
@@ -236,7 +243,13 @@ class PlanExecutor:
         for plan_id in self.store.active():
             try:
                 self._advance(plan_id)
-            except KernelUnavailable:
+            except KernelUnavailable as exc:
+                self.store.finish(plan_id, "failed", {
+                    "source": "platform",
+                    "category": "kernel_unavailable",
+                    "message": str(exc),
+                    "retryable": True,
+                })
                 continue
             except KernelError as exc:
                 self.store.finish(plan_id, "failed", {
@@ -274,7 +287,7 @@ class PlanExecutor:
             return
         if pending["run_id"] is None:
             submitted = self.client.submit(
-                self._task_for(plan, pending), idempotent=True
+                self._task_for(plan, pending), idempotent=False
             )
             self.store.submitted(
                 plan_id, pending["step_id"], submitted["run"]["run_id"]
@@ -302,13 +315,30 @@ class PlanExecutor:
             (step for step in plan["steps"] if step["status"] != "succeeded"),
             None,
         )
-        if active is not None and active["run_id"] is not None:
+        if active is None:
+            self.store.finish(plan["plan_id"], "cancelled")
+            return
+        if active["run_id"] is not None:
             self.client.cancel(active["run_id"])
-            self.store.step_status(
-                plan["plan_id"], active["step_id"], "cancelled",
-                {"source": "platform", "category": "cancelled",
-                 "message": "execution plan cancelled", "retryable": False},
-            )
+            detail = self.client.run(active["run_id"])
+            status = str(detail["status"])
+            if status in ACTIVE:
+                self.store.step_status(plan["plan_id"], active["step_id"], status)
+                return
+            if status != "cancelled":
+                failure = classify_failure(detail)
+                self.store.step_status(
+                    plan["plan_id"], active["step_id"], status, failure
+                )
+                self.store.finish(
+                    plan["plan_id"], status if status in FAILED else "failed", failure
+                )
+                return
+        self.store.step_status(
+            plan["plan_id"], active["step_id"], "cancelled",
+            {"source": "platform", "category": "cancelled",
+             "message": "execution plan cancelled", "retryable": False},
+        )
         self.store.finish(
             plan["plan_id"], "cancelled",
             {"source": "platform", "category": "cancelled",

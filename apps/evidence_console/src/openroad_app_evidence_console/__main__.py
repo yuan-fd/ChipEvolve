@@ -82,7 +82,7 @@ class Handler(BaseHTTPRequestHandler):
     #: see more than the person using it.
     client: KernelClient
 
-    def do_GET(self) -> None:  # noqa: N802 - required by the base class
+    def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
         try:
             payload = self._route(parsed.path, urllib.parse.parse_qs(parsed.query))

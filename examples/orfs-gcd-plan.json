@@ -1,0 +1,46 @@
+{
+  "plan_id": "gcd-finish-example",
+  "steps": [
+    {
+      "step_id": "rtl-to-gds",
+      "task": {
+        "schema_version": 3,
+        "task_id": "gcd-finish-example-task",
+        "project_id": "agent-acceptance",
+        "design_id": "gcd",
+        "plugin_id": "orfs",
+        "inputs": {
+          "rtl_path": "inputs/gcd.v",
+          "platform": "nangate45",
+          "design": "gcd",
+          "top": "gcd",
+          "clock": "clk",
+          "clock_period_ns": 10.0,
+          "target_stage": "finish",
+          "orfs_root": "/srv/OpenROAD-flow-scripts",
+          "openroad_bin": "/srv/eda/bin/openroad",
+          "yosys_bin": "/srv/eda/bin/yosys",
+          "klayout_bin": "/srv/eda/bin/klayout",
+          "stage_timeout_seconds": 7200
+        },
+        "parameters": {
+          "or_seed": 1
+        },
+        "staged_inputs": [
+          {
+            "source": "/srv/OpenROAD-flow-scripts/flow/designs/src/gcd/gcd.v",
+            "destination": "inputs/gcd.v"
+          }
+        ],
+        "resources": {
+          "cpu_cores": 4,
+          "memory_bytes": 8589934592,
+          "processes": 256
+        },
+        "timeout_seconds": 7200,
+        "max_attempts": 1,
+        "expected_artifacts": ["gds", "odb", "def", "netlist", "report"]
+      }
+    }
+  ]
+}

@@ -5,10 +5,11 @@ not an EDA implementation, a data platform, or one of the five agents.
 
 ## Boundary
 
-The stable execution envelope is documented in
-[`EXECUTION_PROTOCOL_V1.md`](EXECUTION_PROTOCOL_V1.md). Agent and plugin
-semantic requests live in the opaque `extensions` namespaces and may evolve
-independently of the runtime.
+The plugin execution envelope is documented in
+[`PLUGIN_PROTOCOL.human.md`](../PLUGIN_PROTOCOL.human.md), and Agent task lists
+in [`EXECUTION_PLAN_PROTOCOL.md`](../EXECUTION_PLAN_PROTOCOL.md). Plugin
+semantic requests live in opaque `inputs` and `parameters` mappings and may
+evolve independently of the runtime.
 
 The platform owns task contracts, input registration and staging, per-attempt
 workspaces, queueing, local worker execution, resource policy, process
@@ -41,23 +42,19 @@ the client/API.
 
 ## v1 resource policy
 
-The intended local policy is that platform tasks may use at most 60% of the
-server's configured capacity. Tasks request hard limits. A request above the
-default task limit requires a human approval record; it must still fit inside
-the global 60% ceiling. CPU concurrency/capacity and cumulative CPU seconds
-are different quantities. The current `cpu_seconds` field does not express
-a request for eight CPU cores. The current runtime can
-measure and terminate a process tree for per-attempt limits, but it does not
-now reserve a global 60% budget atomically at attempt claim time. Approval
-records and OS-level cgroup isolation remain future work. Resource scheduling
-is local and FIFO in v1; multi-node and multi-user scheduling are later
-concerns.
+The local policy allows platform tasks to reserve at most 60% of configured
+server capacity. CPU-core and memory reservations are claimed atomically in
+SQLite when a worker starts an attempt and released at every terminal outcome
+or lost lease. Tasks without a request reserve one core and 1 GiB. Process-tree
+CPU time, resident memory and process count are measured and can terminate an
+attempt after a breach; these are not cgroup hard limits. Scheduling remains
+local FIFO; multi-node and multi-user scheduling are later concerns.
 
 ## v1 agent boundary
 
-Agents are independent services using the platform client. A generic process
-entry point may later run an agent under the same lifecycle controls, but no
-functional agent is part of this repository.
+Agents are independent clients. They may submit individual tasks or use the
+independent plan service for an ordered task list and artifact handoff. No
+reasoning Agent is part of this repository.
 
 ## Acceptance scenarios
 

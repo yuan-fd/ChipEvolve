@@ -15,9 +15,10 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 from urllib.parse import urlencode
 
 from .router import HttpError, Request, Response, Router, make_handler, serve
@@ -60,7 +61,7 @@ class GatewayConfig:
     apps: tuple[AppRegistration, ...] = ()
 
     @classmethod
-    def from_mapping(cls, payload: Mapping[str, Any]) -> "GatewayConfig":
+    def from_mapping(cls, payload: Mapping[str, Any]) -> GatewayConfig:
         unknown = sorted(set(payload) - {"apps"})
         if unknown:
             raise ValueError(f"unknown gateway config keys: {', '.join(unknown)}")
@@ -78,7 +79,7 @@ class GatewayConfig:
         return cls(apps=tuple(apps))
 
     @classmethod
-    def from_file(cls, path: str | Path) -> "GatewayConfig":
+    def from_file(cls, path: str | Path) -> GatewayConfig:
         return cls.from_mapping(json.loads(Path(path).read_text(encoding="utf-8")))
 
     def nav(self) -> list[dict[str, str]]:
@@ -192,13 +193,20 @@ def _detail(exc: urllib.error.HTTPError) -> str:
         payload = json.loads(exc.read())
         if isinstance(payload, Mapping) and payload.get("error"):
             return str(payload["error"])
-    except Exception:  # noqa: BLE001 - the upstream reason is best-effort
-        pass
+    except (ValueError, OSError):
+        return f"upstream returned HTTP {exc.code}"
     return f"upstream returned HTTP {exc.code}"
 
 
 __all__ = (
-    "APP_PREFIX", "AppRegistration", "GatewayConfig", "KERNEL_PREFIX",
-    "MAX_PROXY_BYTES", "PROBE_TIMEOUT_SECONDS", "build_router", "make_handler",
-    "probe", "serve",
+    "APP_PREFIX",
+    "KERNEL_PREFIX",
+    "MAX_PROXY_BYTES",
+    "PROBE_TIMEOUT_SECONDS",
+    "AppRegistration",
+    "GatewayConfig",
+    "build_router",
+    "make_handler",
+    "probe",
+    "serve",
 )

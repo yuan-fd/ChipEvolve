@@ -66,7 +66,7 @@ def main(argv: list[str] | None = None) -> int:
 
     stop = threading.Event()
 
-    def request_stop(signum, _frame):  # noqa: ANN001
+    def request_stop(signum, _frame):
         # A worker stops between attempts, never mid-attempt: an interrupted
         # attempt becomes a reclaimable lease, and killing the process would
         # orphan whatever it spawned.

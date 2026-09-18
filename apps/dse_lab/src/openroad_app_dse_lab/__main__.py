@@ -291,7 +291,7 @@ class Handler(BaseHTTPRequestHandler):
     client: KernelClient
     store: SweepStore
 
-    def do_GET(self) -> None:  # noqa: N802 - required by the base class
+    def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
         try:
             self._send(200, self._get(parsed.path))
@@ -302,7 +302,7 @@ class Handler(BaseHTTPRequestHandler):
         except KernelError as exc:
             self._send(exc.status or 502, {"error": str(exc)})
 
-    def do_POST(self) -> None:  # noqa: N802 - required by the base class
+    def do_POST(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
         try:
             body = self._read_body()

@@ -35,9 +35,9 @@ import sys
 from pathlib import Path
 
 from openroad_platform_contracts import (
+    RESERVED_ARTIFACT_KINDS,
     ContractError,
     PluginManifest,
-    RESERVED_ARTIFACT_KINDS,
 )
 
 from .registry import (
@@ -125,15 +125,16 @@ def check_artifact_rules(manifest: PluginManifest, report: Report) -> None:
     platform, and a validator that rejects what the platform accepts is lying.
     """
     reserved = sorted(
-        rule.get("kind") for rule in manifest.artifact_rules
-        if rule.get("kind") in RESERVED_ARTIFACT_KINDS
+        kind for rule in manifest.artifact_rules
+        if isinstance(kind := rule.get("kind"), str)
+        and kind in RESERVED_ARTIFACT_KINDS
     )
     if reserved:
         report.note(
             f"artifact_rules list platform-reserved kinds ({', '.join(reserved)});"
             f" allowed, and it grants no authority to declare them"
         )
-    kinds = [rule.get("kind") for rule in manifest.artifact_rules]
+    kinds = [str(rule.get("kind")) for rule in manifest.artifact_rules]
     if len(kinds) != len(set(kinds)):
         report.error("artifact_rules declare the same kind more than once")
 

@@ -212,6 +212,31 @@ def test_a_kernel_refusal_becomes_a_terminal_plan_failure(tmp_path: Path):
     assert "unknown plugin" in plan["failure"]["message"]
 
 
+def test_a_plan_does_not_claim_cancellation_before_the_kernel_settles(
+    tmp_path: Path,
+):
+    class DelayedCancelKernel(FakeKernel):
+        def cancel(self, run_id):
+            self.statuses[run_id] = "cancel_requested"
+            return {"run": self.run(run_id)}
+
+    store = PlanStore(tmp_path / "plans.sqlite")
+    kernel = DelayedCancelKernel()
+    executor = PlanExecutor(store, kernel)
+    plan_id = store.create({
+        "plan_id": "plan-delayed-cancel",
+        "steps": [{"step_id": "active", "task": task("active")}],
+    })
+    executor.cycle()
+    store.request_cancel(plan_id)
+
+    executor.cycle()
+
+    plan = store.get(plan_id)
+    assert plan["status"] == "cancel_requested"
+    assert plan["steps"][0]["status"] == "cancel_requested"
+
+
 def http(method: str, url: str, payload: dict | None = None) -> tuple[int, dict]:
     data = json.dumps(payload).encode() if payload is not None else None
     request = urllib.request.Request(

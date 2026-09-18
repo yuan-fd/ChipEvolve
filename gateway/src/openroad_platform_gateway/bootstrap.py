@@ -10,9 +10,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
-from openroad_platform_evaluator import PluginBackedEvaluator, resolve_evaluator
+from openroad_platform_evaluator import (
+    EvaluationError,
+    PluginBackedEvaluator,
+    resolve_evaluator,
+)
 from openroad_platform_identity import IdentityStore
 from openroad_platform_provenance import EvidenceIndex
 from openroad_platform_registry import PluginRegistry
@@ -47,7 +51,7 @@ class KernelPaths:
            admissions_root: str | Path | None = None,
            capacity_cpu_cores: int | None = None,
            capacity_memory_bytes: int | None = None,
-           platform_fraction: float = 0.60) -> "KernelPaths":
+           platform_fraction: float = 0.60) -> KernelPaths:
         state = Path(state_root).expanduser().resolve()
         return cls(
             state_root=state,
@@ -98,13 +102,15 @@ def build_kernel_parts(
         paths.plugins_root, admissions_root=paths.admissions_root,
     )
 
-    evaluator = None
     try:
         manifest = resolve_evaluator(registry)
-    except Exception:  # noqa: BLE001 - a kernel without an evaluator still runs
+    except EvaluationError:
         manifest = None
-    if manifest is not None:
-        evaluator = PluginBackedEvaluator(adapter=ProcessAdapter(), manifest=manifest)
+    evaluator = (
+        PluginBackedEvaluator(adapter=ProcessAdapter(), manifest=manifest)
+        if manifest is not None
+        else None
+    )
 
     runtime = WorkflowRuntime(
         store, registry,
@@ -127,13 +133,13 @@ def build_kernel(paths: KernelPaths, *, allow_anonymous: bool = False
     store, registry, runtime = parts.store, parts.registry, parts.runtime
     identity = IdentityStore(paths.state_root / "identity.db")
 
-    local_user_id = None
+    local_user_id: str | None = None
     if allow_anonymous:
         identity.ensure_local_user()
-        local_user_id = next(
+        local_user_id = cast(str, next(
             u["user_id"] for u in identity.list_users()
             if u["username"] == "local-user"
-        )
+        ))
 
     return KernelApi(
         store=store, runtime=runtime, registry=registry, identity=identity,

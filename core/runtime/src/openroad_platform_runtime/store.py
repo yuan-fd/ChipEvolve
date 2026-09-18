@@ -176,18 +176,17 @@ def _now() -> str:
 def _optional_json_object(raw: str | None) -> Mapping[str, Any] | None:
     """Decode a stored JSON object, or report its absence.
 
-    A stored failure is read back, not trusted: a row written by an older
-    version, or truncated by a crash, is reported as "no reason recorded" rather
-    than taking the read model down with it.  That is the read side of boundary
-    validation -- the write side already refuses anything that is not an object.
+    Corrupt durable evidence is returned as an explicit storage failure.
     """
     if not raw:
         return None
     try:
         decoded = json.loads(raw)
     except (TypeError, ValueError):
-        return None
-    return decoded if isinstance(decoded, dict) else None
+        return {"category": "storage_corruption", "message": "invalid JSON", "retryable": False}
+    return decoded if isinstance(decoded, dict) else {
+        "category": "storage_corruption", "message": "not an object", "retryable": False,
+    }
 
 
 def _new_id(prefix: str) -> str:

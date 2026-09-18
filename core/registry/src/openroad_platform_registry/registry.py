@@ -15,11 +15,13 @@ resolution says so by name.
 
 from __future__ import annotations
 
+import builtins
 import dataclasses
 import json
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 from openroad_platform_contracts import (
     ContractError,
@@ -71,7 +73,7 @@ class Provenance:
     notes: str | None = None
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "Provenance":
+    def from_dict(cls, payload: Mapping[str, Any]) -> Provenance:
         known = {"license", "source_url", "source_commit", "notes"}
         unknown = sorted(set(payload) - known)
         if unknown:
@@ -131,7 +133,7 @@ class Admission:
             )
 
     @classmethod
-    def from_dict(cls, plugin_id: str, payload: Mapping[str, Any]) -> "Admission":
+    def from_dict(cls, plugin_id: str, payload: Mapping[str, Any]) -> Admission:
         known = {"plugin_id", "status", "license_review", "approved_commit",
                  "reviewer", "reason"}
         unknown = sorted(set(payload) - known)
@@ -183,7 +185,7 @@ class PluginRegistry:
     @classmethod
     def from_directory(
         cls, root: str | Path, *, admissions_root: str | Path | None = None,
-    ) -> "PluginRegistry":
+    ) -> PluginRegistry:
         """Discover every plugin under ``root``.
 
         Expected shape::
@@ -287,13 +289,8 @@ class PluginRegistry:
             self._plugins[key] for key in sorted(self._plugins)
         )
 
-    def catalogue(self) -> list[dict[str, Any]]:
-        """A read model for an app that lists capabilities and their state.
-
-        The plugin's own statement and the platform's decision are reported
-        side by side, under separate keys, because a reader has to be able to
-        tell which party said what.
-        """
+    def catalogue(self) -> builtins.list[dict[str, Any]]:
+        """A read model separating plugin claims from platform decisions."""
         return [
             {
                 "plugin_id": p.manifest.plugin_id,
