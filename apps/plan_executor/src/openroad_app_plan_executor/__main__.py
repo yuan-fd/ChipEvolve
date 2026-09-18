@@ -330,7 +330,22 @@ class PlanExecutor:
                 return
             if status == "succeeded":
                 self.store.step_status(plan["plan_id"], active["step_id"], status)
-                self.store.finish(plan["plan_id"], "succeeded")
+                remaining = [
+                    step for step in plan["steps"]
+                    if step["step_id"] != active["step_id"]
+                    and step["status"] != "succeeded"
+                ]
+                for step in remaining:
+                    self.store.step_status(
+                        plan["plan_id"], step["step_id"], "cancelled",
+                        {"source": "platform", "category": "cancelled",
+                         "message": "execution plan cancelled",
+                         "retryable": False},
+                    )
+                self.store.finish(
+                    plan["plan_id"],
+                    "cancelled" if remaining else "succeeded",
+                )
                 return
             if status != "cancelled":
                 failure = classify_failure(detail)

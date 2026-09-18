@@ -288,6 +288,35 @@ def test_cancellation_race_preserves_kernel_success(tmp_path: Path):
     assert store.get(plan_id)["status"] == "succeeded"
 
 
+def test_cancellation_race_does_not_skip_queued_steps(tmp_path: Path):
+    class CompletedOnCancelKernel(FakeKernel):
+        def cancel(self, run_id):
+            self.statuses[run_id] = "succeeded"
+            return {"run": self.run(run_id)}
+
+    store = PlanStore(tmp_path / "plans.sqlite")
+    kernel = CompletedOnCancelKernel()
+    executor = PlanExecutor(store, kernel)
+    plan_id = store.create({
+        "plan_id": "plan-partial-success-race",
+        "steps": [
+            {"step_id": "active", "task": task("active")},
+            {"step_id": "never", "task": task("never")},
+        ],
+    })
+    executor.cycle()
+    store.request_cancel(plan_id)
+
+    executor.cycle()
+
+    plan = store.get(plan_id)
+    assert plan["status"] == "cancelled"
+    assert plan["execution_valid"] is False
+    assert plan["steps"][0]["status"] == "succeeded"
+    assert plan["steps"][1]["status"] == "cancelled"
+    assert len(kernel.submitted) == 1
+
+
 def http(method: str, url: str, payload: dict | None = None) -> tuple[int, dict]:
     data = json.dumps(payload).encode() if payload is not None else None
     request = urllib.request.Request(
