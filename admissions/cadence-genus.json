@@ -1,0 +1,8 @@
+{
+  "plugin_id": "cadence-genus",
+  "status": "admitted",
+  "license_review": "green",
+  "approved_commit": "0000000000000000000000000000000000000000",
+  "reviewer": "platform-owner",
+  "reason": "First-party deployment Toolkit; executes the server-owned Genus wrapper and does not redistribute Cadence binaries."
+}

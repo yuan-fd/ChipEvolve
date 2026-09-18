@@ -53,3 +53,27 @@ sha256sum "$WORK_HOME/results/nangate45/gcd/server_audit/6_final."{gds,odb,def,v
 ```
 
 `hello.tcl` 的最小内容是 `exit`。成功标准是 run/attempt 均为 `succeeded`，并可查询 toolchain、tool_log、script_receipt、输入 hash 和 `tool_version` metric；这不等于任何设计 QoR 达标。
+
+## 4. 当前服务器用户目录 Toolkit
+
+真实服务器当前使用：
+
+```bash
+export OPENROAD_PLATFORM_PLUGINS_ROOT="$HOME/toolkits"
+export OPENROAD_PLATFORM_ADMISSIONS_ROOT="$PWD/admissions"
+export OPENROAD_PLATFORM_STATE_ROOT="$HOME/.cache/chipevolve-platform/state"
+```
+
+Toolkit 目录为：
+
+```text
+$HOME/toolkits/chipevolve-orfs
+$HOME/toolkits/synopsys-icc2
+$HOME/toolkits/synopsys-primetime
+$HOME/toolkits/cadence-genus
+```
+
+商业 Toolkit 的 `preflight`/`script` 均通过 Foundation plan/worker 执行。ICC2 必须
+使用 `module load synopsys/default` 的 `icc2_shell` wrapper；PrimeTime wrapper
+需要在 module 加载后设置 `SYNOPSYS_LC_ROOT="$LC_HOME"`。license 不属于 Toolkit
+manifest 或 preflight 门禁，原始输出只在 attempt 的 `tool.log` 中保存。

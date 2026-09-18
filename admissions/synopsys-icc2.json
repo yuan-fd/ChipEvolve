@@ -1,0 +1,8 @@
+{
+  "plugin_id": "synopsys-icc2",
+  "status": "admitted",
+  "license_review": "green",
+  "approved_commit": "0000000000000000000000000000000000000000",
+  "reviewer": "platform-owner",
+  "reason": "First-party deployment Toolkit; executes the server-owned ICC2 wrapper and does not redistribute Synopsys binaries."
+}
