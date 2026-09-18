@@ -382,6 +382,21 @@ def test_the_evaluator_is_not_invoked_for_a_failed_adapter(tmp_path):
     assert evaluator.requests == []
 
 
+def test_required_evaluator_unavailable_fails_a_successful_adapter(tmp_path):
+    rt = runtime(tmp_path, manifest(requirements=RuntimeRequirements(
+        require_protected_evaluation=True,
+    )))
+    run = rt.submit(task("ok"))
+
+    finished = rt.execute_once(run.run_id)
+
+    assert finished.status is RuntimeStatus.FAILED
+    assert finished.terminal_reason == "runtime_error"
+    attempt = rt.describe(run.run_id)["stages"][0]["attempts"][0]
+    assert attempt["status"] == "failed"
+    assert "protected evaluator is unavailable" in attempt["failure"]["message"]
+
+
 def test_a_rejecting_evaluator_fails_the_run(tmp_path):
     evaluator = RecordingEvaluator(lambda r: Verdict(
         status=VerdictStatus.REJECTED, reason="artifact hash mismatch"))
