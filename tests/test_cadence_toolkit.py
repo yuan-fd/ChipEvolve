@@ -52,3 +52,7 @@ def test_innovus_adapter_preflight_contract_with_deployment_command(tmp_path: Pa
     assert payload["metrics"][0]["context"]["source_artifact_store_key"] == (
         "toolchain.json"
     )
+    toolchain = json.loads((tmp_path / "toolchain.json").read_text(encoding="utf-8"))
+    assert "CDS_LIC_FILE" not in toolchain.get("environment_keys", [])
+    assert "LM_LICENSE_FILE" not in toolchain.get("environment_keys", [])
+    assert "license" not in payload["provenance"]

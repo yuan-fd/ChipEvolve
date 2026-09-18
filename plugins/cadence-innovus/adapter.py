@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Minimal Cadence Innovus Toolkit adapter.
+"""Cadence Innovus Toolkit adapter.
 
 The adapter is intentionally a process boundary, not a Python API imported by
 the kernel.  ``preflight`` captures a version/license check and ``script``
 executes one Agent-staged Tcl file.  The foundation starts this adapter and
 owns its entire descendant tree; this process only maps Toolkit semantics to
-the external command and returns evidence.
+the external command and returns evidence.  Deployment configuration is left
+to the shell and is not an adapter gate or protocol field.
 """
 
 from __future__ import annotations
@@ -66,13 +67,7 @@ def _command(module: str | None, tool_path: str, args: list[str]) -> list[str]:
 
 
 def _classify(returncode: int, output: str) -> dict[str, Any]:
-    lowered = output.lower()
-    if any(
-        token in lowered for token in ("license", "checkout failed", "cannot obtain")
-    ):
-        category = "license_unavailable"
-        retryable = True
-    elif returncode == 127:
+    if returncode == 127:
         category = "tool_launch"
         retryable = False
     else:
@@ -159,12 +154,15 @@ def main() -> int:
             "tool": "innovus",
             "resolved_executable": str(tool_path),
             "version": version,
-            "version_output": output[:8192],
+            # Raw output remains in tool.log.  Keep protocol provenance to a
+            # parsed version only so deployment license text is never copied
+            # into toolchain metadata.
+            "version_output": f"{version}\n",
             "module": module,
             "environment_keys": sorted(
                 k
                 for k in environment
-                if k in {"CDS_LIC_FILE", "LM_LICENSE_FILE", "OA_HOME", "PATH"}
+                if k in {"OA_HOME", "PATH"}
             ),
         }
         (workspace / "toolchain.json").write_text(

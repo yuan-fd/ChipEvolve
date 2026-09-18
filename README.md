@@ -124,10 +124,11 @@ This checkout also contains a minimal Cadence Innovus Toolkit under
 [`plugins/cadence-innovus/`](plugins/cadence-innovus/). It exposes `preflight`
 and Agent-staged `script` capabilities. Supply the deployment's resolved
 `tool_path` and module name in task inputs; the adapter captures tool version,
-license/preflight output and script receipt as evidence. It deliberately does
-not store license endpoints or machine-specific paths in the repository. The
-same adapter can be reviewed and run through the normal worker lifecycle, so a
-commercial tool process is never launched directly by an Agent.
+runtime output and script receipt as evidence. Deployment-specific licensing is
+not a Toolkit gate or a manifest field. The adapter deliberately does not store
+license endpoints or machine-specific paths in the repository. The same adapter
+can be reviewed and run through the normal worker lifecycle, so a commercial
+tool process is never launched directly by an Agent.
 
 ## Current evidence and limits
 
@@ -135,6 +136,8 @@ The repository currently verifies the following:
 
 - the complete Agent Plan -> kernel -> worker -> external ORFS Toolkit -> GCD
   `finish` path;
+- current-server runtime/script evidence for Innovus, ICC2, PrimeTime and Genus,
+  recorded in [`docs/internal/SERVER_TOOLKIT_MATRIX.md`](docs/internal/SERVER_TOOLKIT_MATRIX.md);
 - Agent-authored script, patch, build and benchmark tasks;
 - cross-Toolkit artifact handoff;
 - cancellation, timeout, retry, lost-worker and idempotency behavior;

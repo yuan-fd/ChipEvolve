@@ -15,7 +15,7 @@
     "toolkit_id": "cadence-innovus",
     "version": "1.0.0",
     "executable": "innovus",
-    "required_environment": ["module:cadence", "CDS_LIC_FILE"],
+    "required_environment": ["module:cadence"],
     "input_contract": {
       "capability": "preflight|script",
       "tool_path": "absolute path supplied by the deployment",
@@ -29,8 +29,8 @@
     "script_execution_support": true,
     "artifact_rules": ["toolchain", "tool_log", "script_receipt"],
     "metric_extraction": ["tool_version"],
-    "retryable_failure_categories": ["license_unavailable", "tool_launch"],
-    "preflight_checks": ["executable", "module", "license", "version"],
+    "retryable_failure_categories": ["tool_launch"],
+    "preflight_checks": ["executable", "module", "version"],
     "tool_version_capture": "innovus -version"
   },
   "environment": {}
