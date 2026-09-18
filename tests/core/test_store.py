@@ -729,6 +729,25 @@ def test_an_absent_input_is_stored_without_a_digest(store):
     assert recorded.sha256 is None
 
 
+def test_uploaded_input_is_content_addressed_and_reusable(store, tmp_path):
+    uploaded = store.ingest_input(b"set place_density 0.72\n")
+
+    assert uploaded.input_id.startswith("input-")
+    assert uploaded.sha256 == hashlib.sha256(
+        b"set place_density 0.72\n"
+    ).hexdigest()
+    destination = tmp_path / "inputs" / "place.tcl"
+    restored = store.materialize_input(uploaded.input_id, destination)
+
+    assert restored == uploaded
+    assert destination.read_bytes() == b"set place_density 0.72\n"
+
+
+def test_unknown_uploaded_input_is_refused(store):
+    with pytest.raises(RuntimeStoreError, match="unknown uploaded input"):
+        store.get_uploaded_input("input-missing")
+
+
 def test_the_store_refuses_an_input_record_it_did_not_measure(store):
     """A digest is the platform's measurement, so a malformed one is refused.
 

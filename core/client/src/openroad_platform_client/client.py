@@ -1,15 +1,4 @@
-"""The typed client an application uses to reach the kernel.
-
-Applications may not open the kernel's database (G5) and may not import kernel
-internals (G4).  This is the only door: a versioned HTTP surface described once,
-in one place, so an app and the kernel cannot drift into disagreeing about a
-field name.
-
-The client is deliberately thin.  It validates that a reply is the shape it
-expected and raises on anything else; it does not reinterpret, default, or
-repair a response.  A client that guesses turns a kernel bug into a wrong screen
-instead of an error.
-"""
+"""Typed HTTP client for the kernel service."""
 
 from __future__ import annotations
 
@@ -62,7 +51,7 @@ class KernelClient:
     # -- transport --------------------------------------------------------
 
     def _call(self, method: str, path: str, *,
-              payload: Mapping[str, Any] | None = None,
+              payload: Mapping[str, Any] | bytes | None = None,
               query: Mapping[str, Any] | None = None, want_bytes: bool = False) -> Any:
         url = f"{self.base_url}{path}"
         if query:
@@ -84,8 +73,12 @@ class KernelClient:
             headers["Authorization"] = f"Bearer {self.token}"
         body: bytes | None = None
         if payload is not None:
-            body = json.dumps(payload).encode("utf-8")
-            headers["Content-Type"] = "application/json"
+            if isinstance(payload, bytes):
+                body = payload
+                headers["Content-Type"] = "application/octet-stream"
+            else:
+                body = json.dumps(payload).encode("utf-8")
+                headers["Content-Type"] = "application/json"
 
         request = urllib.request.Request(url, data=body, headers=headers,
                                          method=method)
@@ -142,6 +135,12 @@ class KernelClient:
 
     def plugins(self) -> list[dict[str, Any]]:
         return self._call("GET", "/kernel/plugins")["plugins"]
+
+    def upload_input(self, content: bytes) -> dict[str, Any]:
+        """Upload bytes that a later TaskSpec can reference by input_id."""
+        if not isinstance(content, bytes):
+            raise TypeError("input content must be bytes")
+        return self._call("POST", "/kernel/inputs", payload=content)["input"]
 
     # -- runs -------------------------------------------------------------
 

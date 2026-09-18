@@ -279,10 +279,11 @@ data = Path("design/netlist.v").read_bytes()     # always relative to cwd
 | --- | --- |
 | `source` | Absolute host path. Relative paths are refused: they would resolve against whichever worker picked the run up. |
 | `artifact_id` | Bytes the platform already holds, from an earlier run's artifact. The digest is checked as the bytes are placed, so a reference that does not verify fails the attempt instead of feeding the plugin the wrong file. |
+| `input_id` | Bytes uploaded through `POST /kernel/inputs`. The upload response supplies the ID and SHA-256 digest; the digest is checked again during staging. |
 | `destination` | Relative path inside the attempt workspace. `..` and absolute paths are refused. Two inputs may not claim the same destination. |
 | `required` | Default `true`. A required input that is not a readable file is refused **at submission**, before a run exists. An optional one that is absent is recorded as absent and the attempt proceeds. |
 
-Exactly one of `source` and `artifact_id` is given. Neither is a filesystem
+Exactly one of `source`, `artifact_id`, and `input_id` is given. Neither is a filesystem
 detail the plugin has to care about: whichever was used, the file is at
 `destination` before the process starts.
 
@@ -290,6 +291,19 @@ detail the plugin has to care about: whichever was used, the file is at
 to know where the platform put the bytes, and a run that cites an artifact is
 making a claim the platform can check rather than an assertion it has to take on
 trust.
+
+For a remote Agent-generated script or patch, upload the bytes first:
+
+```text
+POST /kernel/inputs
+Content-Type: application/octet-stream
+
+<file bytes>
+```
+
+The current single-host gateway accepts at most 1 MiB per upload and binds the
+returned `input_id` to the authenticated user. This is a local input handoff,
+not a remote object-store protocol.
 
 **What the platform records, and why it matters to you.** The platform measures
 each staged file with SHA-256 and writes `input_manifest.json` in the workspace:

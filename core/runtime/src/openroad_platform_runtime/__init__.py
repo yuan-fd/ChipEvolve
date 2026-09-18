@@ -38,6 +38,7 @@ from .store import (
     RuntimeStore,
     RuntimeStoreError,
     StageRun,
+    UploadedInput,
 )
 from .worker import CycleReport, RuntimeWorker
 
@@ -48,5 +49,6 @@ __all__ = (
     "ManifestResolver", "ProcessAdapter", "ProcessGuardian", "ProcessOutcome",
     "ProgressObserver", "ResourceLimitsUnsupported", "ResourceQuery", "RunRecord",
     "RuntimeConfig", "RuntimeStore", "RuntimeStoreError", "RuntimeWorker", "StageRun",
+    "UploadedInput",
     "WorkflowRuntime", "protocol_failure", "sha256", "validate_artifact_declarations",
 )

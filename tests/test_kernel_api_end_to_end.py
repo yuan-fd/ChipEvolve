@@ -321,6 +321,49 @@ def test_public_client_can_pin_a_toolkit_version(platform):
     assert result["run"]["stages"][0]["plugin_version"] == "1.0.0"
 
 
+def test_remote_agent_can_upload_and_reference_a_script(platform):
+    client, kernel = platform
+    client.register("alice", "a long enough password")
+    uploaded = client.upload_input(b"set place_density 0.72\n")
+    result = client.submit({
+        "schema_version": 3, "task_id": "uploaded-script",
+        "project_id": "demo", "design_id": "demo-design",
+        "plugin_id": "example-reporter", "inputs": {"records": [1]},
+        "staged_inputs": [{
+            "input_id": uploaded["input_id"],
+            "destination": "inputs/place.tcl",
+        }],
+        "timeout_seconds": 30,
+    })
+
+    kernel.runtime.execute_once(result["run"]["run_id"])
+    detail = client.run(result["run"]["run_id"])
+    recorded = detail["stages"][0]["attempts"][0]["inputs"][0]
+    assert detail["status"] == "succeeded"
+    assert recorded["source_input_id"] == uploaded["input_id"]
+    assert recorded["sha256"] == uploaded["sha256"]
+
+
+def test_uploaded_input_is_not_visible_to_another_user(platform):
+    client, _ = platform
+    client.register("alice", "a long enough password")
+    uploaded = client.upload_input(b"candidate patch")
+    bob = KernelClient(client.base_url)
+    bob.register("bob", "another long password")
+
+    with pytest.raises(KernelError) as caught:
+        bob.submit({
+            "schema_version": 3, "task_id": "other-user-input",
+            "project_id": "demo", "design_id": "demo-design",
+            "plugin_id": "example-reporter", "inputs": {"records": [1]},
+            "staged_inputs": [{
+                "input_id": uploaded["input_id"], "destination": "patch.diff",
+            }],
+        })
+
+    assert caught.value.status == 404
+
+
 def test_plan_scoped_idempotency_keys_isolate_same_agent_task_ids(platform):
     client, _ = platform
     client.register("alice", "a long enough password")

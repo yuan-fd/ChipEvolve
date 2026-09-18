@@ -1,21 +1,4 @@
-"""Inputs the platform places, and the identity they are given.
-
-A task may declare the files it needs.  The platform copies each one into the
-attempt workspace, measures it from the bytes on disk, and records the
-measurement against that attempt.
-
-The reason this exists at all: ``design_id`` is a *label* the caller chooses, and
-two runs carrying the same label may have read different bytes.  Every platform
-number derived from such a comparison is then unfalsifiable.  A digest is not a
-label -- it is an identity, and it is the one the platform measured rather than
-the one it was told.
-
-This mirrors artifacts exactly.  An artifact is what came out of an attempt and
-is measured by the platform; an input is what went in, measured the same way.
-Which is why an input may also be *sourced from* an artifact: the platform
-already holds those bytes, under a name that is their digest, and re-reading
-them from a path on a host would be a worse way to get the same file.
-"""
+"""Contracts for files staged into an attempt workspace."""
 
 from __future__ import annotations
 
@@ -45,7 +28,7 @@ INPUT_MANIFEST_FILENAME = "input_manifest.json"
 class InputFile:
     """One file the platform must place in the attempt workspace.
 
-    The bytes come from exactly one of two places, and the contract refuses a
+    The bytes come from exactly one of three places, and the contract refuses a
     task that tries to name both or neither:
 
     * ``source`` -- an absolute host path.  Absolute deliberately: a relative
@@ -55,6 +38,9 @@ class InputFile:
     * ``artifact_id`` -- bytes the platform has already registered.  This is how
       one run consumes what another produced without either of them knowing a
       filesystem path, and the digest is checked as the bytes are placed.
+    * ``input_id`` -- bytes uploaded to the platform before task submission.
+      This lets a remote Agent provide generated scripts or patches without
+      exposing a server-local path.
 
     ``destination`` is where the adapter will find it, relative to the attempt
     workspace.  The platform chooses the placement; the plugin never hunts for
@@ -64,6 +50,7 @@ class InputFile:
     destination: str
     source: str | None = None
     artifact_id: str | None = None
+    input_id: str | None = None
     #: A missing optional input is recorded as absent, not as an error.  A
     #: capability that can do useful work without a file says so here rather
     #: than having the caller guess whether it will be needed.
@@ -73,11 +60,12 @@ class InputFile:
         validate_relative_path(
             "input destination", self.destination, container="attempt workspace"
         )
-        if (self.source is None) == (self.artifact_id is None):
+        locations = (self.source, self.artifact_id, self.input_id)
+        if sum(location is not None for location in locations) != 1:
             raise ContractError(
-                "an input names exactly one place its bytes come from: "
-                "source (a host path) or artifact_id (bytes the platform "
-                "already holds)"
+                "an input names exactly one place its bytes come from: source "
+                "(a host path), artifact_id (a run artifact), or input_id "
+                "(an uploaded input)"
             )
         if self.source is not None:
             if not isinstance(self.source, str) or not self.source:
@@ -88,6 +76,8 @@ class InputFile:
                 )
         if self.artifact_id is not None:
             validate_identifier("input artifact_id", self.artifact_id)
+        if self.input_id is not None:
+            validate_identifier("input input_id", self.input_id)
 
     def to_dict(self) -> dict[str, Any]:
         self.validate()
@@ -95,12 +85,13 @@ class InputFile:
             "destination": self.destination,
             "source": self.source,
             "artifact_id": self.artifact_id,
+            "input_id": self.input_id,
             "required": self.required,
         }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> InputFile:
-        allowed = {"destination", "source", "artifact_id", "required"}
+        allowed = {"destination", "source", "artifact_id", "input_id", "required"}
         unknown = sorted(set(payload) - allowed)
         if unknown:
             raise ContractError(f"unknown InputFile fields: {', '.join(unknown)}")
@@ -113,16 +104,7 @@ class InputFile:
 
 @dataclass(frozen=True)
 class StagedInput:
-    """What the platform measured when it placed one input.
-
-    Produced by the platform, never submitted by a plugin or an app.  A caller
-    that could write this record could claim a digest for bytes it never read,
-    which is the whole thing digesting is supposed to prevent.
-
-    ``source`` and ``source_artifact_id`` say where the bytes came from, for a
-    reader asking later.  Exactly one is set.  Neither is part of the input's
-    *identity* -- see the manifest, which omits them on purpose.
-    """
+    """Measured bytes placed into an attempt workspace."""
 
     destination: str
     present: bool
@@ -133,15 +115,19 @@ class StagedInput:
     sha256: str | None = None
     source: str | None = None
     source_artifact_id: str | None = None
+    source_input_id: str | None = None
 
     def validate(self) -> None:
         validate_relative_path(
             "input destination", self.destination, container="attempt workspace"
         )
-        if (self.source is None) == (self.source_artifact_id is None):
+        sources = (self.source, self.source_artifact_id, self.source_input_id)
+        if sum(source is not None for source in sources) != 1:
             raise ContractError(
                 "a staged input names exactly one place its bytes came from"
             )
+        if self.source_input_id is not None:
+            validate_identifier("staged source_input_id", self.source_input_id)
         if not isinstance(self.present, bool):
             raise ContractError("input present must be a boolean")
         if not isinstance(self.size_bytes, int) or self.size_bytes < 0:
@@ -164,12 +150,13 @@ class StagedInput:
             "sha256": self.sha256,
             "source": self.source,
             "source_artifact_id": self.source_artifact_id,
+            "source_input_id": self.source_input_id,
         }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> StagedInput:
         allowed = {"destination", "present", "size_bytes", "sha256", "source",
-                   "source_artifact_id"}
+                   "source_artifact_id", "source_input_id"}
         unknown = sorted(set(payload) - allowed)
         if unknown:
             raise ContractError(f"unknown StagedInput fields: {', '.join(unknown)}")

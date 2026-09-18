@@ -203,7 +203,7 @@ class WorkflowRuntime:
         self._check_resources(task)
         if task.plugin_id is None:
             raise ValueError("this runtime executes direct plugin tasks only")
-        if (plugin_version is not None and task.plugin_version is not None
+        if (plugin_version and task.plugin_version
                 and plugin_version != task.plugin_version):
             raise ValueError(
                 "plugin_version argument conflicts with the task plugin_version"
@@ -249,22 +249,16 @@ class WorkflowRuntime:
             )
 
     def _check_inputs(self, task: TaskSpec) -> None:
-        """Refuse a task whose declared inputs cannot be honoured.
-
-        For a host path this is a ``stat``, not a digest: the point is to tell
-        the caller their request is wrong while they are still listening.  The
-        bytes are measured later, as they are copied, because that copy is what
-        the adapter will read.  The file may still vanish in between -- and then
-        the attempt fails with a recorded reason, which is the honest outcome
-        rather than a guarantee this platform cannot make.
-
-        For an artifact reference only the *row* is checked here, for the same
-        reason.  An id the platform has never registered is a malformed request
-        whether the input is required or not, so it is refused either way; an
-        id it has registered but whose bytes have gone is an integrity problem
-        and is discovered as the bytes are copied.
-        """
         for declaration in task.staged_inputs:
+            if declaration.input_id is not None:
+                try:
+                    self.store.get_uploaded_input(declaration.input_id)
+                except RuntimeStoreError as exc:
+                    raise InputStagingError(
+                        f"input references an uploaded input the platform does "
+                        f"not have: {declaration.input_id!r}"
+                    ) from exc
+                continue
             if declaration.artifact_id is not None:
                 try:
                     self.store.get_artifact(declaration.artifact_id)
@@ -284,25 +278,15 @@ class WorkflowRuntime:
     def _stage_inputs(
         self, task: TaskSpec, workspace: Path
     ) -> tuple[tuple[StagedInput, ...], dict[str, Any] | None]:
-        """Place the declared inputs in the workspace and measure what landed.
-
-        Copy, not link.  A hardlink would let an adapter corrupt the caller's
-        original *through its own input*, and a symlink would let it read
-        outside the workspace -- and there is no sandbox to stop either.  The
-        honest cost is one copy per attempt rather than one per run; it is
-        recorded here instead of being discovered when the first large design
-        arrives.
-
-        The digest is taken from the destination, not the source, for the same
-        reason ``register_artifacts`` hashes what is on disk: a hash of what was
-        *supposed* to be copied would verify the intention, not the bytes.
-        """
         if not task.staged_inputs:
             return (), None
 
         staged: list[StagedInput] = []
         for declaration in task.staged_inputs:
             destination = workspace / declaration.destination
+            if declaration.input_id is not None:
+                staged.append(self._stage_from_input(declaration, destination))
+                continue
             if declaration.artifact_id is not None:
                 staged.append(
                     self._stage_from_artifact(declaration, destination)
@@ -390,6 +374,26 @@ class WorkflowRuntime:
             size_bytes=size_bytes, sha256=digest,
             source_artifact_id=declaration.artifact_id,
         )
+
+    def _stage_from_input(
+        self, declaration: InputFile, destination: Path
+    ) -> StagedInput:
+        try:
+            uploaded = self.store.materialize_input(cast(str, declaration.input_id), destination)
+        except RuntimeStoreError as exc:
+            if declaration.required:
+                raise InputStagingError(str(exc)) from exc
+            return StagedInput(destination=declaration.destination, present=False,
+                               size_bytes=0, source_input_id=declaration.input_id)
+        digest = sha256(destination)
+        size_bytes = destination.stat().st_size
+        if digest != uploaded.sha256 or size_bytes != uploaded.size_bytes:
+            raise InputStagingError(f"uploaded input {declaration.input_id!r} does not "
+                                    f"match its record: {uploaded.sha256} ({uploaded.size_bytes}), "
+                                    f"copied {digest} ({size_bytes})")
+        return StagedInput(destination=declaration.destination, present=True,
+                           size_bytes=size_bytes, sha256=digest,
+                           source_input_id=declaration.input_id)
 
     # -- execution --------------------------------------------------------
 

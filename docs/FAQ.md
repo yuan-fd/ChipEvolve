@@ -27,7 +27,9 @@ three competing protocols. Keep `plugin_id`; do not invent a second API.
 
 ## Can an agent submit its own script or source patch?
 
-Yes. Stage it using `staged_inputs`, and select a Toolkit capability that knows
+Yes. Upload it with `POST /kernel/inputs` (or `KernelClient.upload_input`) and
+reference the returned `input_id` in `staged_inputs`; alternatively stage it
+from a server-local path. Select a Toolkit capability that knows
 how to execute the script or apply/build the patch. The kernel does not parse
 TCL, Python or patch semantics. See the
 [script and patch example](../examples/research-toolkit/README.md).

@@ -1,14 +1,4 @@
-"""One HTTP router for the kernel.
-
-Both the entry point's own routes and the kernel API's routes are registered on
-the same router, so the whole platform has exactly one request dispatcher.  The
-previous platform had three, in three different styles, and the one that grew to
-six thousand lines was the one nobody had factored out.
-
-A route is a method plus a path template.  Templates use ``{name}`` for a single
-segment; a captured segment is percent-decoded and may not contain a separator,
-so a caller cannot walk out of the path they were given.
-"""
+"""The platform's single method-and-template HTTP router."""
 
 from __future__ import annotations
 
@@ -207,9 +197,15 @@ def make_handler(router: Router):
                 raise HttpError(400, "Content-Length must be an integer") from exc
             if size < 0 or size > MAX_BODY_BYTES:
                 raise HttpError(413, f"request body exceeds {MAX_BODY_BYTES} bytes")
+            content_type = (self.headers.get("Content-Type", "")
+                            .split(";", 1)[0].strip().lower())
+            if size == 0 and content_type == "application/octet-stream":
+                return b""
             if size == 0:
                 return None
             raw = self.rfile.read(size)
+            if content_type == "application/octet-stream":
+                return raw
             try:
                 return json.loads(raw)
             except (json.JSONDecodeError, UnicodeDecodeError) as exc:

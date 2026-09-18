@@ -1,25 +1,3 @@
-"""Durable run state.
-
-The Runtime is the only writer of a run's status.  A plugin, an app, or a model
-may propose work; none of them may declare a result.  That is what makes a
-stored QoR number worth anything.
-
-Design notes carried over from v1 because they were right:
-
-* A run has stages, a stage has attempts, an attempt has artifacts and metrics.
-* Attempts are leased.  A worker that stops heartbeating loses its attempt to a
-  visible, auditable state (``lost``) instead of leaving it ``running`` forever.
-* Journal mode is DELETE, not WAL.  The state root may live on a shared
-  filesystem where SQLite's WAL coordination is invalid.
-
-Artifacts are the one thing this store keeps *outside* its own tables.  A
-registered artifact is copied into a content-addressed object store beside the
-database, named for its digest, and the row records that.  The previous design
-left the bytes in the attempt workspace, which made an artifact's lifetime the
-same as a scratch directory's and made two attempts that produced identical
-bytes store them twice.
-"""
-
 from __future__ import annotations
 
 import json
@@ -49,7 +27,7 @@ from openroad_platform_contracts import (
 
 from .digest import sha256
 
-RUNTIME_SCHEMA_VERSION = 6
+RUNTIME_SCHEMA_VERSION = 8
 
 #: Where an artifact's bytes are.  Recorded per artifact rather than assumed,
 #: because there have been two answers: artifacts registered before the object
@@ -67,11 +45,21 @@ CREATE TABLE IF NOT EXISTS runtime_inputs (
     destination TEXT NOT NULL,
     source TEXT,
     source_artifact_id TEXT,
+    source_input_id TEXT,
     present INTEGER NOT NULL CHECK(present IN (0, 1)),
     size_bytes INTEGER NOT NULL CHECK(size_bytes >= 0),
     sha256 TEXT,
     created_at TEXT NOT NULL,
     PRIMARY KEY (attempt_id, destination)
+);
+"""
+
+_UPLOADED_INPUTS_DDL = """
+CREATE TABLE IF NOT EXISTS runtime_uploaded_inputs (
+    input_id TEXT PRIMARY KEY,
+    store_key TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL CHECK(size_bytes >= 0), sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL
 );
 """
 
@@ -154,7 +142,7 @@ CREATE TABLE IF NOT EXISTS runtime_metrics (
     context_json TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
-""" + _INPUTS_DDL + """
+""" + _INPUTS_DDL + _UPLOADED_INPUTS_DDL + """
 CREATE TABLE IF NOT EXISTS runtime_events (
     event_id TEXT PRIMARY KEY,
     run_id TEXT NOT NULL,
@@ -256,14 +244,19 @@ class RunRecord:
     terminal_reason: str | None
 
 
+@dataclass(frozen=True)
+class UploadedInput:
+    input_id: str
+    size_bytes: int
+    sha256: str
+    created_at: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {name: getattr(self, name) for name in
+                ("input_id", "size_bytes", "sha256", "created_at")}
+
+
 class RuntimeStore:
-    """SQLite-backed durable run state.
-
-    Thread-safe for the worker pool this platform runs: one connection guarded
-    by a re-entrant lock, which is what v1 settled on after WAL proved invalid
-    on a shared filesystem.
-    """
-
     def __init__(self, db_path: str | Path, objects_root: str | Path | None = None):
         self.db_path = Path(db_path).expanduser()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -331,19 +324,6 @@ class RuntimeStore:
             self._migrate(stored)
 
     def _migrate(self, from_version: int) -> None:
-        """Bring an older state root forward, in place.
-
-        Refusing to open a state root one version behind is how a research
-        platform loses its run history to a routine upgrade, so older roots are
-        migrated instead of rejected.  A *newer* root is still refused: this
-        build cannot know what a later one wrote.
-
-        Each step says what it is.  A step that is purely additive can re-run the
-        idempotent DDL, which is why the first one looks like no work at all; a
-        step that is not -- a new column on an existing table, a backfill, a
-        split -- must be written out, because ``executescript`` would silently
-        do nothing for it and the version would then claim work that never ran.
-        """
         if from_version < 1:
             raise RuntimeStoreError(f"unsupported runtime schema {from_version!r}")
         if from_version < 6 and not self._has_column("runtime_runs", "idempotency_key"):
@@ -387,6 +367,14 @@ class RuntimeStore:
             self._connection.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS runtime_runs_idempotency_key "
                 "ON runtime_runs(idempotency_key) WHERE idempotency_key IS NOT NULL"
+            )
+        if from_version < 7:
+            self._connection.executescript(_UPLOADED_INPUTS_DDL)
+        if from_version < 8 and not self._has_column(
+            "runtime_inputs", "source_input_id"
+        ):
+            self._connection.execute(
+                "ALTER TABLE runtime_inputs ADD COLUMN source_input_id TEXT"
             )
         self._connection.execute(
             "UPDATE runtime_schema_meta SET value = ? WHERE key = 'schema_version'",
@@ -1058,29 +1046,49 @@ class RuntimeStore:
                 raise
         return created
 
-    # -- the object store --------------------------------------------------
+    def ingest_input(self, content: bytes) -> UploadedInput:
+        if not isinstance(content, bytes):
+            raise TypeError("uploaded input content must be bytes")
+        digest, created_at, input_id = sha256(content), _now(), _new_id("input")
+        with self._lock:
+            self._store_bytes(content, digest, len(content))
+            self._connection.execute(
+                "INSERT INTO runtime_uploaded_inputs "
+                "(input_id, store_key, size_bytes, sha256, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (input_id, digest, len(content), digest, created_at),
+            )
+        return UploadedInput(input_id, len(content), digest, created_at)
+
+    def get_uploaded_input(self, input_id: str) -> UploadedInput:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT input_id, size_bytes, sha256, created_at "
+                "FROM runtime_uploaded_inputs WHERE input_id = ?",
+                (input_id,),
+            ).fetchone()
+        if row is None:
+            raise RuntimeStoreError(f"unknown uploaded input: {input_id!r}")
+        return UploadedInput(*(row[name] for name in
+                               ("input_id", "size_bytes", "sha256", "created_at")))
+
+    def materialize_input(self, input_id: str, destination: Path) -> UploadedInput:
+        uploaded = self.get_uploaded_input(input_id)
+        source = self.object_path(uploaded.sha256)
+        if not source.is_file():
+            raise RuntimeStoreError(
+                f"uploaded input object is missing: {input_id!r}"
+            )
+        if (source.stat().st_size, sha256(source)) != (uploaded.size_bytes, uploaded.sha256):
+            raise RuntimeStoreError(f"uploaded input object does not match: {input_id!r}")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, destination)
+        return uploaded
 
     def object_path(self, digest: str) -> Path:
-        """Where the bytes with this digest live.
-
-        Two hex characters of fan-out, because a physical-design run produces
-        thousands of reports and a single flat directory is a directory listing
-        nobody wants to wait for.
-        """
         return self.objects_root / digest[:2] / digest
 
     def _store_object(self, path: Path, digest: str, size_bytes: int) -> None:
-        """Take a copy of ``path`` into the object store, once.
-
-        The name is the digest, so an object that is already there is the same
-        bytes by definition -- but its size is checked anyway, because a name
-        that is a hash cannot honestly have two sizes, and discovering that it
-        does is worth failing loudly over.
-
-        Published by rename.  A reader that found a half-written object would
-        find it under a valid name, which is the worst possible way to learn
-        that a copy was interrupted.
-        """
         target = self.object_path(digest)
         if target.is_file():
             existing = target.stat().st_size
@@ -1096,6 +1104,23 @@ class RuntimeStore:
             shutil.copyfile(path, partial)
             if partial.stat().st_size != size_bytes or sha256(partial) != digest:
                 raise RuntimeStoreError("source changed while publishing object")
+            partial.replace(target)
+        finally:
+            if partial.exists():
+                partial.unlink()
+
+    def _store_bytes(self, content: bytes, digest: str, size_bytes: int) -> None:
+        target = self.object_path(digest)
+        if target.is_file():
+            if (target.stat().st_size, sha256(target)) != (size_bytes, digest):
+                raise RuntimeStoreError(f"object {digest} does not match input")
+            return
+        target.parent.mkdir(parents=True, exist_ok=True)
+        partial = target.with_name(f"{target.name}.partial-{uuid.uuid4().hex[:8]}")
+        try:
+            partial.write_bytes(content)
+            if partial.stat().st_size != size_bytes or sha256(partial) != digest:
+                raise RuntimeStoreError("uploaded input changed while publishing")
             partial.replace(target)
         finally:
             if partial.exists():
@@ -1117,12 +1142,6 @@ class RuntimeStore:
         )
 
     def artifact_path(self, artifact_id: str) -> Path:
-        """Where an artifact's bytes are, according to its own record.
-
-        The row says, because there have been two answers and only one of them
-        is the current design.  A reader that guessed would be guessing about
-        evidence.
-        """
         with self._lock:
             row = self._connection.execute(
                 "SELECT a.storage, a.store_key, a.sha256, t.workspace "
@@ -1151,12 +1170,6 @@ class RuntimeStore:
         return path
 
     def materialize_artifact(self, artifact_id: str, destination: Path) -> Artifact:
-        """Copy an artifact's bytes to ``destination`` and say what they are.
-
-        Returns the record rather than the bytes so the caller can check what it
-        just received against what the platform measured, which is the only way
-        a check on this path means anything.
-        """
         artifact = self.get_artifact(artifact_id)
         source = self.artifact_path(artifact_id)
         if not source.is_file():
@@ -1167,8 +1180,6 @@ class RuntimeStore:
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, destination)
         return artifact
-
-    # -- inputs ------------------------------------------------------------
 
     def register_metrics(self, attempt_id: str, metrics: Iterable[Metric]) -> list[str]:
         created: list[str] = []
@@ -1233,13 +1244,6 @@ class RuntimeStore:
     def record_inputs(
         self, attempt_id: str, staged_inputs: Sequence[StagedInput]
     ) -> None:
-        """Record what the platform placed, and what it measured there.
-
-        Written by the runtime after it has copied the bytes, so a row here
-        describes a file that is really in the attempt workspace.  Nothing else
-        in the platform may write it: a caller that could would be able to claim
-        a digest for bytes it never read, which is exactly what digesting is for.
-        """
         now = _now()
         with self._lock:
             self._connection.execute("BEGIN IMMEDIATE")
@@ -1248,11 +1252,12 @@ class RuntimeStore:
                     staged.validate()
                     self._connection.execute(
                         "INSERT OR REPLACE INTO runtime_inputs (attempt_id, "
-                        "destination, source, source_artifact_id, present, "
+                        "destination, source, source_artifact_id, source_input_id, present, "
                         "size_bytes, sha256, created_at) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         (attempt_id, staged.destination, staged.source,
                          staged.source_artifact_id,
+                         staged.source_input_id,
                          1 if staged.present else 0, staged.size_bytes,
                          staged.sha256, now),
                     )
@@ -1272,13 +1277,12 @@ class RuntimeStore:
             StagedInput(
                 destination=r["destination"], source=r["source"],
                 source_artifact_id=r["source_artifact_id"],
+                source_input_id=r["source_input_id"],
                 present=bool(r["present"]), size_bytes=r["size_bytes"],
                 sha256=r["sha256"],
             )
             for r in rows
         ]
-
-    # -- events ------------------------------------------------------------
 
     def record_event(
         self, run_id: str, event_type: str, payload: Mapping[str, Any], *,
@@ -1321,12 +1325,6 @@ class RuntimeStore:
     # -- projection --------------------------------------------------------
 
     def _artifact_storages(self, attempt_id: str) -> dict[str, str]:
-        """Which place each of an attempt's artifacts lives, in one query.
-
-        A read model that issued one query per artifact would make the cost of
-        describing a run grow with the number of reports the run produced, which
-        for a physical-design flow is the wrong shape entirely.
-        """
         with self._lock:
             rows = self._connection.execute(
                 "SELECT artifact_id, storage FROM runtime_artifacts "
@@ -1336,7 +1334,6 @@ class RuntimeStore:
         return {row["artifact_id"]: row["storage"] for row in rows}
 
     def describe_run(self, run_id: str) -> dict[str, Any]:
-        """A read model for apps.  Reads only; never mutates."""
         run = self.get_run(run_id)
         stages = []
         for stage in self.list_stages(run_id):

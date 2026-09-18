@@ -9,15 +9,13 @@ from __future__ import annotations
 import json
 
 import pytest
-
 from openroad_platform_contracts import (
-    ArtifactDeclaration,
     INPUT_MANIFEST_KIND,
-    InputFile,
-    StagedInput,
+    ArtifactDeclaration,
     AttemptStatus,
     ContractError,
     Event,
+    InputFile,
     Metric,
     PluginManifest,
     PluginResult,
@@ -26,6 +24,7 @@ from openroad_platform_contracts import (
     ProgressStatus,
     RuntimeRequirements,
     RuntimeStatus,
+    StagedInput,
     TaskSpec,
     Verdict,
     VerdictStatus,
@@ -37,13 +36,13 @@ from openroad_platform_contracts import (
 
 
 def make_task(**overrides) -> TaskSpec:
-    base = dict(
-        task_id="task-1",
-        project_id="proj-1",
-        design_id="design-1",
-        plugin_id="some-capability",
-        inputs={"benchmark": "gcd"},
-    )
+    base = {
+        "task_id": "task-1",
+        "project_id": "proj-1",
+        "design_id": "design-1",
+        "plugin_id": "some-capability",
+        "inputs": {"benchmark": "gcd"},
+    }
     base.update(overrides)
     return TaskSpec(**base)
 
@@ -320,6 +319,21 @@ def test_a_task_may_declare_the_files_the_platform_must_place():
     reloaded = TaskSpec.from_dict(spec.to_dict())
     assert reloaded == spec
     assert reloaded.staged_inputs[0].required is True
+
+
+def test_a_task_may_reference_an_uploaded_input():
+    spec = make_task(staged_inputs=(
+        InputFile(input_id="input-123", destination="inputs/place.tcl"),
+    ))
+
+    assert TaskSpec.from_dict(spec.to_dict()) == spec
+
+
+def test_an_input_may_not_name_two_platform_sources():
+    with pytest.raises(ContractError, match="exactly one"):
+        InputFile(
+            input_id="input-123", artifact_id="art-123", destination="x"
+        ).validate()
 
 
 def test_a_payload_without_staged_inputs_still_loads():

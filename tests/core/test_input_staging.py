@@ -13,7 +13,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from openroad_platform_contracts import (
     INPUT_MANIFEST_FILENAME,
     INPUT_MANIFEST_KIND,
@@ -45,18 +44,18 @@ class Resolver:
 
 
 def manifest(**overrides) -> PluginManifest:
-    base = dict(
-        plugin_id="fake-capability",
-        plugin_version="1.0.0",
-        adapter_entry=(sys.executable, str(FIXTURE)),
-        capabilities=("do.thing",),
-        supported_arch=("aarch64", "x86_64", "arm64"),
-        artifact_rules=(
+    base = {
+        "plugin_id": "fake-capability",
+        "plugin_version": "1.0.0",
+        "adapter_entry": (sys.executable, str(FIXTURE)),
+        "capabilities": ("do.thing",),
+        "supported_arch": ("aarch64", "x86_64", "arm64"),
+        "artifact_rules": (
             {"kind": "report", "required": True},
             {"kind": "log", "required": False},
         ),
-        default_timeout_seconds=60,
-    )
+        "default_timeout_seconds": 60,
+    }
     base.update(overrides)
     return PluginManifest(**base)
 
@@ -141,7 +140,7 @@ def test_workspace_creation_failure_releases_the_attempt(tmp_path):
     assert result.status is RuntimeStatus.FAILED
     attempt = only_attempt(rt, run.run_id)
     assert attempt.status.value == "failed"
-    with rt.store._connection:  # noqa: SLF001 - inspect the durable reservation
+    with rt.store._connection:
         reservations = rt.store._connection.execute(
             "SELECT * FROM runtime_resource_reservations WHERE attempt_id = ?",
             (attempt.attempt_id,),
@@ -405,6 +404,27 @@ def test_an_input_can_be_an_artifact_another_run_produced(tmp_path):
     assert recorded.source is None
     assert recorded.sha256 == report.sha256
     assert recorded.size_bytes == report.size_bytes
+
+
+def test_a_remote_uploaded_input_is_staged_and_recorded(tmp_path):
+    rt = runtime(tmp_path)
+    uploaded = rt.store.ingest_input(b"set place_density 0.72\n")
+
+    run = run_to_completion(rt, task(
+        "uploaded", InputFile(
+            destination="inputs/place.tcl", input_id=uploaded.input_id,
+        ),
+    ))
+
+    attempt = only_attempt(rt, run.run_id)
+    assert (Path(attempt.workspace) / "inputs/place.tcl").read_bytes() == (
+        b"set place_density 0.72\n"
+    )
+    recorded = rt.store.list_inputs(attempt.attempt_id)[0]
+    assert recorded.source_input_id == uploaded.input_id
+    assert recorded.source is None
+    assert recorded.source_artifact_id is None
+    assert recorded.sha256 == uploaded.sha256
 
 
 def test_a_referenced_artifact_survives_the_workspace_that_made_it(tmp_path):

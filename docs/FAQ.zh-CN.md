@@ -16,7 +16,7 @@ Codex 会判断要写什么脚本，但一次实验还需要输入快照、工�
 
 ## Agent 可以提交自己生成的脚本或 patch 吗？
 
-可以。使用 `staged_inputs` 提交文件，选择一个支持执行脚本或应用 patch、编译代码的 Toolkit capability。Kernel 不解析 TCL、Python 或 patch 的语义，具体见[脚本与 patch 示例](../examples/research-toolkit/README.zh-CN.md)。
+可以。远程 Agent 可以先通过 `POST /kernel/inputs` 上传脚本或 patch，再把返回的 `input_id` 放进 `staged_inputs`；也可以使用服务器本地路径。选择一个支持执行脚本或应用 patch、编译代码的 Toolkit capability。Kernel 不解析 TCL、Python 或 patch 的语义，具体见[脚本与 patch 示例](../examples/research-toolkit/README.zh-CN.md)。
 
 只能运行可信代码。独立 workspace 不是操作系统安全沙箱。
 

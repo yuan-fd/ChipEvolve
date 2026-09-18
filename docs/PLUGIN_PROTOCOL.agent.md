@@ -250,7 +250,7 @@ One JSON object per line on stdout, prefixed with `manifest.progress_marker`.
 ```
 
 `task` fields the adapter receives: `schema_version`, `task_id`, `project_id`,
-`design_id`, `plugin_id`, `inputs`, `parameters`, `staged_inputs`, `resources`,
+`design_id`, `plugin_id`, optional `plugin_version`, `inputs`, `parameters`, `staged_inputs`, `resources`,
 `timeout_seconds`, `max_attempts`, `expected_artifacts`, `labels`. `inputs` and
 `parameters` are the plugin's own; the platform carries them and does not
 validate their shape.
@@ -258,8 +258,8 @@ validate their shape.
 ### Staged inputs (`staged_inputs`)
 
 Optional list. Each entry: `{"destination": <relative workspace path>,
-"source": <absolute host path> | "artifact_id": <id>, "required": <bool,
-default true>}`. Exactly one of `source` / `artifact_id` is given.
+"source": <absolute host path> | "artifact_id": <id> | "input_id": <id>, "required": <bool,
+default true>}`. Exactly one of `source` / `artifact_id` / `input_id` is given.
 
 The platform copies the bytes to `destination` inside the workspace **before**
 the process starts, and digests the copy. For an `artifact_id` the bytes come

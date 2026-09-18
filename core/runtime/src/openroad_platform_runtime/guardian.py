@@ -59,8 +59,6 @@ DRAIN_BATCH = 32
 #: Lines preserved from the tail once the process is gone.
 FINAL_DRAIN_BATCH = 128
 
-#: Progress is telemetry, not the execution record.  Keep only a bounded
-#: sample in memory while the raw child output is written to the log stream.
 TELEMETRY_QUEUE_SIZE = 256
 
 
@@ -155,17 +153,17 @@ class ProcessGuardian:
             )
             lines: queue.Queue[str] = queue.Queue(maxsize=TELEMETRY_QUEUE_SIZE)
             dropped_telemetry = [0]
-            log_lock = threading.Lock()
+            observer_errors: list[str] = []
             reader = threading.Thread(
                 target=self._read_output,
-                args=(process.stdout, log, log_lock, lines, dropped_telemetry),
+                args=(process.stdout, log, lines, dropped_telemetry),
                 daemon=True, name=f"output-{process.pid}",
             )
             reader.start()
 
             try:
                 while process.poll() is None:
-                    self._drain(lines, log, log_lock, on_line, DRAIN_BATCH)
+                    self._drain(lines, on_line, DRAIN_BATCH, observer_errors)
                     if cancel_requested is not None and cancel_requested():
                         cancelled = True
                         self._terminate_tree(process)
@@ -199,26 +197,18 @@ class ProcessGuardian:
                 process.wait()
 
             reader.join(timeout=1.0)
-            if self._drain(lines, log, log_lock, on_line, FINAL_DRAIN_BATCH) == FINAL_DRAIN_BATCH:
-                with log_lock:
-                    log.write("\n[guardian] telemetry truncated after termination\n")
+            if self._drain(lines, on_line, FINAL_DRAIN_BATCH, observer_errors) == FINAL_DRAIN_BATCH:
+                log.write("\n[guardian] telemetry truncated after termination\n")
             if dropped_telemetry[0]:
-                with log_lock:
-                    log.write(
-                        "\n[guardian] telemetry dropped "
-                        f"{dropped_telemetry[0]} lines; raw output is complete\n"
-                    )
+                log.write("\n[guardian] telemetry dropped "
+                          f"{dropped_telemetry[0]} lines; raw output is complete\n")
+            log.write("".join(observer_errors))
             if timed_out:
-                with log_lock:
-                    log.write(
-                        f"\n[guardian] wall-clock timeout after {timeout_seconds:.3f}s\n"
-                    )
+                log.write(f"\n[guardian] wall-clock timeout after {timeout_seconds:.3f}s\n")
             if cancelled:
-                with log_lock:
-                    log.write("\n[guardian] cancellation requested\n")
+                log.write("\n[guardian] cancellation requested\n")
             if exceeded is not None:
-                with log_lock:
-                    log.write(f"\n[guardian] resource limit exceeded: {exceeded}\n")
+                log.write(f"\n[guardian] resource limit exceeded: {exceeded}\n")
             log.flush()
 
         return ProcessOutcome(
@@ -233,21 +223,17 @@ class ProcessGuardian:
             peak_processes=peak_processes,
         )
 
-    # -- output ------------------------------------------------------------
-
     @staticmethod
     def _read_output(
         stream: TextIO | None,
         log: TextIO,
-        log_lock: threading.Lock,
         lines: queue.Queue[str],
         dropped_telemetry: list[int],
     ) -> None:
         try:
             if stream is not None:
                 for line in iter(stream.readline, ""):
-                    with log_lock:
-                        log.write(line)
+                    log.write(line)
                     try:
                         lines.put_nowait(line)
                     except queue.Full:
@@ -258,8 +244,8 @@ class ProcessGuardian:
 
     @staticmethod
     def _drain(
-        lines: queue.Queue[str], log: TextIO, log_lock: threading.Lock,
-        on_line: Callable[[str], None] | None, max_lines: int,
+        lines: queue.Queue[str], on_line: Callable[[str], None] | None,
+        max_lines: int, observer_errors: list[str],
     ) -> int:
         count = 0
         batch: list[str] = []
@@ -275,17 +261,11 @@ class ProcessGuardian:
                 try:
                     on_line(line)
                 except Exception as exc:  # noqa: BLE001
-                    # Telemetry is not authority.  A failing observer must
-                    # never be able to destroy a protected experiment, so
-                    # the failure is recorded next to the raw log and the
-                    # tool result stands on its own.
-                    with log_lock:
-                        log.write("[guardian] observer failed: "
-                                  f"{type(exc).__name__}: {exc}\n")
+                    observer_errors.append(
+                        "[guardian] observer failed: "
+                        f"{type(exc).__name__}: {exc}\n"
+                    )
         return count
-
-    # -- resource metering -------------------------------------------------
-
     def _breach(self, root_pid: int, limits: ResourceRequest) -> str | None:
         """Which declared limit the tree is past, or ``None``.
 

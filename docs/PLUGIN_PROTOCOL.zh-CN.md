@@ -116,6 +116,7 @@ Adapter 必须接受它们。request 的实际外层只有 `protocol_version`、
     "plugin_id": "my-capability",
     "inputs": {"capability": "eda.rtl_to_gds"},
     "parameters": {},
+    "plugin_version": "1.0.0",
     "staged_inputs": [],
     "resources": null,
     "timeout_seconds": 3600,
@@ -126,6 +127,8 @@ Adapter 必须接受它们。request 的实际外层只有 `protocol_version`、
 ~~~
 
 `protocol_version` 是 request 外层协议版本；`task.schema_version` 是 TaskSpec payload 版本，两者不是同一个字段。`staged_inputs` 描述平台要复制进 workspace 的文件；`resources` 是调用方申请的 CPU、内存、CPU time 或进程数边界；`timeout_seconds` 是单次运行时限；`max_attempts` 是可重试失败的 attempt 上限；`expected_artifacts` 是调用方要求成功时必须出现的 artifact kind。这些字段的详细形状见[执行计划协议](EXECUTION_PLAN_PROTOCOL.md)。
+
+`staged_inputs` 的每项必须且只能指定一个来源：`source`（服务器绝对路径）、`artifact_id`（已有运行产物）或 `input_id`（通过 `POST /kernel/inputs` 上传的文件）。当前单机 gateway 的单次上传上限为 1 MiB；上传返回的 SHA-256 会在 staging 时再次核对。
 
 Adapter 应该：
 
