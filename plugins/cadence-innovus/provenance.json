@@ -1,6 +1,6 @@
 {
   "license": "MIT",
   "source_url": "https://github.com/yuan-fd/ChipEvolve",
-  "source_commit": "5343acea0a916bd5b1542672bbd9b569566c9483",
+  "source_commit": "6d5848b4b82c7113fceb20841ae0e791d5346afc",
   "notes": "The adapter is repository code. Cadence binaries, PDKs and license services remain deployment-owned and are never redistributed."
 }
