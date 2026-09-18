@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pytest
 
-
 TOOLKITS_ROOT = Path.home() / "toolkits"
 TOOLKITS = {
     "synopsys-icc2": "synopsys-icc2.plugin.json",
@@ -19,7 +18,9 @@ TOOLKITS = {
 
 
 @pytest.mark.parametrize("toolkit,manifest_name", TOOLKITS.items())
-def test_server_toolkit_protocol_smoke(tmp_path: Path, toolkit: str, manifest_name: str):
+def test_server_toolkit_protocol_smoke(
+    tmp_path: Path, toolkit: str, manifest_name: str
+):
     directory = TOOLKITS_ROOT / toolkit
     adapter = directory / "adapter.py"
     if not adapter.is_file():
@@ -43,7 +44,14 @@ def test_server_toolkit_protocol_smoke(tmp_path: Path, toolkit: str, manifest_na
         encoding="utf-8",
     )
     completed = subprocess.run(
-        [sys.executable, str(adapter), "--request", str(request), "--result", str(result)],
+        [
+            sys.executable,
+            str(adapter),
+            "--request",
+            str(request),
+            "--result",
+            str(result),
+        ],
         check=False,
         text=True,
         capture_output=True,
@@ -82,7 +90,14 @@ def test_orfs_toolkit_preflight_protocol_smoke(tmp_path: Path):
         encoding="utf-8",
     )
     completed = subprocess.run(
-        [sys.executable, str(adapter), "--request", str(request), "--result", str(result)],
+        [
+            sys.executable,
+            str(adapter),
+            "--request",
+            str(request),
+            "--result",
+            str(result),
+        ],
         check=False,
         text=True,
         capture_output=True,
@@ -109,7 +124,10 @@ def test_primetime_diagnostic_is_not_hidden_by_zero_exit(tmp_path: Path):
         json.dumps(
             {
                 "protocol_version": 1,
-                "plugin": {"plugin_id": "synopsys-primetime", "plugin_version": "1.0.0"},
+                "plugin": {
+                    "plugin_id": "synopsys-primetime",
+                    "plugin_version": "1.0.0",
+                },
                 "task": {
                     "inputs": {
                         "capability": "preflight",
@@ -122,7 +140,14 @@ def test_primetime_diagnostic_is_not_hidden_by_zero_exit(tmp_path: Path):
         encoding="utf-8",
     )
     completed = subprocess.run(
-        [sys.executable, str(adapter), "--request", str(request), "--result", str(result)],
+        [
+            sys.executable,
+            str(adapter),
+            "--request",
+            str(request),
+            "--result",
+            str(result),
+        ],
         check=False,
         text=True,
         capture_output=True,

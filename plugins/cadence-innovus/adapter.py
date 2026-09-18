@@ -160,9 +160,7 @@ def main() -> int:
             "version_output": f"{version}\n",
             "module": module,
             "environment_keys": sorted(
-                k
-                for k in environment
-                if k in {"OA_HOME", "PATH"}
+                k for k in environment if k in {"OA_HOME", "PATH"}
             ),
         }
         (workspace / "toolchain.json").write_text(
