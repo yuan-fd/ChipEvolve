@@ -60,7 +60,10 @@ clean checkout:
 git clone <repository-url> openroad-platform-v2
 cd openroad-platform-v2
 tools/install-local.sh
-python3 -m pytest -q
+# The installer only installs platform packages. Add the test runner when it
+# is not already available in your development environment.
+.venv/bin/python -m pip install pytest
+.venv/bin/python -m pytest -q
 ```
 
 For a real ORFS run, install or clone the external ORFS Toolkit and provide its

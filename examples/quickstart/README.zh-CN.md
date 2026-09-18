@@ -10,7 +10,8 @@
 
 ~~~bash
 tools/install-local.sh
-python3 -m pytest -q \
+.venv/bin/python -m pip install pytest
+.venv/bin/python -m pytest -q \
   apps/plan_executor/test_against_kernel.py \
   -k test_agent_generated_code_is_executed_and_measured
 ~~~

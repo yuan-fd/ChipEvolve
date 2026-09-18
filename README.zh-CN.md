@@ -47,7 +47,9 @@ EDA 状态分散在 RTL、网表、DEF/GDS/ODB、报告、日志、工具数据�
 git clone <repository-url> openroad-platform-v2
 cd openroad-platform-v2
 tools/install-local.sh
-python3 -m pytest -q
+# 安装脚本只安装平台包；如果环境没有 pytest，再安装测试工具
+.venv/bin/python -m pip install pytest
+.venv/bin/python -m pytest -q
 ```
 
 真实 ORFS 运行需要另外安装 ORFS Toolkit，并提供 ORFS、OpenROAD、Yosys 和 KLayout 路径。平台仓库不会把这些 EDA 工具复制进来。操作步骤见 [`docs/AGENT_OPERATIONS.md`](docs/AGENT_OPERATIONS.md)，完整 GCD 验收见 [`docs/internal/GCD_ACCEPTANCE_2026-09-18.md`](docs/internal/GCD_ACCEPTANCE_2026-09-18.md)。
