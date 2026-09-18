@@ -665,11 +665,9 @@ class WorkflowRuntime:
         self, execution: AdapterExecution, manifest: PluginManifest,
         run: RunRecord, workspace: Path, attempt_id: str,
     ) -> tuple[tuple[dict[str, Any], ...], tuple[Metric, ...]]:
-        if execution.result.status is not RuntimeStatus.SUCCEEDED:
-            return (), ()
-        if self.protected_evaluator is None:
-            if manifest.requirements.require_protected_evaluation:
-                raise RuntimeStoreError("protected evaluator is unavailable")
+        if self.protected_evaluator is None and manifest.requirements.require_protected_evaluation:
+            raise RuntimeStoreError("protected evaluator is unavailable")
+        if self.protected_evaluator is None or execution.result.status is not RuntimeStatus.SUCCEEDED:
             return (), ()
         verdict: Verdict = self.protected_evaluator.evaluate(EvaluationRequest(
             manifest=manifest, task=run.task_spec, workspace=str(workspace),

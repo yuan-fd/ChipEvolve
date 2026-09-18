@@ -173,9 +173,8 @@ class KernelApi:
 
         try:
             idempotency_key = request.q("idempotency_key")
-            run = (self.runtime.submit_idempotent(
-                task, idempotency_key=idempotency_key
-            ) if request.q("idempotent") or idempotency_key
+            run = (self.runtime.submit_idempotent(task, idempotency_key=idempotency_key)
+                   if request.q("idempotent") or idempotency_key
                    else self.runtime.submit(task))
         except (RegistryError, InputStagingError,
                 ResourceLimitsUnsupported, ValueError) as exc:

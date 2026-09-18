@@ -341,9 +341,11 @@ def test_plan_scoped_idempotency_key_allows_reusing_an_agent_task_id(
 
     assert repeated.run_id == first.run_id
     assert second_plan.run_id != first.run_id
-    assert store.find_run_by_idempotency_key(
-        "plan:one:step:run"
-    ).run_id == first.run_id
+    row = store._connection.execute(
+        "SELECT run_id FROM runtime_runs WHERE idempotency_key = ?",
+        ("plan:one:step:run",),
+    ).fetchone()
+    assert row["run_id"] == first.run_id
 
 
 def test_unknown_run_is_an_error_not_an_empty_result(store: RuntimeStore):

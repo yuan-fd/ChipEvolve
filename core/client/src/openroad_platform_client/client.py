@@ -148,19 +148,11 @@ class KernelClient:
     def submit(self, task: Mapping[str, Any], *,
                idempotent: bool = False,
                idempotency_key: str | None = None) -> dict[str, Any]:
-        """Submit a task.
-
-        ``idempotent`` makes a repeated submission of the same immutable task
-        return the existing run instead of creating a second one.  An
-        ``idempotency_key`` scopes that guarantee independently of the Agent's
-        task id, which lets two plans submit the same task id safely.
-        """
+        """Submit a task, optionally deduplicated by task id or stable key."""
         return self._call("POST", "/kernel/runs",
                           payload={"task": dict(task)},
-                          query={
-                              "idempotent": "1" if idempotent else None,
-                              "idempotency_key": idempotency_key,
-                          })
+                          query={"idempotent": "1" if idempotent else None,
+                                 "idempotency_key": idempotency_key})
 
     def runs(self, *, project_id: str | None = None, design_id: str | None = None,
              plugin_id: str | None = None, status: str | None = None,

@@ -347,29 +347,14 @@ class RuntimeStore:
         if from_version < 1:
             raise RuntimeStoreError(f"unsupported runtime schema {from_version!r}")
         if from_version < 2:
-            # 1 -> 2: runtime_inputs.  Additive, so the DDL is the migration.
             self._connection.executescript(_DDL)
         if from_version < 3:
-            # 2 -> 3: where an artifact's bytes live.  Not additive.  Every row
-            # that exists already has its bytes in its attempt workspace and no
-            # object beside the database, so the column arrives carrying that
-            # fact rather than a default that would claim otherwise.
-            #
-            # Checked rather than assumed, because DDL commits as it goes: a
-            # crash between this statement and the version update below would
-            # leave a root that is half-migrated and still labelled 2, and
-            # reopening it must not die on a column that is already there.
             if not self._has_column("runtime_artifacts", "storage"):
                 self._connection.execute(
                     "ALTER TABLE runtime_artifacts ADD COLUMN storage TEXT NOT "
                     f"NULL DEFAULT '{STORAGE_WORKSPACE}'"
                 )
             if not self._has_column("runtime_inputs", "source_artifact_id"):
-                # Rebuilt rather than altered: an input's bytes may now come
-                # from the object store, so ``source`` has to stop being NOT
-                # NULL, and SQLite cannot relax a constraint in place.  This is
-                # the case the docstring above warns about -- a step that is not
-                # additive, and that the idempotent DDL would silently skip.
                 self._connection.executescript(
                     "ALTER TABLE runtime_inputs RENAME TO runtime_inputs_v2;"
                     + _INPUTS_DDL
@@ -381,9 +366,6 @@ class RuntimeStore:
                     "DROP TABLE runtime_inputs_v2;"
                 )
         if from_version < 4:
-            # 3 -> 4: the resource reservations, and what each attempt actually
-            # used.  Additive except for the three attempt columns, which are
-            # added here with the guard because DDL commits as it goes.
             self._connection.executescript(_DDL)
             for column, kind in (("cpu_seconds", "REAL"),
                                  ("peak_memory_bytes", "INTEGER"),
@@ -393,9 +375,6 @@ class RuntimeStore:
                         f"ALTER TABLE runtime_attempts ADD COLUMN {column} {kind}"
                     )
         if from_version < 5 and not self._has_column("runtime_stage_runs", "resumable"):
-            # 4 -> 5: whether a stage's capability can continue in a workspace it
-            # was already given.  Existing stages say no, which is the safe
-            # answer: resuming something that cannot resume restarts it.
             self._connection.execute(
                 "ALTER TABLE runtime_stage_runs ADD COLUMN resumable INTEGER "
                 "NOT NULL DEFAULT 0"
@@ -407,8 +386,7 @@ class RuntimeStore:
                 )
             self._connection.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS runtime_runs_idempotency_key "
-                "ON runtime_runs(idempotency_key) "
-                "WHERE idempotency_key IS NOT NULL"
+                "ON runtime_runs(idempotency_key) WHERE idempotency_key IS NOT NULL"
             )
         self._connection.execute(
             "UPDATE runtime_schema_meta SET value = ? WHERE key = 'schema_version'",
@@ -454,11 +432,14 @@ class RuntimeStore:
             try:
                 # Lookup and creation share the write transaction so requests
                 # on separate connections cannot both create the same task.
-                existing = None
                 if idempotency_key is not None:
-                    existing = self.find_run_by_idempotency_key(idempotency_key)
-                elif idempotent:
-                    existing = self.find_run_by_task_id(task.task_id)
+                    row = self._connection.execute(
+                        "SELECT * FROM runtime_runs WHERE idempotency_key = ?",
+                        (idempotency_key,),
+                    ).fetchone()
+                    existing = self._run_from_row(row) if row else None
+                else:
+                    existing = self.find_run_by_task_id(task.task_id) if idempotent else None
                 if existing is not None:
                     if existing.task_spec.to_dict() != task.to_dict():
                         raise RuntimeStoreError(
@@ -474,9 +455,8 @@ class RuntimeStore:
                     self._connection.execute("COMMIT")
                     return existing
                 self._connection.execute(
-                    "INSERT INTO runtime_runs (run_id, task_id, idempotency_key, "
-                    "status, task_spec_json, created_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO runtime_runs (run_id, task_id, idempotency_key, status, "
+                    "task_spec_json, created_at) VALUES (?, ?, ?, ?, ?, ?)",
                     (run_id, task.task_id, idempotency_key,
                      RuntimeStatus.QUEUED.value,
                      json.dumps(task.to_dict(), sort_keys=True), now),
@@ -500,14 +480,6 @@ class RuntimeStore:
             row = self._connection.execute(
                 "SELECT * FROM runtime_runs WHERE task_id = ? ORDER BY created_at LIMIT 1",
                 (task_id,),
-            ).fetchone()
-        return self._run_from_row(row) if row else None
-
-    def find_run_by_idempotency_key(self, idempotency_key: str) -> RunRecord | None:
-        with self._lock:
-            row = self._connection.execute(
-                "SELECT * FROM runtime_runs WHERE idempotency_key = ?",
-                (idempotency_key,),
             ).fetchone()
         return self._run_from_row(row) if row else None
 
