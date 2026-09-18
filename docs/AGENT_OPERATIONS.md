@@ -5,9 +5,11 @@ provisioned EDA server.
 
 ## Operating rule
 
-Decide the experiment, express it as a plan, submit it, and read the recorded
-evidence. Do not invoke EDA binaries directly, invent workspaces, copy outputs
-by hand, or retry by overwriting a previous run. Every step in a plan creates a
+Decide the experiment, choose or compose Toolkit capabilities, express the
+experiment as a plan, submit it, and read the recorded evidence. An Agent may
+provide parameters, scripts, build inputs, or patches. Do not invoke EDA
+binaries outside the execution foundation, invent workspaces, copy outputs by
+hand, or retry by overwriting a previous run. Every step in a plan creates a
 normal immutable task and every attempt keeps its own evidence.
 
 ## Bootstrap a clean server

@@ -1,12 +1,16 @@
 # OpenROAD Platform v2
 
-A domain-neutral execution base for Agentic EDA. Agents decide what to run;
-this platform owns durable runs, attempt workspaces, resource reservations,
-process lifecycle, retries, logs, artifacts, metrics and provenance.
+A domain-neutral execution base for Agentic EDA. Agents decide what to run,
+which Toolkit capability to use, which parameters to explore, and whether to
+submit scripts or patches; this platform owns durable runs, attempt workspaces,
+resource reservations, process lifecycle, retries, logs, artifacts, metrics and
+provenance.
 
 The kernel contains no OpenROAD or ORFS logic. EDA integrations are external
-plugins selected by `plugin_id`. Ordered task lists are owned by the independent
-`plan_executor` application and use the kernel's normal task API.
+external Toolkit packages selected by the compatible `plugin_id` field. Ordered
+task lists are agent-authored and owned by the independent `plan_executor`
+application; the application uses the kernel's normal task API and does not
+invent an EDA flow.
 
 ## Fresh-server quick start
 
@@ -39,8 +43,9 @@ The verifier waits for a terminal result and prints the plan, child run,
 artifact hashes, environment snapshot, metrics, resources and a bounded log
 excerpt as JSON. Exit status is zero only when `execution_valid` is true.
 
-Agent operators should read [Agent operations](docs/AGENT_OPERATIONS.md) and
-the [execution-plan protocol](docs/EXECUTION_PLAN_PROTOCOL.md). Plugin authors
+Agent operators should read [Agent operations](docs/AGENT_OPERATIONS.md),
+[Agent execution modes](docs/AGENT_EXECUTION_MODES.md), and
+[the Toolkit architecture](docs/TOOLKIT_ARCHITECTURE.md). Plugin authors
 should use [the plugin protocol](docs/PLUGIN_PROTOCOL.agent.md).
 
 ## Repository boundary

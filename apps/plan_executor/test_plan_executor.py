@@ -98,6 +98,36 @@ def test_a_plan_runs_in_order_and_binds_a_predecessor_artifact(tmp_path: Path):
     assert store.get(plan_id)["status"] == "succeeded"
 
 
+def test_plan_preserves_agent_capability_script_and_patch_inputs(tmp_path: Path):
+    script = tmp_path / "place.tcl"
+    patch = tmp_path / "candidate.patch"
+    script.write_text("set place_density 0.72\n", encoding="utf-8")
+    patch.write_text("diff --git a/src/heuristic.cc b/src/heuristic.cc\n",
+                     encoding="utf-8")
+    payload = task("agent-experiment")
+    payload["inputs"] = {
+        "capability": "script_execution",
+        "script_path": "inputs/place.tcl",
+        "patch_path": "inputs/candidate.patch",
+    }
+    payload["parameters"] = {"density": 0.72, "strategy": "timing_driven"}
+    payload["staged_inputs"] = [
+        {"source": str(script), "destination": "inputs/place.tcl"},
+        {"source": str(patch), "destination": "inputs/candidate.patch"},
+    ]
+    store = PlanStore(tmp_path / "plans.sqlite")
+    kernel = FakeKernel()
+    executor = PlanExecutor(store, kernel)
+    store.create({
+        "plan_id": "agent-authored-experiment",
+        "steps": [{"step_id": "experiment", "task": payload}],
+    })
+
+    executor.cycle()
+
+    assert kernel.submitted == [payload]
+
+
 def test_a_failed_step_stops_the_plan_and_names_the_failure_source(tmp_path: Path):
     store = PlanStore(tmp_path / "plans.sqlite")
     kernel = FakeKernel()

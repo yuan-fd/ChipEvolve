@@ -1,8 +1,10 @@
 # Execution plan protocol
 
-The plan service accepts a small ordered task list. It is deliberately serial:
-each step starts only after the previous step succeeds. This is enough for the
-current Agent-to-EDA contract and avoids introducing a second workflow engine.
+The plan service accepts a small ordered task list authored by the Agent. It is
+deliberately serial: each submitted step starts only after the previous step
+succeeds. The service executes the Agent's plan; it does not choose an EDA flow,
+interpret capability parameters, or prevent a step from carrying an
+Agent-generated script or patch.
 
 ## Request
 
@@ -61,7 +63,9 @@ so the kernel copies and measures it; the plan service never copies files.
 
 The nested `task` is the normal immutable TaskSpec. The plan service does not
 reinterpret it. Resource admission, attempt retries, workspace creation,
-process control, artifact hashing and evidence remain kernel-owned.
+process control, artifact hashing and evidence remain kernel-owned. The
+`plugin_id` identifies the external Toolkit package for compatibility; its
+capabilities and domain payload remain Toolkit-owned.
 
 ## Response and states
 

@@ -1,8 +1,9 @@
 # AgenticEDA Plugin Protocol v1alpha1
 
-This document specifies how a capability is attached to an AgenticEDA platform:
-what a plugin must provide, what the platform does with it, and what the platform
-guarantees in return. It is the wire contract, not a library. A plugin written in
+This document specifies how a Toolkit capability is attached to an AgenticEDA
+platform: what a plugin package must provide, what the platform does with it,
+and what the platform guarantees in return. It is the wire contract, not a
+library. A plugin written in
 any language, running in any environment, satisfies it by reading and writing
 files and by exiting with a code.
 
@@ -16,7 +17,8 @@ may change, and when they do the version changes with them.
 
 ## 1. What a plugin is
 
-A plugin is a **capability**: a program that performs one kind of work and reports
+A plugin package hosts one or more Toolkit capabilities: programs that perform
+work and report
 what it produced. It is not a class, not a package, and not an extension of the
 platform's code. The platform starts it as a separate process and communicates
 with it through files.
