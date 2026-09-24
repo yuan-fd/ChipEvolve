@@ -145,7 +145,10 @@ def build_router(config: GatewayConfig, kernel: Any | None = None) -> Router:
                 [(key, value) for key, values in request.query.items()
                  for value in values]
             )
-        return _forward(app, path, method=request.method, body=request.body)
+        return _forward(
+            app, path, method=request.method, body=request.body,
+            authorization=request.header("Authorization"),
+        )
 
     router.get("/health", health)
     router.get("/", navigation)
@@ -159,10 +162,12 @@ def build_router(config: GatewayConfig, kernel: Any | None = None) -> Router:
 
 
 def _forward(app: AppRegistration, path: str, *, method: str,
-             body: Any = None) -> Response:
+             body: Any = None, authorization: str | None = None) -> Response:
     url = app.base_url.rstrip("/") + path
     data = None
     headers = {"Accept": "application/json"}
+    if authorization:
+        headers["Authorization"] = authorization
     if body is not None:
         data = json.dumps(body).encode("utf-8")
         headers["Content-Type"] = "application/json"

@@ -1,0 +1,61 @@
+name: quality
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the local packages
+        run: tools/install-local.sh
+      - name: Install quality tooling
+        run: .venv/bin/python -m pip install pytest mypy ruff black
+      - name: Run the test suite
+        run: .venv/bin/python -m pytest -q
+      - name: Run architectural guardrails
+        run: .venv/bin/python -m pytest -q guardrails
+      - name: Enforce the change budget
+        run: |
+          .venv/bin/python - <<'PY'
+          import subprocess
+          from pathlib import Path
+          import sys
+
+          from guardrails import rules
+
+          changed = subprocess.check_output(
+              ["git", "diff", "--name-only", "--diff-filter=ACMRTUXB", "HEAD^", "HEAD"],
+              text=True,
+          ).splitlines()
+          production = [
+              path for path in changed
+              if Path(path).parts and Path(path).parts[0]
+              in {"contracts", "core", "gateway", "apps", "plugins"}
+          ]
+          violations = rules.change_budget_violations(Path.cwd(), production)
+          if violations:
+              for violation in violations:
+                  print(violation)
+              sys.exit(1)
+          PY
+      - name: Type-check the platform
+        run: .venv/bin/python -m mypy --exclude '(^|/)smoke\.py$' contracts/src core gateway/src apps
+      - name: Check changed Python formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=$(git diff --name-only --diff-filter=ACMRTUXB HEAD^ HEAD -- '*.py' || true)
+          if [[ -n "$files" ]]; then
+            .venv/bin/python -m ruff check $files
+            .venv/bin/python -m black --check $files
+          fi
+      - name: Check whitespace and merge markers
+        run: git diff --check

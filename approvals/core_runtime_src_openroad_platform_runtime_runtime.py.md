@@ -110,3 +110,35 @@ that section.
 stage, a resuming attempt reuses the workspace it already had, and the single
 reservation calculation moved onto `RuntimeConfig`.  The reason is in
 `approvals/core_total_loc.md`.
+# 2026-09-23: effective resource, input identity and root enforcement (865 -> 931)
+
+Runtime enforcement now passes the same effective defaulted resource request
+used for admission and can reject host inputs outside configured roots. These
+are boundary checks required for shared service deployments. The input identity
+digest also freezes the bytes behind each run's design baseline. Ceiling: 931 lines.
+
+# 2026-09-24: preserve CPU-time and process-count limits (931 -> 933)
+
+The effective defaulted resource request now retains the caller's CPU-time and
+process-count bounds while supplying defaults only for admission resources.
+Without this, those limits disappeared before execution and were accepted as
+if they were enforced.
+
+# 2026-09-23: verified artifact byte chunks (860 -> 865)
+
+Five additional lines expose bounded, hash-checked bytes from the existing
+artifact excerpt path. EDA design results include binary files that cannot be
+recovered from lossy text excerpts. Ceiling: 865 lines.
+
+# 2026-09-24: retain failure execution evidence (933 -> 977)
+
+The runtime now captures platform-owned request, result, log, input-manifest
+and protocol-receipt files when an attempt fails. Existing registrations are
+deduplicated by store key, and any inability to preserve evidence is attached
+to the recorded failure instead of being silently discarded. This gives
+operators a verifiable failure scene while keeping domain interpretation out
+of the kernel.
+
+The export implementation lives in a separate runtime bundle module, keeping
+the lifecycle runtime focused on execution while exposing a single local ZIP
+artifact through the gateway.

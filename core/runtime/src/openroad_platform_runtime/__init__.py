@@ -18,6 +18,7 @@ from .adapter import (
     validate_artifact_declarations,
 )
 from .artifact_inventory import ArtifactInventory
+from .bundle import export_run_bundle
 from .digest import sha256
 from .guardian import ProcessGuardian, ProcessOutcome
 from .log_query import LogQuery
@@ -41,6 +42,8 @@ from .store import (
     UploadedInput,
 )
 from .worker import CycleReport, RuntimeWorker
+from .worker_presence import queue as queue_health
+from .worker_presence import snapshot as worker_health
 
 __all__ = (
     "LOG_FILENAME", "RECEIPT_ARTIFACT_KIND", "REQUEST_FILENAME", "RESULT_FILENAME",
@@ -49,6 +52,6 @@ __all__ = (
     "ManifestResolver", "ProcessAdapter", "ProcessGuardian", "ProcessOutcome",
     "ProgressObserver", "ResourceLimitsUnsupported", "ResourceQuery", "RunRecord",
     "RuntimeConfig", "RuntimeStore", "RuntimeStoreError", "RuntimeWorker", "StageRun",
-    "UploadedInput",
-    "WorkflowRuntime", "protocol_failure", "sha256", "validate_artifact_declarations",
+    "UploadedInput", "WorkflowRuntime", "export_run_bundle", "protocol_failure",
+    "queue_health", "sha256", "validate_artifact_declarations", "worker_health",
 )

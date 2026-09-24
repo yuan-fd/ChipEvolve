@@ -19,11 +19,11 @@ Two things this layer is for:
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Sequence
+from typing import Any
 
 from openroad_platform_contracts import RuntimeStatus
-
 from openroad_platform_runtime import RuntimeStore
 
 #: How many runs a list query returns when the caller does not say.
@@ -72,6 +72,9 @@ class RunSummary:
     status: str
     project_id: str
     design_id: str
+    design_revision_id: str | None
+    experiment_id: str | None
+    input_manifest_sha256: str | None
     plugin_id: str | None
     created_at: str
     started_at: str | None
@@ -82,7 +85,7 @@ class RunSummary:
     metrics: int
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "run_id": self.run_id, "task_id": self.task_id,
             "status": self.status, "project_id": self.project_id,
             "design_id": self.design_id, "plugin_id": self.plugin_id,
@@ -91,6 +94,11 @@ class RunSummary:
             "counts": {"attempts": self.attempts, "artifacts": self.artifacts,
                        "metrics": self.metrics},
         }
+        for name in ("design_revision_id", "experiment_id", "input_manifest_sha256"):
+            value = getattr(self, name)
+            if value is not None:
+                result[name] = value
+        return result
 
 
 @dataclass
@@ -125,7 +133,8 @@ class EvidenceIndex:
     def runs(
         self, *, project_id: str | None = None, design_id: str | None = None,
         plugin_id: str | None = None, status: str | None = None,
-        limit: int = DEFAULT_RUN_LIMIT,
+        owner_run_ids: set[str] | None = None,
+        limit: int = DEFAULT_RUN_LIMIT, offset: int = 0,
     ) -> list[RunSummary]:
         """Summaries, newest first.
 
@@ -135,17 +144,22 @@ class EvidenceIndex:
         """
         if not 1 <= limit <= MAX_RUN_LIMIT:
             raise ValueError(f"limit must be between 1 and {MAX_RUN_LIMIT}")
+        if offset < 0:
+            raise ValueError("offset must not be negative")
         wanted = RuntimeStatus(status) if status else None
         if status and wanted is None:  # pragma: no cover - RuntimeStatus is total
             raise ValueError(f"unknown status {status!r}")
 
-        with self.store._lock:  # noqa: SLF001 - the store is this module's subject
-            rows = self.store._connection.execute(  # noqa: SLF001
+        with self.store._lock:
+            rows = self.store._connection.execute(
                 "SELECT run_id FROM runtime_runs ORDER BY created_at DESC"
             ).fetchall()
 
         summaries: list[RunSummary] = []
+        matched = 0
         for row in rows:
+            if owner_run_ids is not None and row["run_id"] not in owner_run_ids:
+                continue
             run = self.store.get_run(row["run_id"])
             if project_id and run.task_spec.project_id != project_id:
                 continue
@@ -154,6 +168,9 @@ class EvidenceIndex:
             if plugin_id and run.task_spec.plugin_id != plugin_id:
                 continue
             if wanted is not None and run.status is not wanted:
+                continue
+            if matched < offset:
+                matched += 1
                 continue
             summaries.append(self._summary(run))
             if len(summaries) >= limit:
@@ -171,6 +188,9 @@ class EvidenceIndex:
             run_id=run.run_id, task_id=run.task_id, status=run.status.value,
             project_id=run.task_spec.project_id,
             design_id=run.task_spec.design_id,
+            design_revision_id=run.task_spec.design_revision_id,
+            experiment_id=run.task_spec.experiment_id,
+            input_manifest_sha256=run.task_spec.input_manifest_sha256,
             plugin_id=run.task_spec.plugin_id,
             created_at=run.created_at, started_at=run.started_at,
             ended_at=run.ended_at, terminal_reason=run.terminal_reason,

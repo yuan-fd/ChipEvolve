@@ -37,6 +37,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--capacity-cpu-cores", type=int)
     parser.add_argument("--capacity-memory-bytes", type=int)
     parser.add_argument("--platform-fraction", type=float, default=0.60)
+    parser.add_argument("--input-root", action="append", default=[])
     parser.add_argument("--once", action="store_true",
                         help="run one cycle and exit; used by tests and cron")
     parser.add_argument("--quiet", action="store_true")
@@ -51,7 +52,8 @@ def main(argv: list[str] | None = None) -> int:
                            args.admissions_root,
                            capacity_cpu_cores=args.capacity_cpu_cores,
                            capacity_memory_bytes=args.capacity_memory_bytes,
-                           platform_fraction=args.platform_fraction)
+                           platform_fraction=args.platform_fraction,
+                           input_roots=tuple(args.input_root))
     parts = build_kernel_parts(paths, worker_id=DEFAULT_WORKER_ID)
     worker = RuntimeWorker(
         parts.store, parts.runtime,

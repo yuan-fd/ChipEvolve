@@ -8,6 +8,7 @@ algorithm" safe to say.
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -80,6 +81,16 @@ def test_a_successful_run_yields_hashed_artifacts(adapter, tmp_path):
         (tmp_path / "report.json").read_bytes()
     ).hexdigest()
     assert report["size_bytes"] > 0
+
+
+def test_adapter_preserves_artifact_classification(adapter, tmp_path):
+    execution = run(adapter, tmp_path, "ok")
+    result = replace(execution.result, artifacts=({
+        "kind": "report", "path": "report.json",
+        "metadata": {"category": "report", "format": "json"},
+    },))
+    artifacts = adapter._validate_artifacts(tmp_path, manifest(), task("ok"), result)
+    assert artifacts[0]["metadata"] == {"category": "report", "format": "json"}
 
 
 def test_the_request_file_carries_the_plugin_identity_and_task(adapter, tmp_path):
@@ -161,7 +172,7 @@ def test_an_artifact_path_may_not_escape_the_workspace(adapter, tmp_path):
 def test_a_declared_but_absent_artifact_is_refused(adapter, tmp_path):
     execution = run(adapter, tmp_path, "missing_artifact")
     assert execution.result.status.value == "failed"
-    assert "missing or empty" in execution.result.failure["message"]
+    assert "artifact is missing" in execution.result.failure["message"]
 
 
 def test_a_kind_outside_the_manifest_allowlist_is_refused(adapter, tmp_path):

@@ -45,13 +45,15 @@ class KernelPaths:
     capacity_cpu_cores: int | None = None
     capacity_memory_bytes: int | None = None
     platform_fraction: float = 0.60
+    input_roots: tuple[Path, ...] = ()
 
     @classmethod
     def of(cls, state_root: str | Path, plugins_root: str | Path,
            admissions_root: str | Path | None = None,
            capacity_cpu_cores: int | None = None,
            capacity_memory_bytes: int | None = None,
-           platform_fraction: float = 0.60) -> KernelPaths:
+           platform_fraction: float = 0.60,
+           input_roots: tuple[str | Path, ...] = ()) -> KernelPaths:
         state = Path(state_root).expanduser().resolve()
         return cls(
             state_root=state,
@@ -63,6 +65,7 @@ class KernelPaths:
             capacity_cpu_cores=capacity_cpu_cores,
             capacity_memory_bytes=capacity_memory_bytes,
             platform_fraction=platform_fraction,
+            input_roots=tuple(Path(item).expanduser().resolve() for item in input_roots),
         )
 
 
@@ -117,6 +120,7 @@ def build_kernel_parts(
             capacity_cpu_cores=paths.capacity_cpu_cores,
             capacity_memory_bytes=paths.capacity_memory_bytes,
             platform_fraction=paths.platform_fraction,
+            allowed_input_roots=paths.input_roots,
         ),
         protected_evaluator=evaluator,
     )

@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=59.4"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openroad-app-query_agent"
+version = "0.1.0"
+description = "Query Agent"
+requires-python = ">=3.9"
+dependencies = [
+  "openroad-platform-client",
+]
+
+[project.scripts]
+openroad-app-query_agent = "openroad_app_query_agent.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["openroad_app_query_agent*"]

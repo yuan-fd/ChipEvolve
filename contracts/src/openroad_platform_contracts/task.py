@@ -24,6 +24,7 @@ from .version import (
     primitive,
     validate_identifier,
     validate_mapping,
+    validate_sha256,
     validate_version,
 )
 
@@ -46,6 +47,12 @@ class TaskSpec:
     task_id: str
     project_id: str
     design_id: str
+    #: Optional immutable design and experiment references supplied by the
+    #: Agent. The foundation stores them without interpreting domain meaning.
+    design_revision_id: str | None = None
+    experiment_id: str | None = None
+    #: Filled by the foundation from the bytes actually staged for this run.
+    input_manifest_sha256: str | None = None
     plugin_id: str | None = None
     #: Optional pin for a registered Toolkit release.  ``None`` preserves the
     #: existing resolution rule: a registry with several versions refuses the
@@ -79,6 +86,10 @@ class TaskSpec:
         validate_version(self.schema_version)
         for name in ("task_id", "project_id", "design_id"):
             validate_identifier(name, getattr(self, name))
+        validate_identifier("design_revision_id", self.design_revision_id, required=False)
+        validate_identifier("experiment_id", self.experiment_id, required=False)
+        validate_sha256("input_manifest_sha256", self.input_manifest_sha256,
+                        required=False)
         if self.plugin_id is None:
             raise ContractError("TaskSpec must name the plugin it runs")
         validate_identifier("plugin_id", self.plugin_id, required=False)

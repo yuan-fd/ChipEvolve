@@ -127,6 +127,19 @@ lives in one named constant used by both the DDL and the rebuild, because two
 copies of a shape eventually disagree and the one that disagreed would be the
 migration.
 
+# 2026-09-23: process fencing and worker schema (1397 -> 1477)
+
+The runtime store records process identity, performs conditional lease recovery,
+and migrates durable worker presence state. The additions prevent duplicate
+execution after a stale lease and provide health data for operators. Ceiling:
+1477 lines.
+
+# 2026-09-24: generated local bundle custody (1477 -> 1509)
+
+The store can register generated ZIP bytes as ordinary content-addressed
+artifacts. This lets the local run exporter package state and evidence without
+creating a second storage path or asking the Query-Agent to open the database.
+
 ## Reconciled ceiling
 
 This key's number was tightened to the tree as reconciled in

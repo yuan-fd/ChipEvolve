@@ -29,6 +29,12 @@
       "base_url": "http://127.0.0.1:8840",
       "title": "Execution Plan Service",
       "description": "Run an ordered task list and bind artifacts between steps."
+    },
+    {
+      "name": "query_agent",
+      "base_url": "http://127.0.0.1:8850",
+      "title": "Query Agent",
+      "description": "Find runs and original evidence with sourced reports."
     }
   ]
 }

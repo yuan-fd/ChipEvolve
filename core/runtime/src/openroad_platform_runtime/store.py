@@ -26,8 +26,9 @@ from openroad_platform_contracts import (
 )
 
 from .digest import sha256
+from .process_fence import fence_expired_process
 
-RUNTIME_SCHEMA_VERSION = 8
+RUNTIME_SCHEMA_VERSION = 10
 
 #: Where an artifact's bytes are.  Recorded per artifact rather than assumed,
 #: because there have been two answers: artifacts registered before the object
@@ -104,6 +105,9 @@ CREATE TABLE IF NOT EXISTS runtime_attempts (
     worker_id TEXT NOT NULL,
     lease_expires_at TEXT,
     heartbeat_at TEXT,
+    process_id INTEGER,
+    process_group_id INTEGER,
+    process_start_ticks INTEGER,
     started_at TEXT NOT NULL,
     ended_at TEXT,
     exit_code INTEGER,
@@ -157,6 +161,13 @@ CREATE INDEX IF NOT EXISTS runtime_events_run ON runtime_events(run_id, occurred
 CREATE INDEX IF NOT EXISTS runtime_metrics_attempt ON runtime_metrics(attempt_id);
 CREATE UNIQUE INDEX IF NOT EXISTS runtime_runs_idempotency_key
     ON runtime_runs(idempotency_key) WHERE idempotency_key IS NOT NULL;
+CREATE TABLE IF NOT EXISTS runtime_workers (
+    worker_id TEXT PRIMARY KEY,
+    pid INTEGER NOT NULL,
+    last_seen_at REAL NOT NULL,
+    current_attempt_id TEXT,
+    state TEXT NOT NULL
+);
 """
 
 
@@ -225,6 +236,9 @@ class Attempt:
     status: AttemptStatus
     workspace: str
     worker_id: str
+    process_id: int | None = None
+    process_group_id: int | None = None
+    process_start_ticks: int | None = None
     #: The adapter's own report of why it failed, as it was written down.  It is
     #: carried here because the platform requires adapters to report it and then
     #: has to be able to show it: "the run failed" without "because the toolchain
@@ -376,6 +390,19 @@ class RuntimeStore:
             self._connection.execute(
                 "ALTER TABLE runtime_inputs ADD COLUMN source_input_id TEXT"
             )
+        if from_version < 9:
+            for column in ("process_id", "process_group_id", "process_start_ticks"):
+                if not self._has_column("runtime_attempts", column):
+                    self._connection.execute(
+                        f"ALTER TABLE runtime_attempts ADD COLUMN {column} INTEGER"
+                    )
+        if from_version < 10:
+            self._connection.executescript(
+                "CREATE TABLE IF NOT EXISTS runtime_workers ("
+                "worker_id TEXT PRIMARY KEY, pid INTEGER NOT NULL, "
+                "last_seen_at REAL NOT NULL, current_attempt_id TEXT, "
+                "state TEXT NOT NULL);"
+            )
         self._connection.execute(
             "UPDATE runtime_schema_meta SET value = ? WHERE key = 'schema_version'",
             (str(RUNTIME_SCHEMA_VERSION),),
@@ -522,6 +549,9 @@ class RuntimeStore:
                 attempt_number=r["attempt_number"],
                 status=AttemptStatus(r["status"]), workspace=r["workspace"],
                 worker_id=r["worker_id"],
+                process_id=r["process_id"],
+                process_group_id=r["process_group_id"],
+                process_start_ticks=r["process_start_ticks"],
                 # A malformed or absent failure record is loaded as absent
                 # rather than crashing the read model: the run is still real, and
                 # a reader asking why it failed should not be told "the store is
@@ -699,12 +729,37 @@ class RuntimeStore:
                 raise InvalidTransition(
                     f"cannot heartbeat a {row['status']} attempt"
                 )
-            self._connection.execute(
+            updated = self._connection.execute(
                 "UPDATE runtime_attempts SET heartbeat_at = ?, lease_expires_at = ? "
-                "WHERE attempt_id = ?",
+                "WHERE attempt_id = ? AND worker_id = ? AND status = 'running'",
                 (now.isoformat(),
-                 (now + timedelta(seconds=lease_seconds)).isoformat(), attempt_id),
+                 (now + timedelta(seconds=lease_seconds)).isoformat(),
+                 attempt_id, worker_id),
             )
+            if updated.rowcount != 1:
+                raise InvalidTransition(
+                    f"attempt {attempt_id!r} was fenced while heartbeating"
+                )
+
+    def attach_process(
+        self, attempt_id: str, *, worker_id: str, process_id: int,
+        process_group_id: int, process_start_ticks: int | None,
+    ) -> None:
+        """Record the exact process group owned by a running attempt."""
+        if process_id <= 0 or process_group_id <= 0:
+            raise RuntimeStoreError("process identifiers must be positive")
+        with self._lock:
+            updated = self._connection.execute(
+                "UPDATE runtime_attempts SET process_id = ?, process_group_id = ?, "
+                "process_start_ticks = ? WHERE attempt_id = ? AND worker_id = ? "
+                "AND status = 'running'",
+                (process_id, process_group_id, process_start_ticks,
+                 attempt_id, worker_id),
+            )
+            if updated.rowcount != 1:
+                raise InvalidTransition(
+                    f"attempt {attempt_id!r} is no longer owned by {worker_id!r}"
+                )
 
     def finish_attempt(
         self, attempt_id: str, status: AttemptStatus, *,
@@ -944,29 +999,40 @@ class RuntimeStore:
         reference = now or _now()
         with self._lock:
             rows = self._connection.execute(
-                "SELECT a.attempt_id, s.run_id FROM runtime_attempts a "
+                "SELECT a.attempt_id, a.process_id, a.process_group_id, "
+                "a.process_start_ticks, s.run_id FROM runtime_attempts a "
                 "JOIN runtime_stage_runs s ON s.stage_run_id = a.stage_run_id "
                 "WHERE a.status = 'running' AND a.lease_expires_at IS NOT NULL "
                 "AND a.lease_expires_at < ?",
                 (reference,),
             ).fetchall()
-            ids = [r["attempt_id"] for r in rows]
-            run_ids = sorted({r["run_id"] for r in rows})
-            for attempt_id in ids:
-                self._connection.execute(
+            ids: list[str] = []
+            run_ids: set[str] = set()
+            for row in rows:
+                attempt_id = str(row["attempt_id"])
+                if not fence_expired_process(row):
+                    # The old process is still alive.  Keeping the attempt and
+                    # its reservation prevents a replacement worker from
+                    # entering the same workspace or overselling capacity.
+                    continue
+                updated = self._connection.execute(
                     "UPDATE runtime_attempts SET status = 'lost', ended_at = ?, "
-                    "failure_json = ?, lease_expires_at = NULL WHERE attempt_id = ?",
+                    "failure_json = ?, lease_expires_at = NULL WHERE attempt_id = ? "
+                    "AND status = 'running' AND lease_expires_at < ?",
                     (reference, json.dumps({
                         "category": "lease_expired",
-                        "message": "worker stopped heartbeating; outcome unknown",
+                        "message": "worker stopped heartbeating; process fenced",
                         "retryable": True,
-                    }, sort_keys=True), attempt_id),
+                    }, sort_keys=True), attempt_id, reference),
                 )
-                self._connection.execute(
-                    "DELETE FROM runtime_resource_reservations WHERE attempt_id = ?",
-                    (attempt_id,),
-                )
-        for run_id in run_ids:
+                if updated.rowcount == 1:
+                    ids.append(attempt_id)
+                    run_ids.add(str(row["run_id"]))
+                    self._connection.execute(
+                        "DELETE FROM runtime_resource_reservations WHERE attempt_id = ?",
+                        (attempt_id,),
+                    )
+        for run_id in sorted(run_ids):
             if self._may_resume(run_id):
                 # The work is not lost, it is unattended.  A capability that can
                 # continue in the workspace it was given gets to: the run goes
@@ -1140,6 +1206,20 @@ class RuntimeStore:
             size_bytes=row["size_bytes"],
             metadata=json.loads(row["metadata_json"]),
         )
+
+    def artifact_run_id(self, artifact_id: str) -> str:
+        """Return the run that owns an artifact, for an authorization check."""
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT s.run_id FROM runtime_artifacts a "
+                "JOIN runtime_attempts t ON t.attempt_id = a.attempt_id "
+                "JOIN runtime_stage_runs s ON s.stage_run_id = t.stage_run_id "
+                "WHERE a.artifact_id = ?",
+                (artifact_id,),
+            ).fetchone()
+        if row is None:
+            raise RuntimeStoreError(f"no such artifact: {artifact_id!r}")
+        return str(row["run_id"])
 
     def artifact_path(self, artifact_id: str) -> Path:
         with self._lock:
@@ -1375,7 +1455,10 @@ class RuntimeStore:
             })
         return {
             "run_id": run.run_id,
-            "task_id": run.task_id,
+            "task_id": run.task_id, "project_id": run.task_spec.project_id, "design_id": run.task_spec.design_id,
+            "design_revision_id": run.task_spec.design_revision_id,
+            "experiment_id": run.task_spec.experiment_id,
+            "input_manifest_sha256": run.task_spec.input_manifest_sha256,
             "status": run.status.value,
             "created_at": run.created_at,
             "started_at": run.started_at,

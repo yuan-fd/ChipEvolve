@@ -9,6 +9,7 @@ description = "Execution Plan Service"
 requires-python = ">=3.9"
 dependencies = [
   "openroad-platform-client",
+  "openroad-platform-contracts",
 ]
 
 [project.scripts]

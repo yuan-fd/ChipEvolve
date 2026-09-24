@@ -53,7 +53,9 @@ def validate_mapping(name: str, value: Mapping[str, Any]) -> None:
         raise ContractError(f"{name} must be a string-keyed object")
 
 
-def validate_sha256(name: str, value: str) -> None:
+def validate_sha256(name: str, value: str | None, *, required: bool = True) -> None:
+    if value is None and not required:
+        return
     if not isinstance(value, str) or not SHA256_HEX.fullmatch(value):
         raise ContractError(f"{name} must be a lowercase sha256 hex digest")
 

@@ -6,13 +6,13 @@ internals (G4); this is the only door.
 
 from .client import (
     DEFAULT_TIMEOUT_SECONDS,
+    MAX_EXCERPT_BYTES,
     KernelClient,
     KernelError,
     KernelUnavailable,
-    MAX_EXCERPT_BYTES,
 )
 
 __all__ = (
-    "DEFAULT_TIMEOUT_SECONDS", "KernelClient", "KernelError",
-    "KernelUnavailable", "MAX_EXCERPT_BYTES",
+    "DEFAULT_TIMEOUT_SECONDS", "MAX_EXCERPT_BYTES", "KernelClient",
+    "KernelError", "KernelUnavailable",
 )

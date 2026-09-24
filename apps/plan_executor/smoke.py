@@ -18,6 +18,7 @@ from pathlib import Path
 APP_DIR = Path(__file__).resolve().parent
 SRC_DIR = APP_DIR / "src"
 CLIENT_SRC = APP_DIR.parents[1] / "core" / "client" / "src"
+CONTRACTS_SRC = APP_DIR.parents[1] / "contracts" / "src"
 DEFAULT_PORT = 8840
 SUBMITTED: list[dict] = []
 
@@ -106,13 +107,17 @@ def task(task_id: str) -> dict:
 
 
 def main() -> int:
-    app_port = int(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_PORT
+    # A smoke must be repeatable while a developer has another local instance
+    # running.  Use the documented port when explicitly supplied, otherwise
+    # ask the OS for an available one instead of racing a stale process.
+    app_port = int(sys.argv[1]) if len(sys.argv) > 1 else free_port()
     kernel_port = free_port()
     kernel = ThreadingHTTPServer(("127.0.0.1", kernel_port), StubKernel)
     threading.Thread(target=kernel.serve_forever, daemon=True).start()
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join(
         [str(SRC_DIR), str(CLIENT_SRC)]
+        + [str(CONTRACTS_SRC)]
         + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else [])
     )
     with tempfile.TemporaryDirectory() as temporary:

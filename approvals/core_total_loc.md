@@ -359,3 +359,61 @@ single place that decides what a task reserves, since the runtime reserves on
 that basis and the query explains a waiting run on the same basis.  Two copies
 would have disagreed, and the disagreement would have sent someone looking for a
 shortfall that was not there.
+# 2026-09-23: execution safety, ownership and experiment identity (8334 -> 8732)
+
+The implementation adds stale-process fencing, effective resource enforcement,
+input-root policy, artifact ownership checks, plan authentication, worker
+presence, queue health, binary artifact download, filtered pagination and
+immutable experiment input identity. These close the P0 correctness and
+shared-service entry gaps identified by the audit. Ceiling: 8732 lines.
+
+# 2026-09-24: preserve all effective resource limits (8732 -> 8734)
+
+`RuntimeConfig.reservation_for` now carries CPU-time and process-count limits
+through the same effective request used for admission and execution. Previously
+defaulted CPU and memory reservations accidentally discarded those two caller
+limits before the process guardian saw them. The two-line change makes the
+resource contract truthful without adding a second implementation.
+
+# 2026-09-23: verified artifact byte chunks (+5 lines)
+
+The existing excerpt endpoint now returns bounded base64 bytes, byte count and
+completion state. This lets callers reconstruct registered binary EDA artifacts
+without reading attempt workspaces or trusting mutable paths. The runtime checks
+the registered SHA-256 before serving each chunk. Ceiling: 8334 lines.
+
+# 2026-09-24: preserve failure execution evidence (8734 -> 8778)
+
+Failed attempts now retain the platform-owned request, result, log, input
+manifest and protocol receipt files that exist in the workspace. Each is
+copied into the content-addressed artifact store and hash-verified, so an
+engineer can inspect a failed run without rerunning a long flow. The helper
+also records an evidence error in the failure rather than hiding it.
+
+# 2026-09-24: local tree query and one-click evidence bundle (8783 -> 8928)
+
+The foundation now exposes a Design→Revision→Run tree and can package a run's
+state, events and hash-verified artifacts into a local ZIP artifact. This is
+deliberately a local export, not a remote-object or multi-node storage system;
+large bundles continue to use the existing verified artifact chunk interface.
+The store gained one byte-registration path so generated bundles receive the
+same custody and provenance as Toolkit-produced files.
+
+# 2026-09-24: include staged input bytes in local bundles (8928 -> 8945)
+
+The export now includes the actual files placed into each attempt workspace,
+not only their input manifest rows. Each staged input is checked against its
+recorded digest before entering the ZIP, so a bundle contains the complete
+declared execution scene.
+
+# 2026-09-24: include runtime envelope files in local bundles (8945 -> 8959)
+
+Successful and failed exports now use the same complete layout, including the
+adapter request/result, log, input manifest and protocol receipt files when
+present. This makes the exported execution envelope independently inspectable.
+
+# 2026-09-24: reserve failure-evidence artifact kinds (8778 -> 8783)
+
+The five platform evidence kinds are now explicitly reserved in the shared
+artifact contract. Toolkits cannot claim the same names and make their own
+files look like platform-generated failure evidence.

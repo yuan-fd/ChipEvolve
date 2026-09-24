@@ -10,7 +10,7 @@ the five agents, and EDA semantics are outside this repository's scope.
 | Area | Result | Evidence |
 | --- | --- | --- |
 | Platform test suite | Pass | Full pytest suite, including ordered plans and public query regressions |
-| Guardrails | Pass | `39 passed` |
+| Guardrails | Pass | `40 passed` |
 | Input, resource, worker lifecycle | Pass | `83 passed, 1 skipped` |
 | Minimal external plugin | Pass | queued -> succeeded; workspace, events and artifact hashes inspected |
 | edair external integration | Pass | `4 passed` against this checkout |
@@ -128,10 +128,11 @@ unsuccessful step cancelled when a plan is cancelled before submission, and
 return HTTP 409 for an idempotency conflict while retaining HTTP 500 for an
 unrelated runtime-store failure.
 
-Final verification for commit `9a9f8a8`:
+Final verification for the current working tree:
 
-- full suite: `438 passed, 1 skipped`;
-- Guardrails: `39 passed`;
+- full suite: `481 passed, 1 skipped`;
+- Guardrails: `40 passed`;
+- application smoke processes are included in the default suite;
 - Ruff: passed for the touched implementation and regression tests;
 - mypy: passed for `contracts/src`, `core/*/src`, `gateway/src` and
   `apps/*/src`.
@@ -141,3 +142,19 @@ measure a process tree; this host supports that measurement. These results do
 not turn the historical repository-wide Ruff/Black debt into a clean-slate
 claim, and they do not resolve the documented multi-user idempotency ownership
 boundary.
+
+## 2026-09-24 implementation verification
+
+The execution base now preserves platform-owned failure evidence (request,
+result, log, input manifest and protocol receipt when present) as hash-checked
+artifacts. The effective resource request also carries CPU-time and process
+count limits through to the process guardian. Query-Agent remains a thin,
+read-only client-side evidence navigator; it does not execute EDA commands or
+interpret design results.
+
+Verification for this increment: `496 passed, 1 skipped`; Guardrails `40
+passed`; Ruff passed for all touched implementation packages; and the
+Query-Agent end-to-end smoke passed. The remaining gaps listed above—hard OS
+isolation, full Design→Revision→Experiment persistence, retention/GC,
+protocol freeze/conformance CI, and multi-node scheduling—remain explicitly
+out of scope for this increment.

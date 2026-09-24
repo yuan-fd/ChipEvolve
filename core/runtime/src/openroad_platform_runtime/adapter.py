@@ -100,6 +100,7 @@ class ProcessAdapter:
         environment: Mapping[str, str] | None = None,
         allow_reserved_artifacts: bool = False,
         limits: ResourceRequest | None = None,
+        on_started: Callable[[int, int, int | None], None] | None = None,
     ) -> AdapterExecution:
         # ``allow_reserved_artifacts`` is the one authority the platform
         # grants to itself when it runs its own evaluator.  It is an explicit
@@ -136,6 +137,7 @@ class ProcessAdapter:
             cancel_requested=cancel_requested,
             on_line=on_line,
             limits=limits,
+            on_started=on_started,
         )
         ended_at = _now()
 
@@ -269,12 +271,10 @@ class ProcessAdapter:
     ) -> tuple[dict[str, Any], ...]:
         return validate_artifact_declarations(
             root, manifest,
-            [
-                {"kind": item["kind"], "path": item["path"],
-                 "metadata": {k: v for k, v in item.items()
-                              if k not in {"kind", "path"}}}
-                for item in result.artifacts
-            ],
+            [{"kind": item["kind"], "path": item["path"],
+              "metadata": item.get("metadata", {}),
+              "media_type": item.get("media_type")}
+             for item in result.artifacts],
             expected_kinds=task.expected_artifacts,
             require_expected=require_expected,
             allow_reserved=allow_reserved,
@@ -343,9 +343,9 @@ def validate_artifact_declarations(
             raise AdapterProtocolError(
                 f"artifact path escapes the workspace: {declared!r}"
             ) from exc
-        if not path.is_file() or path.stat().st_size == 0:
+        if not path.is_file():
             raise AdapterProtocolError(
-                f"artifact is missing or empty: {declared!r}"
+                f"artifact is missing: {declared!r}"
             )
         store_key = str(path.relative_to(root))
         if store_key in seen_keys:

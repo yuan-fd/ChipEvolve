@@ -117,6 +117,7 @@ class ProcessGuardian:
         cancel_requested: Callable[[], bool] | None = None,
         on_line: Callable[[str], None] | None = None,
         limits: ResourceRequest | None = None,
+        on_started: Callable[[int, int, int | None], None] | None = None,
     ) -> ProcessOutcome:
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
@@ -151,6 +152,24 @@ class ProcessGuardian:
                 # descendant rather than just the direct child.
                 start_new_session=(os.name == "posix"),
             )
+            if on_started is not None:
+                try:
+                    try:
+                        process_group_id = os.getpgid(process.pid) if os.name == "posix" else process.pid
+                    except OSError:
+                        # A very short-lived adapter may have exited between
+                        # Popen and this callback; its pid is still a safe
+                        # identity to record, and the group is already gone.
+                        process_group_id = process.pid
+                    on_started(
+                        process.pid,
+                        process_group_id,
+                        self._start_ticks(process.pid),
+                    )
+                except BaseException:
+                    self._terminate_tree(process)
+                    process.wait()
+                    raise
             lines: queue.Queue[str] = queue.Queue(maxsize=TELEMETRY_QUEUE_SIZE)
             dropped_telemetry = [0]
             observer_errors: list[str] = []
@@ -222,6 +241,15 @@ class ProcessGuardian:
             peak_memory_bytes=peak_memory,
             peak_processes=peak_processes,
         )
+
+    @staticmethod
+    def _start_ticks(pid: int) -> int | None:
+        try:
+            raw = Path(f"/proc/{pid}/stat").read_text()
+            fields = raw[raw.rfind(")") + 2:].split()
+            return int(fields[19])
+        except (OSError, ValueError, IndexError):
+            return None
 
     @staticmethod
     def _read_output(

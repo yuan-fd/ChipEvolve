@@ -77,6 +77,16 @@ Gateway 构建 kernel、按配置启用认证、暴露 kernel 路由并路由应
 
 Plan executor 持久化 Agent 编写的有序任务，通过正常 kernel API 一步一步提交任务，在步骤间传递声明的 artifact，并汇总计划状态。它不生成 EDA flow、不改写参数、不替 Agent 选择策略。当前实现有意保持串行。
 
+### `apps/query_agent/`：证据优先的查询
+
+Query-Agent 通过客户端读取 design、run、artifact、metric 和时间线，把结构化
+查询和自然语言问题都转换成带来源的证据报告。它不打开底座数据库，不扫描
+主机目录，不解析设计数据库，也不把诊断或修复逻辑放进应用。后续的 report
+或分析请求仍应创建新的受控运行，并由外部 Toolkit 负责工具语义。
+
+Query-Agent 可以直接读取 Design 树和请求 Run 的本地证据 ZIP；它只负责把
+这些底座能力变成易懂的查询，不维护第二份数据，也不自己扫描工作区。
+
 ### `plugins/` 和 `examples/`：边界示例
 
 `plugins/` 是仓库内最小的发现示例。`examples/research-toolkit/` 是更完整的外部进程示例，演示执行 Agent 提供的脚本，以及 patch/build/benchmark。真实 EDA 集成可以单独维护在其他仓库中，通过相同 manifest 协议安装。

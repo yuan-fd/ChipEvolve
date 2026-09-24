@@ -182,6 +182,22 @@ def test_a_task_submitted_through_the_api_runs_and_leaves_evidence(platform):
     assert {a["kind"] for a in attempt["artifacts"]} == {"summary", "log"}
 
 
+def test_design_tree_and_one_click_bundle_are_public_client_capabilities(platform):
+    client, kernel = platform
+    client.register("alice", "a long enough password")
+    created = submit_example(client, task_id="tree-and-bundle")
+    run_id = created["run"]["run_id"]
+    kernel.runtime.execute_once(run_id)
+
+    tree = client.design_tree("demo-design")
+    assert tree["design_id"] == "demo-design"
+    assert any(run["run_id"] == run_id
+               for revision in tree["revisions"] for run in revision["runs"])
+    bundle = client.bundle(run_id)
+    assert bundle["kind"] == "runtime_bundle"
+    assert bundle["sha256"]
+
+
 def test_metrics_arrive_with_their_provenance(platform):
     client, kernel = platform
     client.register("alice", "a long enough password")
@@ -235,6 +251,37 @@ def test_an_artifact_excerpt_is_read_through_the_kernel(platform):
     # is not a projection the kernel composed.
     assert '"count": 4' in excerpt["text"]
     assert excerpt["sha256"] == summary["sha256"]
+
+
+def test_a_registered_artifact_can_be_downloaded_with_hash_verification(platform):
+    client, kernel = platform
+    client.register("alice", "a long enough password")
+    run_id = submit_example(client, task_id="binary-download")["run"]["run_id"]
+    kernel.runtime.execute_once(run_id)
+    summary = next(a for a in client.artifacts(run_id) if a["kind"] == "summary")
+    content = client.artifact_bytes(run_id, summary["artifact_id"])
+    assert content
+    assert len(content) == summary["size_bytes"]
+
+
+def test_a_member_cannot_stage_another_users_artifact(platform):
+    client, kernel = platform
+    client.register("alice", "a long enough password")
+    run_id = submit_example(client, task_id="owned-artifact")["run"]["run_id"]
+    kernel.runtime.execute_once(run_id)
+    artifact_id = client.artifacts(run_id)[0]["artifact_id"]
+
+    bob = KernelClient(client.base_url)
+    bob.register("bob", "another long password")
+    with pytest.raises(KernelError) as caught:
+        bob.submit({
+            "schema_version": 3, "task_id": "cross-user-artifact",
+            "project_id": "demo", "design_id": "demo-design",
+            "plugin_id": "example-reporter", "inputs": {},
+            "staged_inputs": [{"artifact_id": artifact_id,
+                                "destination": "input.bin"}],
+        })
+    assert caught.value.status == 404
 
 
 def test_the_client_refuses_an_oversized_excerpt_before_calling(platform):

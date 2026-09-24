@@ -30,6 +30,7 @@ from openroad_platform_contracts import RuntimeStatus
 
 from .runtime import WorkflowRuntime
 from .store import InvalidTransition, RuntimeStore
+from .worker_presence import touch
 
 LOGGER = logging.getLogger("openroad_platform_runtime.worker")
 
@@ -84,6 +85,7 @@ class RuntimeWorker:
 
     def cycle(self) -> CycleReport:
         report = CycleReport()
+        touch(self.store, self.runtime.config.worker_id)
 
         report.reclaimed = len(self.store.reclaim_expired_attempts())
         report.cancelled = self._finish_abandoned_cancellations()
@@ -109,6 +111,7 @@ class RuntimeWorker:
             # as having executed one attempt.
             if executed:
                 report.advanced += 1
+        touch(self.store, self.runtime.config.worker_id)
         return report
 
     def _finish_abandoned_cancellations(self) -> int:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+import subprocess
 import threading
 from pathlib import Path
 
@@ -494,6 +495,38 @@ def test_expired_leases_become_lost_evidence(store: RuntimeStore):
     assert reclaimed == [attempt.attempt_id]
     attempts = store.list_attempts(stage.stage_run_id)
     assert attempts[0].status is AttemptStatus.LOST
+
+
+def test_expired_lease_fences_a_recorded_adapter_before_releasing_resources(
+    store: RuntimeStore, tmp_path: Path,
+):
+    run = submit(store)
+    stage = store.list_stages(run.run_id)[0]
+    attempt = store.start_attempt(
+        stage.stage_run_id, worker_id="w1", workspace=tmp_path / "ws",
+        lease_seconds=30, resources=ResourceRequest(cpu_cores=1, memory_bytes=1),
+        capacity_cpu_cores=2, capacity_memory_bytes=2,
+    )
+    process = subprocess.Popen(["sleep", "30"], start_new_session=True)
+    try:
+        raw = Path(f"/proc/{process.pid}/stat").read_text()
+        ticks = int(raw[raw.rfind(")") + 2:].split()[19])
+        store.attach_process(
+            attempt.attempt_id, worker_id="w1", process_id=process.pid,
+            process_group_id=process.pid, process_start_ticks=ticks,
+        )
+        with store._lock:
+            store._connection.execute(
+                "UPDATE runtime_attempts SET lease_expires_at = ?",
+                ("2000-01-01T00:00:00+00:00",),
+            )
+        assert store.reclaim_expired_attempts() == [attempt.attempt_id]
+        process.wait(timeout=2)
+        assert store.resource_totals() == (0, 0)
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
 
 
 def test_a_lost_attempt_cannot_be_finished_again(store: RuntimeStore):

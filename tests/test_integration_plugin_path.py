@@ -116,7 +116,7 @@ def test_a_discovered_capability_runs_end_to_end(tmp_path):
         store.close()
 
 
-def test_a_bad_task_fails_without_touching_the_evidence_store(tmp_path):
+def test_a_bad_task_fails_with_platform_evidence_preserved(tmp_path):
     registry, store, runtime = build(tmp_path)
     try:
         run = runtime.submit(TaskSpec(
@@ -130,9 +130,11 @@ def test_a_bad_task_fails_without_touching_the_evidence_store(tmp_path):
 
         attempt = runtime.describe(run.run_id)["stages"][0]["attempts"][0]
         assert attempt["status"] == "failed"
-        # A failed run produces no artifacts, and the platform does not
-        # manufacture any to fill the gap.
-        assert attempt["artifacts"] == []
+        # No domain artifact is claimed, but platform evidence preserves the
+        # request, result and log needed to diagnose the rejected input.
+        assert {a["kind"] for a in attempt["artifacts"]} == {
+            "runtime_evidence_request", "runtime_evidence_result", "runtime_evidence_log",
+        }
         assert attempt["metrics"] == []
     finally:
         store.close()

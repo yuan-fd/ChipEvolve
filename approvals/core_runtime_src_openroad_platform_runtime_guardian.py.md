@@ -2,6 +2,12 @@
 
 ## What is being added
 
+# 2026-09-23: process identity callback (468 -> 496)
+
+The process guardian reports the adapter PID, process group and Linux start
+identity before supervision begins. The runtime uses this evidence to fence a
+stale process before releasing a lease reservation. Ceiling: 496 lines.
+
 The supervisor now enforces the resource bounds a task declares.  Until this
 round the only bound on an attempt was its wall-clock deadline, which is enough
 to stop a run that hangs and useless against one that simply takes the machine:

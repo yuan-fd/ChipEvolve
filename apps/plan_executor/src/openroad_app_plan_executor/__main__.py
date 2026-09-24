@@ -12,6 +12,7 @@ import time
 import urllib.parse
 import uuid
 from collections.abc import Mapping
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,7 @@ PLATFORM_FAILURES = frozenset({
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS plans (
     plan_id TEXT PRIMARY KEY,
+    owner_id TEXT,
     status TEXT NOT NULL,
     failure_json TEXT,
     created_at REAL NOT NULL
@@ -69,16 +71,31 @@ class PlanStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         with self._connect() as connection:
+            connection.execute("PRAGMA journal_mode = DELETE")
             connection.executescript(_SCHEMA)
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(plans)")}
+            if "owner_id" not in columns:
+                connection.execute("ALTER TABLE plans ADD COLUMN owner_id TEXT")
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self):
         connection = sqlite3.connect(str(self.path), timeout=30)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA journal_mode = DELETE")
-        return connection
+        try:
+            yield connection
+        except BaseException:
+            connection.rollback()
+            raise
+        else:
+            connection.commit()
+        finally:
+            connection.close()
 
     def create(self, payload: Mapping[str, Any]) -> str:
+        return self.create_owned(payload)
+
+    def create_owned(self, payload: Mapping[str, Any], owner_id: str | None = None) -> str:
         plan_id = str(payload.get("plan_id") or f"plan-{uuid.uuid4().hex}")
         steps = payload.get("steps")
         self._validate(plan_id, steps)
@@ -86,8 +103,9 @@ class PlanStore:
         with self._lock, self._connect() as connection:
             try:
                 connection.execute(
-                    "INSERT INTO plans (plan_id,status,created_at) VALUES (?,?,?)",
-                    (plan_id, "queued", time.time()),
+                    "INSERT INTO plans (plan_id,owner_id,status,created_at) "
+                    "VALUES (?,?,?,?)",
+                    (plan_id, owner_id, "queued", time.time()),
                 )
                 for ordinal, step in enumerate(steps):
                     connection.execute(
@@ -147,13 +165,17 @@ class PlanStore:
         if not isinstance(selector, dict):
             raise PlanError(f"step {step_id!r} binding metadata must be an object")
 
-    def get(self, plan_id: str) -> dict[str, Any]:
+    def get(self, plan_id: str, *, owner_id: str | None = None,
+            developer: bool = False) -> dict[str, Any]:
         with self._connect() as connection:
             plan = connection.execute(
                 "SELECT * FROM plans WHERE plan_id = ?", (plan_id,)
             ).fetchone()
             if plan is None:
                 raise PlanError(f"unknown plan {plan_id!r}", 404)
+            if (owner_id is not None and not developer
+                    and plan["owner_id"] != owner_id):
+                raise PlanError("plan not found", 404)
             rows = connection.execute(
                 "SELECT * FROM plan_steps WHERE plan_id = ? ORDER BY ordinal",
                 (plan_id,),
@@ -454,6 +476,22 @@ class Handler(BaseHTTPRequestHandler):
     store: PlanStore
     executor: PlanExecutor
     client: Any
+    require_auth: bool = False
+
+    def _caller(self) -> tuple[str | None, bool]:
+        if not self.require_auth:
+            return None, True
+        header = self.headers.get("Authorization", "")
+        if not header.lower().startswith("bearer "):
+            raise PlanError("authentication required", 401)
+        token = header[7:].strip()
+        base_url = getattr(self.client, "base_url", None)
+        if not base_url:
+            raise PlanError("plan authentication is not configured", 500)
+        session = KernelClient(base_url, token=token).session()
+        if session is None:
+            raise PlanError("authentication required", 401)
+        return str(session["user"]["id"]), bool(session.get("developer"))
 
     def do_GET(self) -> None:
         path = urllib.parse.urlparse(self.path).path
@@ -466,7 +504,10 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if path.startswith("/plans/"):
                 plan_id = urllib.parse.unquote(path[len("/plans/"):])
-                self._send(200, {"plan": self.store.get(plan_id)})
+                owner_id, developer = self._caller()
+                self._send(200, {"plan": self.store.get(
+                    plan_id, owner_id=owner_id, developer=developer
+                )})
                 return
             raise PlanError("not found", 404)
         except PlanError as exc:
@@ -480,15 +521,20 @@ class Handler(BaseHTTPRequestHandler):
         path = urllib.parse.urlparse(self.path).path
         try:
             if path == "/plans":
-                plan_id = self.store.create(self._body())
+                owner_id, _ = self._caller()
+                plan_id = self.store.create_owned(self._body(), owner_id)
                 self._send(201, {"plan": self.store.get(plan_id)})
                 return
             if path.startswith("/plans/") and path.endswith("/cancel"):
                 plan_id = urllib.parse.unquote(
                     path[len("/plans/"):-len("/cancel")]
                 ).strip("/")
+                owner_id, developer = self._caller()
+                self.store.get(plan_id, owner_id=owner_id, developer=developer)
                 self.store.request_cancel(plan_id)
-                self._send(202, {"plan": self.store.get(plan_id)})
+                self._send(202, {"plan": self.store.get(
+                    plan_id, owner_id=owner_id, developer=developer
+                )})
                 return
             raise PlanError("not found", 404)
         except PlanError as exc:
@@ -518,14 +564,16 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
-def build_handler(store: PlanStore, executor: PlanExecutor, client: Any):
+def build_handler(store: PlanStore, executor: PlanExecutor, client: Any,
+                  *, require_auth: bool = False):
     return type("BoundPlanHandler", (Handler,), {
         "store": store, "executor": executor, "client": client,
+        "require_auth": require_auth,
     })
 
 
 def serve(*, host: str, port: int, db_path: Path, kernel_url: str,
-          token: str | None = None) -> None:
+          token: str | None = None, require_auth: bool = False) -> None:
     store = PlanStore(db_path)
     client = KernelClient(kernel_url, token=token)
     executor = PlanExecutor(store, client)
@@ -536,7 +584,9 @@ def serve(*, host: str, port: int, db_path: Path, kernel_url: str,
     worker.start()
     try:
         ThreadingHTTPServer(
-            (host, port), build_handler(store, executor, client)
+            (host, port), build_handler(
+                store, executor, client, require_auth=require_auth
+            )
         ).serve_forever()
     finally:
         stop.set()
@@ -549,11 +599,16 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--kernel-url", default="http://127.0.0.1:8700")
     parser.add_argument("--db", default=DB_FILENAME)
+    parser.add_argument(
+        "--require-auth", action="store_true",
+        help="require a caller bearer token and enforce plan ownership",
+    )
     args = parser.parse_args()
     serve(
         host=args.host, port=args.port, db_path=Path(args.db),
         kernel_url=args.kernel_url,
         token=os.environ.get("OPENROAD_PLATFORM_TOKEN"),
+        require_auth=args.require_auth,
     )
     return 0
 

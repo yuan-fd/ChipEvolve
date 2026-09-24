@@ -24,6 +24,7 @@ quoted here because a kernel that names a vendor is still coupled to it.
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import platform
@@ -32,7 +33,7 @@ import socket
 import time
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Protocol, cast
 
@@ -115,6 +116,10 @@ class RuntimeConfig:
     #: task could opt out of the scheduler entirely by staying silent.
     default_task_cpu_cores: int = 1
     default_task_memory_bytes: int = 1 << 30
+    #: Absolute host paths accepted as caller-provided inputs.  An empty tuple
+    #: preserves the trusted local-library mode; shared deployments must set a
+    #: bounded root and use uploaded inputs for everything else.
+    allowed_input_roots: tuple[Path, ...] = ()
 
     def reservation_for(self, task: TaskSpec) -> ResourceRequest:
         """What this task will reserve, whether or not it asked for anything.
@@ -127,12 +132,14 @@ class RuntimeConfig:
         """
         requested = task.resources
         return ResourceRequest(
+            cpu_seconds=(requested.cpu_seconds if requested else None),
             cpu_cores=(requested.cpu_cores
                        if requested and requested.cpu_cores is not None
                        else self.default_task_cpu_cores),
             memory_bytes=(requested.memory_bytes
                           if requested and requested.memory_bytes is not None
                           else self.default_task_memory_bytes),
+            processes=(requested.processes if requested else None),
         )
 
     def __post_init__(self) -> None:
@@ -154,6 +161,9 @@ class RuntimeConfig:
             raise ValueError("platform_fraction must be in (0, 1]")
         self.workspace_root = Path(self.workspace_root).expanduser().resolve()
         self.workspace_root.mkdir(parents=True, exist_ok=True)
+        self.allowed_input_roots = tuple(
+            Path(root).expanduser().resolve() for root in self.allowed_input_roots
+        )
         if not self.worker_id:
             self.worker_id = f"{socket.gethostname()}-{uuid.uuid4().hex[:8]}"
 
@@ -161,6 +171,17 @@ class RuntimeConfig:
 #: Environment variable carrying the immutable protocol receipt to an adapter
 #: is declared by the manifest, not concatenated by the kernel.
 RECEIPT_ARTIFACT_KIND = "runtime_protocol_receipt"
+
+# Files that explain a failed attempt even when the adapter did not produce a
+# domain artifact.  They are platform evidence, not plugin claims: the store
+# hashes the bytes after the process has stopped.
+FAILURE_EVIDENCE_FILES = (
+    ("adapter_request.json", "runtime_evidence_request"),
+    ("adapter_result.json", "runtime_evidence_result"),
+    ("adapter.log", "runtime_evidence_log"),
+    (INPUT_MANIFEST_FILENAME, "runtime_evidence_input_manifest"),
+    ("runtime_protocol_receipt.json", "runtime_evidence_protocol_receipt"),
+)
 
 
 class WorkflowRuntime:
@@ -200,6 +221,10 @@ class WorkflowRuntime:
     ) -> RunRecord:
         task.validate()
         self._check_inputs(task)
+        task = replace(
+            task,
+            input_manifest_sha256=self._input_manifest_digest(task),
+        )
         self._check_resources(task)
         if task.plugin_id is None:
             raise ValueError("this runtime executes direct plugin tasks only")
@@ -218,6 +243,35 @@ class WorkflowRuntime:
             idempotent=idempotent, idempotency_key=idempotency_key,
             resumable=manifest.requirements.resumable,
         )
+
+    def _input_manifest_digest(self, task: TaskSpec) -> str:
+        """Hash the bytes and destinations that define this run's input base."""
+        entries: list[dict[str, Any]] = []
+        for declaration in task.staged_inputs:
+            if declaration.input_id is not None:
+                uploaded = self.store.get_uploaded_input(declaration.input_id)
+                digest, size = uploaded.sha256, uploaded.size_bytes
+            elif declaration.artifact_id is not None:
+                artifact = self.store.get_artifact(declaration.artifact_id)
+                digest, size = artifact.sha256, artifact.size_bytes
+            else:
+                source = Path(cast(str, declaration.source)).expanduser().resolve()
+                if not source.is_file():
+                    if declaration.required:
+                        raise InputStagingError(
+                            f"required input is not a readable file: {source!s}"
+                        )
+                    digest, size = None, 0
+                else:
+                    digest, size = sha256(source), source.stat().st_size
+            entries.append({
+                "destination": declaration.destination,
+                "present": digest is not None,
+                "sha256": digest,
+                "size_bytes": size,
+            })
+        payload = json.dumps(entries, sort_keys=True, separators=(",", ":"))
+        return sha256(payload.encode("utf-8"))
 
     def submit_idempotent(
         self, task: TaskSpec, *, plugin_version: str | None = None,
@@ -268,7 +322,15 @@ class WorkflowRuntime:
                         f"have: {declaration.artifact_id!r}"
                     ) from exc
                 continue
-            if declaration.required and not Path(cast(str, declaration.source)).is_file():
+            source = Path(cast(str, declaration.source)).expanduser().resolve()
+            if (self.config.allowed_input_roots
+                    and not any(_within(source, root)
+                                for root in self.config.allowed_input_roots)):
+                    raise InputStagingError(
+                        f"host input is outside configured input roots: "
+                        f"{declaration.source!r}"
+                    )
+            if declaration.required and not source.is_file():
                 raise InputStagingError(
                     f"required input is not a readable file: "
                     f"{declaration.source!r} (declared as "
@@ -292,7 +354,7 @@ class WorkflowRuntime:
                     self._stage_from_artifact(declaration, destination)
                 )
                 continue
-            source = Path(cast(str, declaration.source))
+            source = Path(cast(str, declaration.source)).expanduser().resolve()
             if not source.is_file():
                 if declaration.required:
                     raise InputStagingError(
@@ -510,10 +572,20 @@ class WorkflowRuntime:
             manifest, run, attempt, workspace, environment
         )
 
+        # Admission and enforcement must use the same effective request.  A
+        # task that omits resources still reserves the configured default, so
+        # passing the raw optional field here would make the scheduler's
+        # capacity story purely accounting: the process could use more than
+        # the reservation it consumed.
         execution = self.adapter.execute(
             manifest, run.task_spec, workspace=workspace,
             cancel_requested=pulse, on_line=observer, environment=environment,
-            limits=run.task_spec.resources,
+            limits=self.config.reservation_for(run.task_spec),
+            on_started=lambda pid, pgid, ticks: self.store.attach_process(
+                attempt.attempt_id, worker_id=self.config.worker_id,
+                process_id=pid, process_group_id=pgid,
+                process_start_ticks=ticks,
+            ),
         )
         self._reject_forged_authority(execution)
 
@@ -545,6 +617,12 @@ class WorkflowRuntime:
         registered_ids = self.store.register_artifacts(
             attempt.attempt_id, workspace, registered
         )
+        if execution.result.status is not RuntimeStatus.SUCCEEDED:
+            evidence_error = self._register_failure_evidence(attempt)
+            if evidence_error is not None:
+                raise RuntimeStoreError(
+                    f"could not preserve failure evidence: {evidence_error}"
+                )
         if execution.result.status is RuntimeStatus.SUCCEEDED:
             self._register_metrics(
                 attempt, (*execution.result.metrics, *evaluator_metrics),
@@ -730,6 +808,9 @@ class WorkflowRuntime:
             "category": "runtime_error",
             "message": f"{type(exc).__name__}: {exc}",
         }
+        evidence_error = self._register_failure_evidence(attempt)
+        if evidence_error is not None:
+            failure["evidence_error"] = evidence_error
         try:
             self.store.finish_attempt(
                 attempt.attempt_id, AttemptStatus.FAILED,
@@ -748,6 +829,30 @@ class WorkflowRuntime:
                 )
         except InvalidTransition:
             pass
+
+    def _register_failure_evidence(self, attempt: Attempt) -> str | None:
+        declarations = []
+        workspace = Path(attempt.workspace)
+        existing = {
+            artifact.store_key
+            for artifact in self.store.list_artifacts(attempt.attempt_id)
+        }
+        for filename, kind in FAILURE_EVIDENCE_FILES:
+            if filename not in existing and (workspace / filename).is_file():
+                declarations.append({
+                    "kind": kind,
+                    "store_key": filename,
+                    "metadata": {"producer": "runtime", "failure_evidence": True},
+                })
+        if not declarations:
+            return None
+        try:
+            self.store.register_artifacts(
+                attempt.attempt_id, workspace, declarations,
+            )
+        except (OSError, RuntimeStoreError, ValueError) as evidence_exc:
+            return f"{type(evidence_exc).__name__}: {evidence_exc}"
+        return None
 
     # -- reads ------------------------------------------------------------
 
@@ -788,16 +893,22 @@ class WorkflowRuntime:
         # run must not be able to read another run's artifact by quoting its id.
         _, artifact = matches[0]
         path = self.store.artifact_path(artifact_id)
-        raw = path.read_bytes()
-        if sha256(raw) != artifact["sha256"]:
+        if sha256(path) != artifact["sha256"]:
             raise RuntimeStoreError(
                 f"registered artifact {artifact_id!r} changed after registration"
             )
+        with path.open("rb") as source:
+            source.seek(offset)
+            chunk = source.read(max_bytes)
         return {
             "artifact_id": artifact_id,
             "sha256": str(artifact["sha256"]),
             "offset": offset,
-            "text": raw[offset:offset + max_bytes].decode("utf-8", errors="replace"),
+            "text": chunk.decode("utf-8", errors="replace"),
+            "data_base64": base64.b64encode(chunk).decode("ascii"),
+            "bytes_read": len(chunk),
+            "size_bytes": artifact["size_bytes"],
+            "truncated": offset + len(chunk) < artifact["size_bytes"],
         }
 
     def _next_ready_stage(self, run_id: str) -> StageRun | None:
@@ -842,6 +953,14 @@ class _LeasePulse:
             )
             self._last = now
         return False
+
+
+def _within(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
 
 
 def _attempt_status(status: RuntimeStatus) -> AttemptStatus:

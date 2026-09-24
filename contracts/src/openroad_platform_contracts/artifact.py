@@ -27,6 +27,12 @@ from .version import (
 #: these is trying to forge platform authority, so the kernel rejects it.
 RESERVED_ARTIFACT_KINDS = frozenset({
     "runtime_protocol_receipt",
+    "runtime_evidence_request",
+    "runtime_evidence_result",
+    "runtime_evidence_log",
+    "runtime_evidence_input_manifest",
+    "runtime_evidence_protocol_receipt",
+    "runtime_bundle",
     "protected_evaluation",
     INPUT_MANIFEST_KIND,
 })

@@ -16,6 +16,16 @@ capacity_args=()
 if [[ -n "${OPENROAD_PLATFORM_CAPACITY_CPU_CORES:-}" ]]; then
   capacity_args+=(--capacity-cpu-cores "$OPENROAD_PLATFORM_CAPACITY_CPU_CORES")
 fi
+
+plan_auth_args=()
+if [[ "${OPENROAD_PLATFORM_PLAN_REQUIRE_AUTH:-0}" == "1" ]]; then
+  plan_auth_args+=(--require-auth)
+fi
+
+input_root_args=()
+if [[ -n "${OPENROAD_PLATFORM_INPUT_ROOT:-}" ]]; then
+  input_root_args+=(--input-root "$OPENROAD_PLATFORM_INPUT_ROOT")
+fi
 if [[ -n "${OPENROAD_PLATFORM_CAPACITY_MEMORY_BYTES:-}" ]]; then
   capacity_args+=(--capacity-memory-bytes "$OPENROAD_PLATFORM_CAPACITY_MEMORY_BYTES")
 fi
@@ -32,20 +42,21 @@ trap cleanup EXIT INT TERM
 
 "$platform_venv/bin/openroad-platform-worker" \
   --state-root "$state_root" --plugins-root "$plugins_root" \
-  --admissions-root "$admissions_root" "${capacity_args[@]}" &
+  --admissions-root "$admissions_root" "${capacity_args[@]}" \
+  "${input_root_args[@]}" &
 pids+=("$!")
 
 "$platform_venv/bin/openroad-app-plan_executor" \
   --host 127.0.0.1 --port 8840 \
   --kernel-url http://127.0.0.1:8700 \
-  --db "$state_root/plan_executor.sqlite" &
+  --db "$state_root/plan_executor.sqlite" "${plan_auth_args[@]}" &
 pids+=("$!")
 
 "$platform_venv/bin/openroad-platform-gateway" \
   --host 127.0.0.1 --port 8700 --no-auth \
   --config "$gateway_config" --state-root "$state_root" \
   --plugins-root "$plugins_root" --admissions-root "$admissions_root" \
-  "${capacity_args[@]}" &
+  "${capacity_args[@]}" "${input_root_args[@]}" &
 pids+=("$!")
 
 printf 'gateway: http://127.0.0.1:8700\nplan service: http://127.0.0.1:8840\n'

@@ -318,7 +318,8 @@ def test_reading_does_not_modify_the_store(store, tmp_path):
 
     before = store.describe_run(run.run_id)
     index.runs()
-    index.run_detail(run.run_id)
+    detail = index.run_detail(run.run_id)
+    assert (detail["project_id"], detail["design_id"]) == ("proj", "gcd")
     index.metrics(run.run_id)
     index.artifacts(run.run_id)
     index.timeline(run.run_id)

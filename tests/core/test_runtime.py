@@ -7,16 +7,21 @@ number stored through it becomes worthless.
 
 from __future__ import annotations
 
+import base64
+import io
 import json
 import shutil
 import sys
+import zipfile
 from pathlib import Path
 
 import pytest
 from openroad_platform_contracts import (
     ArtifactDeclaration,
     AttemptStatus,
+    ContractError,
     EvaluationRequest,
+    InputFile,
     Metric,
     PluginManifest,
     RuntimeRequirements,
@@ -30,6 +35,7 @@ from openroad_platform_runtime import (
     RuntimeStore,
     RuntimeStoreError,
     WorkflowRuntime,
+    export_run_bundle,
 )
 from openroad_platform_runtime.adapter import ProcessAdapter
 from openroad_platform_runtime.guardian import ProcessGuardian
@@ -104,6 +110,19 @@ def test_submit_resolves_the_manifest_and_creates_a_queued_run(tmp_path):
     run = rt.submit(task("ok"))
     assert run.status is RuntimeStatus.QUEUED
     assert run.task_spec.task_id == "task-ok"
+
+
+def test_submit_freezes_experiment_references_and_input_manifest(tmp_path):
+    source = tmp_path / "design.v"
+    source.write_text("module top; endmodule\n", encoding="utf-8")
+    rt = runtime(tmp_path, manifest())
+    run = rt.submit(task(
+        "versioned", design_revision_id="rev-1", experiment_id="exp-1",
+        staged_inputs=(InputFile(source=str(source), destination="design.v"),),
+    ))
+    assert run.task_spec.design_revision_id == "rev-1"
+    assert run.task_spec.experiment_id == "exp-1"
+    assert len(run.task_spec.input_manifest_sha256 or "") == 64
 
 
 def test_submit_uses_the_registry_version_not_the_callers(tmp_path):
@@ -236,7 +255,7 @@ def test_a_custom_progress_marker_is_honoured(tmp_path):
                for e in rt.store.list_events(run.run_id))
 
 
-def test_a_failed_attempt_records_the_failure_and_does_not_register_artifacts(
+def test_a_failed_attempt_records_the_failure_and_preserves_execution_evidence(
     tmp_path,
 ):
     rt = runtime(tmp_path, manifest())
@@ -248,8 +267,11 @@ def test_a_failed_attempt_records_the_failure_and_does_not_register_artifacts(
     view = rt.describe(run.run_id)
     attempt = view["stages"][0]["attempts"][0]
     assert attempt["status"] == "failed"
-    # A failed run legitimately produces nothing; it must not be required to.
-    assert attempt["artifacts"] == []
+    # Domain artifacts are absent, but the platform keeps the request and log
+    # so an engineer can inspect a failure without rerunning the flow.
+    assert {a["kind"] for a in attempt["artifacts"]} == {
+        "runtime_evidence_request", "runtime_evidence_result", "runtime_evidence_log",
+    }
 
 
 def test_a_protocol_violation_is_a_failure_not_a_crash(tmp_path):
@@ -270,17 +292,28 @@ def test_the_runtime_refuses_an_adapter_that_forges_evaluator_authority(tmp_path
     finished = rt.execute_once(run.run_id)
     assert finished.status is RuntimeStatus.FAILED
     assert finished.terminal_reason == "runtime_error"
-    # The forged artifact must not have reached durable state at all.
+    # The forged artifact must not have reached durable state at all; the
+    # platform's own failure evidence is still retained.
     attempt = rt.describe(run.run_id)["stages"][0]["attempts"][0]
-    assert attempt["artifacts"] == []
+    assert {a["kind"] for a in attempt["artifacts"]} == {
+        "runtime_evidence_request", "runtime_evidence_result", "runtime_evidence_log",
+    }
     assert "official_qor" not in json.dumps(rt.describe(run.run_id))
 
 
 def test_an_adapter_may_not_declare_the_runtime_receipt_kind(tmp_path):
-    from openroad_platform_contracts import ContractError
-
     with pytest.raises(ContractError, match="reserved"):
         ArtifactDeclaration(kind="runtime_protocol_receipt", path="x.json").validate()
+
+
+def test_an_adapter_may_not_declare_failure_evidence_kinds():
+    with pytest.raises(ContractError, match="reserved"):
+        ArtifactDeclaration(kind="runtime_evidence_log", path="adapter.log").validate()
+
+
+def test_an_adapter_may_not_declare_runtime_bundle_kind():
+    with pytest.raises(ContractError, match="reserved"):
+        ArtifactDeclaration(kind="runtime_bundle", path="runtime_bundle.zip").validate()
 
 
 # --------------------------------------------------------------------------
@@ -480,6 +513,45 @@ def test_an_artifact_outlives_the_workspace_that_produced_it(tmp_path):
         run.run_id, report["artifact_id"], offset=0, max_bytes=1024
     )
     assert "area_um2" in excerpt["text"]
+
+
+def test_a_run_can_be_exported_as_one_local_evidence_bundle(tmp_path):
+    rt = runtime(tmp_path, manifest())
+    source = tmp_path / "design.v"
+    source.write_text("module top; endmodule\n", encoding="utf-8")
+    run = rt.submit(task(
+        "ok", staged_inputs=(InputFile(source=str(source), destination="design.v"),)
+    ))
+    rt.execute_once(run.run_id)
+
+    bundle = export_run_bundle(rt.store, run.run_id)
+    content = rt.store.artifact_path(bundle["artifact_id"]).read_bytes()
+    with zipfile.ZipFile(io.BytesIO(content)) as archive:
+        names = set(archive.namelist())
+        assert {"run.json", "events.json", "artifacts/index.json"} <= names
+        assert any(name.endswith("design.v") for name in names)
+        assert any(name.endswith("adapter_request.json") for name in names)
+        assert any(name.endswith("adapter_result.json") for name in names)
+        assert any(name.endswith("report.json") for name in names)
+
+    assert export_run_bundle(rt.store, run.run_id)["artifact_id"] == bundle["artifact_id"]
+
+
+def test_binary_artifact_can_be_reassembled_from_verified_chunks(tmp_path):
+    rt = runtime(tmp_path, manifest())
+    run = rt.submit(task("ok"))
+    rt.execute_once(run.run_id)
+    attempt = rt.describe(run.run_id)["stages"][0]["attempts"][0]
+    data = bytes(range(256)) * 300
+    (Path(attempt["workspace"]) / "binary.bin").write_bytes(data)
+    artifact_id = rt.store.register_artifacts(
+        attempt["attempt_id"], Path(attempt["workspace"]),
+        [{"kind": "blob", "store_key": "binary.bin"}],
+    )[0]
+    first = rt.read_artifact_excerpt(run.run_id, artifact_id, offset=0, max_bytes=65536)
+    second = rt.read_artifact_excerpt(run.run_id, artifact_id, offset=65536, max_bytes=65536)
+    assert first["truncated"] and not second["truncated"]
+    assert base64.b64decode(first["data_base64"]) + base64.b64decode(second["data_base64"]) == data
 
 
 def test_artifact_excerpt_bounds_are_enforced(tmp_path):

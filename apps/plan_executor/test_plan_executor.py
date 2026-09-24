@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import threading
 import urllib.error
 import urllib.request
@@ -10,6 +11,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+import openroad_app_plan_executor.__main__ as plan_executor
 from openroad_app_plan_executor.__main__ import (
     PlanError,
     PlanExecutor,
@@ -102,6 +104,36 @@ def test_a_plan_runs_in_order_and_binds_a_predecessor_artifact(tmp_path: Path):
     kernel.statuses["run-2"] = "succeeded"
     executor.cycle()
     assert store.get(plan_id)["status"] == "succeeded"
+
+
+def test_store_closes_each_sqlite_connection(tmp_path: Path, monkeypatch):
+    closed: list[sqlite3.Connection] = []
+    journal_mode_calls: list[str] = []
+    connect = sqlite3.connect
+
+    class TrackedConnection(sqlite3.Connection):
+        def execute(self, sql, *args, **kwargs):
+            if sql == "PRAGMA journal_mode = DELETE":
+                journal_mode_calls.append(sql)
+            return super().execute(sql, *args, **kwargs)
+
+        def close(self) -> None:
+            closed.append(self)
+            super().close()
+
+    def tracked_connect(*args, **kwargs):
+        return connect(*args, factory=TrackedConnection, **kwargs)
+
+    monkeypatch.setattr(plan_executor.sqlite3, "connect", tracked_connect)
+    store = PlanStore(tmp_path / "plans.sqlite")
+    store.create({
+        "plan_id": "plan-closed-connections",
+        "steps": [{"step_id": "only", "task": task("only")}],
+    })
+    store.get("plan-closed-connections")
+
+    assert len(closed) == 3
+    assert len(journal_mode_calls) == 1
 
 
 def test_plan_preserves_agent_capability_script_and_patch_inputs(tmp_path: Path):

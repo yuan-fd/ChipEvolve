@@ -19,9 +19,12 @@ from openroad_platform_runtime import (
     RuntimeStore,
     RuntimeStoreError,
     WorkflowRuntime,
+    queue_health,
+    worker_health,
 )
+from openroad_platform_runtime.bundle import export_run_bundle
 
-from .router import HttpError, Request, Response, Router
+from .router import MAX_RESPONSE_BYTES, HttpError, Request, Response, Router
 
 #: Routes reachable without a session.  Anything else requires one.
 PUBLIC_PATHS = frozenset({
@@ -60,8 +63,10 @@ class KernelApi:
         router.post("/kernel/runs", self._guarded(self.submit_run))
         router.get("/kernel/runs", self._guarded(self.list_runs))
         router.get("/kernel/runs/{run_id}", self._guarded(self.get_run))
+        router.get("/kernel/designs/{design_id}/tree", self._guarded(self.design_tree))
         router.post("/kernel/runs/{run_id}/cancel", self._guarded(self.cancel_run))
         router.post("/kernel/runs/{run_id}/retry", self._guarded(self.retry_run))
+        router.post("/kernel/runs/{run_id}/bundle", self._guarded(self.bundle))
         router.get("/kernel/runs/{run_id}/metrics", self._guarded(self.metrics))
         router.get("/kernel/runs/{run_id}/artifacts", self._guarded(self.artifacts))
         router.get("/kernel/runs/{run_id}/timeline", self._guarded(self.timeline))
@@ -69,6 +74,8 @@ class KernelApi:
         router.get("/kernel/runs/{run_id}/logs", self._guarded(self.logs))
         router.get("/kernel/runs/{run_id}/artifacts/{artifact_id}/excerpt",
                    self._guarded(self.artifact_excerpt))
+        router.get("/kernel/runs/{run_id}/artifacts/{artifact_id}/download",
+                   self._guarded(self.artifact_download))
         router.get("/kernel/graph", self._guarded(self.graph))
 
     def _guarded(self, handler: Callable[[Request, AuthSession | None], Response]
@@ -111,6 +118,8 @@ class KernelApi:
                 "status": "ready" if self.evaluator_error is None else "unavailable",
                 **({"error": self.evaluator_error} if self.evaluator_error else {}),
             },
+            "workers": worker_health(self.store),
+            "queue": queue_health(self.store),
         })
 
     def plugins(self, request: Request, session: AuthSession | None) -> Response:
@@ -172,6 +181,12 @@ class KernelApi:
         for declaration in task.staged_inputs:
             if declaration.input_id is not None:
                 self._require_ownership("input", declaration.input_id, session)
+            if declaration.artifact_id is not None:
+                try:
+                    artifact_run = self.store.artifact_run_id(declaration.artifact_id)
+                except RuntimeStoreError as exc:
+                    raise HttpError(400, str(exc)) from exc
+                self._require_ownership("run", artifact_run, session)
 
         try:
             idempotency_key = request.q("idempotency_key")
@@ -195,23 +210,23 @@ class KernelApi:
 
     def list_runs(self, request: Request, session: AuthSession | None) -> Response:
         limit = request.q_int("limit")
+        offset = request.q_int("offset", 0) or 0
         try:
+            owner_ids = None
+            if session is not None and not session.developer:
+                owner_ids = set(self.identity.resources_owned("run", session.user_id))
             summaries = self.index.runs(
                 project_id=request.q("project_id"),
                 design_id=request.q("design_id"),
                 plugin_id=request.q("plugin_id"),
                 status=request.q("status"),
+                owner_run_ids=owner_ids,
+                offset=offset,
                 **({"limit": limit} if limit is not None else {}),
             )
         except ValueError as exc:
             raise HttpError(400, str(exc)) from exc
 
-        if session is not None and not session.developer:
-            # A member sees their own runs; a developer sees everything.  The
-            # filter is applied here rather than by the caller, so a client
-            # cannot widen its own view by omitting a parameter.
-            owned = set(self.identity.resources_owned("run", session.user_id))
-            summaries = [s for s in summaries if s.run_id in owned]
         return Response.json({"runs": [s.to_dict() for s in summaries]})
 
     def get_run(self, request: Request, session: AuthSession | None) -> Response:
@@ -221,6 +236,28 @@ class KernelApi:
             return Response.json({"run": self._run_detail(run_id)})
         except RuntimeStoreError as exc:
             raise HttpError(404, str(exc)) from exc
+
+    def design_tree(self, request: Request, session: AuthSession | None) -> Response:
+        design_id = request.params["design_id"]
+        owner_ids = None
+        if session is not None and not session.developer:
+            owner_ids = set(self.identity.resources_owned("run", session.user_id))
+        summaries = self.index.runs(
+            design_id=design_id, owner_run_ids=owner_ids, limit=500,
+        )
+        revisions: dict[str, dict[str, Any]] = {}
+        for summary in summaries:
+            revision = summary.design_revision_id or "unversioned"
+            node = self._run_detail(summary.run_id)
+            revisions.setdefault(revision, {
+                "design_revision_id": summary.design_revision_id,
+                "runs": [],
+            })["runs"].append(node)
+        return Response.json({
+            "design_id": design_id,
+            "revisions": list(revisions.values()),
+            "run_count": len(summaries),
+        })
 
     def _run_detail(self, run_id: str) -> dict[str, Any]:
         """The run, plus the one thing a queued run cannot currently say.
@@ -256,6 +293,14 @@ class KernelApi:
         except (RuntimeStoreError, ValueError) as exc:
             raise HttpError(400, str(exc)) from exc
         return Response.json({"run": detail}, status=202)
+
+    def bundle(self, request: Request, session: AuthSession | None) -> Response:
+        run_id = request.params["run_id"]
+        self._require_ownership("run", run_id, session)
+        try:
+            return Response.json({"bundle": export_run_bundle(self.store, run_id)}, status=201)
+        except RuntimeStoreError as exc:
+            raise HttpError(409, str(exc)) from exc
 
     def metrics(self, request: Request, session: AuthSession | None) -> Response:
         run_id = request.params["run_id"]
@@ -313,6 +358,37 @@ class KernelApi:
         except ValueError as exc:
             raise HttpError(400, str(exc)) from exc
         return Response.json(excerpt)
+
+    def artifact_download(self, request: Request,
+                          session: AuthSession | None) -> Response:
+        run_id = request.params["run_id"]
+        artifact_id = request.params["artifact_id"]
+        self._require_ownership("run", run_id, session)
+        detail = self.index.run_detail(run_id)
+        artifacts = [
+            artifact for stage in detail.get("stages", ())
+            for attempt in stage.get("attempts", ())
+            for artifact in attempt.get("artifacts", ())
+            if artifact.get("artifact_id") == artifact_id
+        ]
+        if len(artifacts) != 1:
+            raise HttpError(404, "artifact not found")
+        artifact = artifacts[0]
+        if artifact["size_bytes"] > MAX_RESPONSE_BYTES:
+            raise HttpError(413, "artifact exceeds the download response limit")
+        try:
+            path = self.store.artifact_path(artifact_id)
+            content = path.read_bytes()
+        except (OSError, RuntimeStoreError) as exc:
+            raise HttpError(404, str(exc)) from exc
+        from openroad_platform_runtime import sha256
+        if len(content) != artifact["size_bytes"] or sha256(content) != artifact["sha256"]:
+            raise HttpError(409, "artifact bytes no longer match the registered hash")
+        return Response(
+            body=content,
+            headers={"Content-Type": "application/octet-stream",
+                     "X-Artifact-SHA256": artifact["sha256"]},
+        )
 
     def graph(self, request: Request, session: AuthSession | None) -> Response:
         run_ids = request.q_all("run_id")

@@ -43,6 +43,8 @@ PACKAGES = [
     (REPO_ROOT / "gateway", "src"),
     (REPO_ROOT / "apps" / "evidence_console", "src"),
     (REPO_ROOT / "apps" / "dse_lab", "src"),
+    (REPO_ROOT / "apps" / "plan_executor", "src"),
+    (REPO_ROOT / "apps" / "query_agent", "src"),
     (REPO_ROOT / "apps" / "run_console", "src"),
 ]
 
@@ -62,13 +64,17 @@ def declared_dependencies(package: Path) -> list[str]:
     pyproject = package / "pyproject.toml"
     assert pyproject.is_file(), f"{package} has no pyproject.toml"
     text = pyproject.read_text(encoding="utf-8")
-    project = re.search(r"^\[project\]\s*$", text, re.M)
+    project = re.search(r"^\[project\]\s*$", text, re.MULTILINE)
     assert project, f"{pyproject} has no [project] table"
-    rest = text[project.end():]
+    rest = text[project.end() :]
     # Stop at the next table header, so a later section's keys are not read here.
-    next_table = re.search(r"^\[", rest, re.M)
-    body = rest[:next_table.start()] if next_table else rest
-    match = re.search(r"^dependencies\s*=\s*\[(.*?)\]", body, re.M | re.S)
+    next_table = re.search(r"^\[", rest, re.MULTILINE)
+    body = rest[: next_table.start()] if next_table else rest
+    match = re.search(
+        r"^dependencies\s*=\s*\[(.*?)\]",
+        body,
+        re.MULTILINE | re.DOTALL,
+    )
     assert match, (
         f"{pyproject} does not state `dependencies` explicitly; write `[]` "
         f"rather than leaving it implied"
@@ -96,16 +102,25 @@ def platform_imports(package: Path, source_root: str) -> set[str]:
     return found
 
 
-@pytest.mark.parametrize("package,source_root", PACKAGES,
-                         ids=[p[0].name for p in PACKAGES])
+@pytest.mark.parametrize(
+    "package,source_root", PACKAGES, ids=[p[0].name for p in PACKAGES]
+)
 def test_declared_dependencies_match_the_imports(package: Path, source_root: str):
     declared = set(declared_dependencies(package))
     imported = {DISTRIBUTIONS[name] for name in platform_imports(package, source_root)}
 
     # A package never depends on itself.
     own = DISTRIBUTIONS.get(
-        next((module for module, dist in DISTRIBUTIONS.items()
-              if package.name.replace("-", "_") in module), ""), None)
+        next(
+            (
+                module
+                for module, dist in DISTRIBUTIONS.items()
+                if package.name.replace("-", "_") in module
+            ),
+            "",
+        ),
+        None,
+    )
     imported.discard(own)
 
     missing = sorted(imported - declared)
@@ -130,6 +145,6 @@ def test_every_package_has_a_pyproject():
 def test_the_declared_names_match_the_package_names():
     for package, _ in PACKAGES:
         text = (package / "pyproject.toml").read_text(encoding="utf-8")
-        match = re.search(r'^name\s*=\s*"([^"]+)"', text, re.M)
+        match = re.search(r'^name\s*=\s*"([^"]+)"', text, re.MULTILINE)
         assert match, package
         assert match.group(1).startswith("openroad-"), (package, match.group(1))

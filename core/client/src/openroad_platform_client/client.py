@@ -164,14 +164,18 @@ class KernelClient:
 
     def runs(self, *, project_id: str | None = None, design_id: str | None = None,
              plugin_id: str | None = None, status: str | None = None,
-             limit: int | None = None) -> list[dict[str, Any]]:
+             limit: int | None = None, offset: int = 0) -> list[dict[str, Any]]:
         return self._call("GET", "/kernel/runs", query={
             "project_id": project_id, "design_id": design_id,
             "plugin_id": plugin_id, "status": status, "limit": limit,
+            "offset": offset,
         })["runs"]
 
     def run(self, run_id: str) -> dict[str, Any]:
         return self._call("GET", f"/kernel/runs/{_seg(run_id)}")["run"]
+
+    def design_tree(self, design_id: str) -> dict[str, Any]:
+        return self._call("GET", f"/kernel/designs/{_seg(design_id)}/tree")
 
     def cancel(self, run_id: str) -> dict[str, Any]:
         return self._call("POST", f"/kernel/runs/{_seg(run_id)}/cancel")
@@ -179,6 +183,10 @@ class KernelClient:
     def retry(self, run_id: str, *, reason: str) -> dict[str, Any]:
         return self._call("POST", f"/kernel/runs/{_seg(run_id)}/retry",
                           payload={"reason": reason})
+
+    def bundle(self, run_id: str) -> dict[str, Any]:
+        """Create a local ZIP evidence artifact for a completed or attempted run."""
+        return self._call("POST", f"/kernel/runs/{_seg(run_id)}/bundle")["bundle"]
 
     def metrics(self, run_id: str, *, complete_only: bool = False
                 ) -> list[dict[str, Any]]:
@@ -217,6 +225,14 @@ class KernelClient:
             "GET",
             f"/kernel/runs/{_seg(run_id)}/artifacts/{_seg(artifact_id)}/excerpt",
             query={"offset": offset, "max_bytes": max_bytes},
+        )
+
+    def artifact_bytes(self, run_id: str, artifact_id: str) -> bytes:
+        """Download a complete registered artifact within the server limit."""
+        return self._call(
+            "GET",
+            f"/kernel/runs/{_seg(run_id)}/artifacts/{_seg(artifact_id)}/download",
+            want_bytes=True,
         )
 
     def graph(self, run_ids: Sequence[str]) -> dict[str, Any]:

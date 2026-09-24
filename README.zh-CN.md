@@ -18,6 +18,8 @@ EDA 工具
 
 这不是一个把 Agent 限制成“只能提交固定任务”的流水线系统。Agent 可以选择 Toolkit 能力、组合多个任务、生成 TCL/Python 脚本、提交源码 patch，也可以选择直接使用低层脚本能力。唯一的约束是：实际工具进程必须进入执行底座管理的生命周期。
 
+Query-Agent 应保持轻量：它负责理解问题、规划查询、比较实验并解释结果。执行底座负责把任务可靠地排队、执行、授权和留存证据；Toolkit 负责具体 EDA 工具、脚本、环境和领域报告。这样 Agent 的计算预算用于推理和决策，而不是重复编写进程监管、文件搬运或工具启动代码。
+
 ## 项目做什么
 
 对于每个 Task 或 Plan，平台可以：
@@ -29,6 +31,7 @@ EDA 工具
 - 记录日志、进度、资源和状态转换；
 - 登记带 provenance 的产物和指标；
 - 区分平台失败、Toolkit 失败和工具失败；
+- 失败时保留平台请求、结果、日志和输入清单等可核验现场；
 - 通过 kernel API 和 Agent Plan API 查询完整证据。
 
 当前目标有意保持克制：单机、Agent 编写的串行任务清单、本地 SQLite/文件系统状态，以及外部 Toolkit 进程。这里不是 Kubernetes 调度器，不是通用 DAG 引擎，也不替 Agent 做 EDA 策略决策。
@@ -70,6 +73,7 @@ tools/install-local.sh
 | `core/client/` | kernel API 的轻量客户端 |
 | `gateway/` | HTTP 组合根和 API 路由 |
 | `apps/plan_executor/` | Agent 编写的有序计划和产物传递 |
+| `apps/query_agent/` | 证据优先的 design/run/artifact 查询和原始数据汇报 |
 | `plugins/` | 仓库内最小示例；真实 EDA Toolkit 可以放在仓库外 |
 | `guardrails/` | 可执行的架构规则和故意违规样例 |
 
@@ -94,9 +98,19 @@ Toolkit 是外部进程包，不是导入 kernel 的 Python 模块。它需要�
 - Agent 生成的 script、patch、build 和 benchmark 任务；
 - 不同 Toolkit 之间的 artifact 传递；
 - cancel、timeout、retry、worker 丢失和幂等行为；
-- 最新全量测试 `438 passed, 1 skipped`，Guardrails `39 passed`。
+- 旧 adapter 进程的 lease fencing、统一有效资源请求、用户可见范围过滤和
+  artifact 授权下载；
+- run 可记录 design revision、experiment 及平台根据实际输入字节计算的
+  `input_manifest_sha256`；健康接口会报告 worker presence 和队列年龄；
+- 失败运行会把可用的请求、结果、日志、输入/协议清单保存为哈希校验的
+  runtime evidence，便于定位问题而不必重新执行；
+- 可按 `Design → Revision → Run → Attempt/State → Artifact/Metric` 查询，
+  并一键生成本机 ZIP 证据包；不引入跨机器存储或复杂调度；
+- 最新全量测试与 Guardrails 结果以 CI 为准；当前 Guardrails 为 `40 passed`，应用 smoke 已纳入默认 pytest。
 
-协议当前仍是 `v1alpha1`。跨机器 Toolkit preflight、不可变 design identity、多用户隔离、操作系统硬资源限制、远程对象存储和多节点调度均已记录为后续工作，但没有被伪装成当前已有能力。
+协议当前仍是 `v1alpha1`。跨机器 Toolkit preflight、完整 Design→Revision→Experiment
+实体模型、操作系统硬资源限制、远程对象存储和多节点调度仍是后续工作；当前
+多用户入口和 artifact/input/run 的授权检查已经闭合，但工作区仍不是 OS 安全沙箱。
 
 ## 文档入口
 

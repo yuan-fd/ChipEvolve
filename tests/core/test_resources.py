@@ -108,6 +108,23 @@ def test_a_resource_request_round_trips():
     assert TaskSpec.from_dict(spec.to_dict()) == spec
 
 
+def test_effective_reservation_preserves_runtime_limits(tmp_path):
+    """Admission defaults must not erase caller limits enforced by guardian."""
+    rt = runtime(tmp_path)
+    spec = TaskSpec(
+        task_id="task-effective", project_id="p", design_id="d",
+        plugin_id="fake-capability",
+        resources=ResourceRequest(cpu_seconds=90, processes=4),
+    )
+
+    effective = rt.config.reservation_for(spec)
+
+    assert effective.cpu_seconds == 90
+    assert effective.processes == 4
+    assert effective.cpu_cores == 1
+    assert effective.memory_bytes == 1 << 30
+
+
 # --------------------------------------------------------------------------
 # what a breach becomes
 # --------------------------------------------------------------------------

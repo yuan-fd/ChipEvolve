@@ -131,8 +131,8 @@ container sandbox. Configure conservative capacity on a shared machine.
 
 ## Is the repository completely lint-clean?
 
-No. The latest recorded full test result is 438 passed and one intentionally
-skipped branch; 39 architecture tests passed. Targeted Ruff and source mypy
+No. The current working-tree full test result is 481 passed and one intentionally
+skipped branch; 40 architecture tests passed. Targeted Ruff and source mypy
 checks passed. Historical repository-wide formatting and static-check debt is
 documented in the [audit](internal/EXECUTION_AUDIT_REPORT.md). A green test
 suite is not a claim that every quality tool is clean.
