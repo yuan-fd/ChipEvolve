@@ -439,3 +439,5 @@ reads; normal artifact reads continue to re-hash the full object.
 
 The reconciled total is 9,456 lines after formatting and the final endpoint
 call-site adjustment.
+
+The ownership boundary adds three lines; reconciled total: 9,459.

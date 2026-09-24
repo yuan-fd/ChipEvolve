@@ -512,6 +512,9 @@ class KernelApi:
         owner = session.user_id if session else self.local_user_id
         if owner is None:
             return
+        resource_owner = self.identity.owner_of(resource_type, resource_id)
+        if resource_owner is None and not (session and session.developer):
+            raise HttpError(404, f"{resource_type} not found")
         if not self.identity.owns_resource(resource_type, resource_id, owner, developer_all=True):
             # 404, not 403: telling a caller that someone else's run exists is
             # itself a disclosure.
