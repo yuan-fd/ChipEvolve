@@ -12,10 +12,10 @@ about measuring a process tree at all:
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
-
 from openroad_platform_contracts import (
     ContractError,
     PluginManifest,
@@ -122,7 +122,20 @@ def test_effective_reservation_preserves_runtime_limits(tmp_path):
     assert effective.cpu_seconds == 90
     assert effective.processes == 4
     assert effective.cpu_cores == 1
-    assert effective.memory_bytes == 1 << 30
+    assert effective.memory_bytes == 6 << 30
+
+
+def test_memory_above_default_requires_manual_approval(tmp_path):
+    rt = runtime(tmp_path)
+    spec = TaskSpec(
+        task_id="task-large-memory", project_id="p", design_id="d",
+        plugin_id="fake-capability",
+        resources=ResourceRequest(memory_bytes=8 << 30),
+    )
+    with pytest.raises(ValueError, match="memory_approval"):
+        rt.submit(spec)
+    approved = replace(spec, labels={"memory_approval": "manual"})
+    assert rt.submit(approved).status is RuntimeStatus.QUEUED
 
 
 # --------------------------------------------------------------------------
@@ -141,7 +154,7 @@ def test_a_breached_limit_is_a_named_failure_not_an_exit_code(tmp_path):
         exceeded="memory_bytes: the tree held 900 bytes resident, above the "
                  "requested 100",
     )
-    result = ProcessAdapter._load_result(  # noqa: SLF001 - the mapping is the unit
+    result = ProcessAdapter._load_result(
         tmp_path / "never-written.json", outcome, manifest(),
         started_at="t0", ended_at="t1",
     )

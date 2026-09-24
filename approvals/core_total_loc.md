@@ -441,3 +441,6 @@ The reconciled total is 9,456 lines after formatting and the final endpoint
 call-site adjustment.
 
 The ownership boundary adds three lines; reconciled total: 9,459.
+
+The six-gigabyte default and manual approval check add the final eight lines;
+reconciled total: 9,467.

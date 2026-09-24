@@ -155,3 +155,9 @@ for the single-server deployment; no EDA algorithm or plugin branch was added.
 The same boundary now supports manifest-declared collection patterns, so a
 Toolkit can identify important files it created without forcing the kernel to
 understand their contents.
+
+# 2026-09-24: six-gigabyte default and manual large-memory approval (1105 -> 1112)
+
+Ordinary EDA tasks now reserve a six-gigabyte default memory budget. Requests
+above that threshold must carry the explicit `memory_approval=manual` label,
+making large-machine consumption visible and deliberate.

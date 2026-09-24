@@ -120,7 +120,9 @@ class RuntimeConfig:
     #: What a task that declares nothing still reserves.  Without this, a
     #: task could opt out of the scheduler entirely by staying silent.
     default_task_cpu_cores: int = 1
-    default_task_memory_bytes: int = 1 << 30
+    #: Ordinary EDA runs receive a six-gigabyte working budget. Larger jobs
+    #: must carry an explicit manual approval label.
+    default_task_memory_bytes: int = 6 << 30
     #: Absolute host paths accepted as caller-provided inputs.  An empty tuple
     #: preserves the trusted local-library mode; shared deployments must set a
     #: bounded root and use uploaded inputs for everything else.
@@ -344,6 +346,12 @@ class WorkflowRuntime:
             raise ValueError("requested cpu_cores exceed platform budget")
         if resources.memory_bytes is not None and resources.memory_bytes > budget_memory:
             raise ValueError("requested memory exceeds platform budget")
+        if (resources.memory_bytes is not None
+                and resources.memory_bytes > self.config.default_task_memory_bytes
+                and task.labels.get("memory_approval") != "manual"):
+            raise ValueError(
+                "memory requests above 6 GiB require labels.memory_approval='manual'"
+            )
         if task.resources is not None and task.resources.declared and not self.adapter.supports_limits():
             raise ResourceLimitsUnsupported(f"this host cannot measure a process tree, so the requested limits ({resources.describe()}) cannot be enforced")
 

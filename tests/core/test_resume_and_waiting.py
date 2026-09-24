@@ -10,12 +10,9 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
-
 from openroad_platform_contracts import (
     AttemptStatus,
     PluginManifest,
-    ResourceRequest,
     RuntimeRequirements,
     RuntimeStatus,
     TaskSpec,
@@ -50,7 +47,7 @@ def manifest(resumable: bool = False) -> PluginManifest:
 
 
 def runtime(tmp_path: Path, *, resumable: bool = False,
-            capacity_cpu: int = 4, capacity_memory: int = 8 << 30
+            capacity_cpu: int = 4, capacity_memory: int = 16 << 30
             ) -> tuple[WorkflowRuntime, ResourceQuery]:
     store = RuntimeStore(tmp_path / "runtime.db")
     from openroad_platform_runtime import RuntimeConfig
@@ -106,7 +103,7 @@ def start_and_lose(rt: WorkflowRuntime, run_id: str) -> str:
     """
     attempt = start_and_hold(rt, run_id)
     # Push the lease into the past rather than waiting for it.
-    rt.store._connection.execute(  # noqa: SLF001 - the test owns this clock
+    rt.store._connection.execute(
         "UPDATE runtime_attempts SET lease_expires_at = ? WHERE attempt_id = ?",
         ("2000-01-01T00:00:00+00:00", attempt.attempt_id),
     )
@@ -133,7 +130,7 @@ def test_a_queued_run_without_room_names_the_shortfall(tmp_path):
     that cannot -- declaring a bound is refused where it could not be enforced,
     which is a different rule and is tested elsewhere.
     """
-    rt, resources = runtime(tmp_path, capacity_cpu=3, capacity_memory=4 << 30)
+    rt, resources = runtime(tmp_path, capacity_cpu=1, capacity_memory=16 << 30)
     # The budget is 1 core, so one default reservation fills it.
     first = rt.submit(task("hog"))
     start_and_hold(rt, first.run_id)
@@ -142,7 +139,7 @@ def test_a_queued_run_without_room_names_the_shortfall(tmp_path):
     second = rt.submit(task("blocked"))
     reason = resources.waiting_for(second.run_id)
     assert reason is not None and reason.startswith("resource:")
-    assert "reserves 1 cores and 1073741824 bytes" in reason
+    assert "reserves 1 cores and 6442450944 bytes" in reason
     assert "0 cores and " in reason
 
 
@@ -156,11 +153,11 @@ def test_a_running_run_is_not_waiting_for_anything(tmp_path):
 def test_the_explanation_uses_the_same_numbers_as_the_reservation(tmp_path):
     """A shortfall explained with different numbers than the reservation is a
     wild goose chase.  Both come from ``RuntimeConfig.reservation_for``."""
-    rt, resources = runtime(tmp_path, capacity_cpu=4, capacity_memory=4 << 30)
+    rt, resources = runtime(tmp_path, capacity_cpu=4, capacity_memory=16 << 30)
     run = rt.submit(task("defaulted"))
     reserved = rt.config.reservation_for(rt.store.get_run(run.run_id).task_spec)
     assert reserved.cpu_cores == 1
-    assert reserved.memory_bytes == 1 << 30
+    assert reserved.memory_bytes == 6 << 30
     # With room to spare the answer is the other one; the reservation is what
     # decides, and it is the same object the runtime will use.
     assert resources.waiting_for(run.run_id).startswith("claimable")
