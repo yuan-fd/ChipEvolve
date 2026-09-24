@@ -24,6 +24,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from openroad_platform_contracts import RuntimeStatus
@@ -58,15 +59,22 @@ class CycleReport:
         return bool(self.reclaimed or self.cancelled or self.advanced or self.failed)
 
     def to_dict(self) -> dict[str, int]:
-        return {"reclaimed": self.reclaimed, "cancelled": self.cancelled,
-                "advanced": self.advanced, "failed": self.failed}
+        return {
+            "reclaimed": self.reclaimed,
+            "cancelled": self.cancelled,
+            "advanced": self.advanced,
+            "failed": self.failed,
+        }
 
 
 class RuntimeWorker:
     """One worker process against one runtime store."""
 
     def __init__(
-        self, store: RuntimeStore, runtime: WorkflowRuntime, *,
+        self,
+        store: RuntimeStore,
+        runtime: WorkflowRuntime,
+        *,
         idle_seconds: float = DEFAULT_IDLE_SECONDS,
         batch: int = DEFAULT_BATCH,
         on_cycle: Callable[[CycleReport], None] | None = None,
@@ -90,7 +98,13 @@ class RuntimeWorker:
         report.reclaimed = len(self.store.reclaim_expired_attempts())
         report.cancelled = self._finish_abandoned_cancellations()
 
-        for run_id in self.store.runnable_runs(limit=self.batch):
+        # Scan past blocked work.  The batch is a cap on work started, not a
+        # cap on the number of queue rows inspected: a large first task must
+        # not starve a small task behind it when capacity is temporarily full.
+        advanced = 0
+        for run_id in self.store.runnable_runs(limit=min(1000, self.batch * 16)):
+            if advanced >= self.batch:
+                break
             try:
                 _, executed = self.runtime.execute_once_reporting(run_id)
             except InvalidTransition:
@@ -101,8 +115,17 @@ class RuntimeWorker:
                 # One run this worker cannot advance must not stop the cycle:
                 # everything behind it may be perfectly healthy.  The type and
                 # message are logged, so this is reporting, not swallowing.
-                LOGGER.warning("run %s could not be advanced: %s: %s",
-                               run_id, type(exc).__name__, exc)
+                LOGGER.warning(
+                    "run %s could not be advanced: %s: %s",
+                    run_id,
+                    type(exc).__name__,
+                    exc,
+                )
+                self.store.fail_queued_run(
+                    run_id,
+                    category="preflight_error",
+                    message=f"{type(exc).__name__}: {exc}",
+                )
                 report.failed += 1
                 continue
             # Count work actually done.  Any check the worker could make for
@@ -111,6 +134,7 @@ class RuntimeWorker:
             # as having executed one attempt.
             if executed:
                 report.advanced += 1
+                advanced += 1
         touch(self.store, self.runtime.config.worker_id)
         return report
 
@@ -119,7 +143,8 @@ class RuntimeWorker:
         for run_id in self.store.abandoned_cancellations(limit=self.batch):
             try:
                 self.store.transition_run(
-                    run_id, RuntimeStatus.CANCELLED,
+                    run_id,
+                    RuntimeStatus.CANCELLED,
                     reason="cancelled before the attempt started",
                 )
             except InvalidTransition:
@@ -130,10 +155,44 @@ class RuntimeWorker:
     # -- serving ----------------------------------------------------------
 
     def serve_forever(self, stop: threading.Event | None = None) -> None:
+        """Serve with maintenance independent from long-running attempts."""
         stop = stop or threading.Event()
-        while not stop.is_set():
-            report = self.cycle()
-            if self.on_cycle is not None:
-                self.on_cycle(report)
-            if not report.did_work:
-                stop.wait(self.idle_seconds)
+        active: set[str] = set()
+        with ThreadPoolExecutor(max_workers=self.batch, thread_name_prefix="runtime-attempt") as pool:
+            while not stop.is_set() or active:
+                report = CycleReport()
+                touch(self.store, self.runtime.config.worker_id)
+                report.reclaimed = len(self.store.reclaim_expired_attempts())
+                report.cancelled = self._finish_abandoned_cancellations()
+                for run_id in self.store.runnable_runs(limit=min(1000, self.batch * 16)) if not stop.is_set() else ():
+                    if len(active) >= self.batch or run_id in active:
+                        continue
+                    active.add(run_id)
+                    pool.submit(self._run_async, run_id, active, report)
+                if self.on_cycle is not None:
+                    self.on_cycle(report)
+                if not report.did_work and not active:
+                    stop.wait(self.idle_seconds)
+                else:
+                    stop.wait(min(self.idle_seconds, 0.05))
+
+    def _run_async(self, run_id: str, active: set[str], report: CycleReport) -> None:
+        try:
+            _, executed = self.runtime.execute_once_reporting(run_id)
+            if executed:
+                report.advanced += 1
+        except InvalidTransition:
+            pass
+        except Exception as exc:  # noqa: BLE001 - isolate one attempt
+            LOGGER.warning("run %s could not be advanced: %s: %s", run_id, type(exc).__name__, exc)
+            try:
+                if self.store.fail_queued_run(
+                    run_id,
+                    category="preflight_error",
+                    message=f"{type(exc).__name__}: {exc}",
+                ):
+                    report.failed += 1
+            except Exception:
+                LOGGER.exception("could not record preflight failure for %s", run_id)
+        finally:
+            active.discard(run_id)

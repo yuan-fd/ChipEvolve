@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import os
 import platform
 import shutil
@@ -68,6 +69,7 @@ from .store import (
     RuntimeStoreError,
     StageRun,
 )
+from .worker_presence import touch as touch_worker
 
 
 class InputStagingError(RuntimeError):
@@ -98,10 +100,13 @@ class ManifestResolver(Protocol):
     """
 
     def resolve(
-        self, plugin_id: str, *, version: str | None = None,
-        capability: str | None = None, arch: str | None = None,
-    ) -> PluginManifest:
-        ...  # pragma: no cover - protocol definition
+        self,
+        plugin_id: str,
+        *,
+        version: str | None = None,
+        capability: str | None = None,
+        arch: str | None = None,
+    ) -> PluginManifest: ...  # pragma: no cover - protocol definition
 
 
 @dataclass
@@ -133,12 +138,8 @@ class RuntimeConfig:
         requested = task.resources
         return ResourceRequest(
             cpu_seconds=(requested.cpu_seconds if requested else None),
-            cpu_cores=(requested.cpu_cores
-                       if requested and requested.cpu_cores is not None
-                       else self.default_task_cpu_cores),
-            memory_bytes=(requested.memory_bytes
-                          if requested and requested.memory_bytes is not None
-                          else self.default_task_memory_bytes),
+            cpu_cores=(requested.cpu_cores if requested and requested.cpu_cores is not None else self.default_task_cpu_cores),
+            memory_bytes=(requested.memory_bytes if requested and requested.memory_bytes is not None else self.default_task_memory_bytes),
             processes=(requested.processes if requested else None),
         )
 
@@ -161,9 +162,7 @@ class RuntimeConfig:
             raise ValueError("platform_fraction must be in (0, 1]")
         self.workspace_root = Path(self.workspace_root).expanduser().resolve()
         self.workspace_root.mkdir(parents=True, exist_ok=True)
-        self.allowed_input_roots = tuple(
-            Path(root).expanduser().resolve() for root in self.allowed_input_roots
-        )
+        self.allowed_input_roots = tuple(Path(root).expanduser().resolve() for root in self.allowed_input_roots)
         if not self.worker_id:
             self.worker_id = f"{socket.gethostname()}-{uuid.uuid4().hex[:8]}"
 
@@ -203,7 +202,8 @@ class WorkflowRuntime:
                 raise ValueError("runtime needs a workspace_root or a config")
             config = RuntimeConfig(
                 workspace_root=Path(workspace_root),
-                lease_seconds=lease_seconds, worker_id=worker_id,
+                lease_seconds=lease_seconds,
+                worker_id=worker_id,
             )
         self.store = store
         self.resolver = resolver
@@ -215,12 +215,17 @@ class WorkflowRuntime:
     # -- submission -------------------------------------------------------
 
     def submit(
-        self, task: TaskSpec, *, plugin_version: str | None = None,
+        self,
+        task: TaskSpec,
+        *,
+        plugin_version: str | None = None,
         capability: str | None = None,
-        idempotent: bool = False, idempotency_key: str | None = None,
+        idempotent: bool = False,
+        idempotency_key: str | None = None,
     ) -> RunRecord:
         task.validate()
         self._check_inputs(task)
+        task = self._freeze_host_inputs(task)
         task = replace(
             task,
             input_manifest_sha256=self._input_manifest_digest(task),
@@ -228,19 +233,21 @@ class WorkflowRuntime:
         self._check_resources(task)
         if task.plugin_id is None:
             raise ValueError("this runtime executes direct plugin tasks only")
-        if (plugin_version and task.plugin_version
-                and plugin_version != task.plugin_version):
-            raise ValueError(
-                "plugin_version argument conflicts with the task plugin_version"
-            )
+        if plugin_version and task.plugin_version and plugin_version != task.plugin_version:
+            raise ValueError("plugin_version argument conflicts with the task plugin_version")
         requested_version = plugin_version or task.plugin_version
         manifest = self.resolver.resolve(
-            task.plugin_id, version=requested_version, capability=capability,
+            task.plugin_id,
+            version=requested_version,
+            capability=capability,
             arch=platform.machine(),
         )
         return self.store.submit_run(
-            task, stage_key="main", plugin_version=manifest.plugin_version,
-            idempotent=idempotent, idempotency_key=idempotency_key,
+            task,
+            stage_key="main",
+            plugin_version=manifest.plugin_version,
+            idempotent=idempotent,
+            idempotency_key=idempotency_key,
             resumable=manifest.requirements.resumable,
         )
 
@@ -253,144 +260,181 @@ class WorkflowRuntime:
                 digest, size = uploaded.sha256, uploaded.size_bytes
             elif declaration.artifact_id is not None:
                 artifact = self.store.get_artifact(declaration.artifact_id)
-                digest, size = artifact.sha256, artifact.size_bytes
+                try:
+                    present = self.store.artifact_path(declaration.artifact_id).is_file()
+                except RuntimeStoreError:
+                    present = False
+                if not present and not declaration.required:
+                    digest, size = None, 0
+                else:
+                    digest, size = artifact.sha256, artifact.size_bytes
             else:
                 source = Path(cast(str, declaration.source)).expanduser().resolve()
                 if not source.is_file():
                     if declaration.required:
-                        raise InputStagingError(
-                            f"required input is not a readable file: {source!s}"
-                        )
+                        raise InputStagingError(f"required input is not a readable file: {source!s}")
                     digest, size = None, 0
                 else:
                     digest, size = sha256(source), source.stat().st_size
-            entries.append({
-                "destination": declaration.destination,
-                "present": digest is not None,
-                "sha256": digest,
-                "size_bytes": size,
-            })
+            entries.append(
+                {
+                    "destination": declaration.destination,
+                    "present": digest is not None,
+                    "sha256": digest,
+                    "size_bytes": size,
+                }
+            )
         payload = json.dumps(entries, sort_keys=True, separators=(",", ":"))
         return sha256(payload.encode("utf-8"))
 
+    def _freeze_host_inputs(self, task: TaskSpec) -> TaskSpec:
+        frozen: list[InputFile] = []
+        labels = dict(task.labels)
+        changed = False
+        for index, declaration in enumerate(task.staged_inputs):
+            if declaration.source is None:
+                frozen.append(declaration)
+                continue
+            source = Path(declaration.source).expanduser().resolve()
+            if not source.is_file():
+                frozen.append(declaration)
+                continue
+            uploaded = self.store.ingest_input_file(source)
+            labels[f"__platform_host_source_{index}"] = str(source)
+            frozen.append(
+                InputFile(
+                    destination=declaration.destination,
+                    input_id=uploaded.input_id,
+                    required=declaration.required,
+                )
+            )
+            changed = True
+        return replace(task, staged_inputs=tuple(frozen), labels=labels) if changed else task
+
     def submit_idempotent(
-        self, task: TaskSpec, *, plugin_version: str | None = None,
-        capability: str | None = None, idempotency_key: str | None = None,
+        self,
+        task: TaskSpec,
+        *,
+        plugin_version: str | None = None,
+        capability: str | None = None,
+        idempotency_key: str | None = None,
     ) -> RunRecord:
         """Submit once by explicit key, or by task id when no key is supplied."""
         return self.submit(
-            task, plugin_version=plugin_version, capability=capability,
-            idempotent=True, idempotency_key=idempotency_key,
+            task,
+            plugin_version=plugin_version,
+            capability=capability,
+            idempotent=True,
+            idempotency_key=idempotency_key,
         )
 
     # -- inputs -----------------------------------------------------------
 
     def _check_resources(self, task: TaskSpec) -> None:
         """Refuse a task whose declared limits this host cannot enforce."""
-        resources = task.resources
-        if resources is None or not resources.declared:
-            return
-        if self.config.capacity_cpu_cores is not None and resources.cpu_cores is not None \
-                and resources.cpu_cores > int(self.config.capacity_cpu_cores * self.config.platform_fraction):
+        resources = self.config.reservation_for(task)
+        budget_cpu = max(1, math.ceil(self.config.capacity_cpu_cores * self.config.platform_fraction))
+        budget_memory = max(
+            1,
+            math.ceil(self.config.capacity_memory_bytes * self.config.platform_fraction),
+        )
+        if budget_cpu < 1 or budget_memory < self.config.default_task_memory_bytes:
+            raise ValueError("platform capacity is smaller than the default task reservation")
+        if resources.cpu_cores is not None and resources.cpu_cores > budget_cpu:
             raise ValueError("requested cpu_cores exceed platform budget")
-        if self.config.capacity_memory_bytes is not None and resources.memory_bytes is not None \
-                and resources.memory_bytes > int(self.config.capacity_memory_bytes * self.config.platform_fraction):
+        if resources.memory_bytes is not None and resources.memory_bytes > budget_memory:
             raise ValueError("requested memory exceeds platform budget")
-        if not self.adapter.supports_limits():
-            raise ResourceLimitsUnsupported(
-                f"this host cannot measure a process tree, so the requested "
-                f"limits ({resources.describe()}) cannot be enforced"
-            )
+        if task.resources is not None and task.resources.declared and not self.adapter.supports_limits():
+            raise ResourceLimitsUnsupported(f"this host cannot measure a process tree, so the requested limits ({resources.describe()}) cannot be enforced")
 
     def _check_inputs(self, task: TaskSpec) -> None:
-        for declaration in task.staged_inputs:
+        for index, declaration in enumerate(task.staged_inputs):
             if declaration.input_id is not None:
                 try:
                     self.store.get_uploaded_input(declaration.input_id)
                 except RuntimeStoreError as exc:
-                    raise InputStagingError(
-                        f"input references an uploaded input the platform does "
-                        f"not have: {declaration.input_id!r}"
-                    ) from exc
+                    raise InputStagingError(f"input references an uploaded input the platform does not have: {declaration.input_id!r}") from exc
                 continue
             if declaration.artifact_id is not None:
                 try:
                     self.store.get_artifact(declaration.artifact_id)
                 except RuntimeStoreError as exc:
-                    raise InputStagingError(
-                        f"input references an artifact the platform does not "
-                        f"have: {declaration.artifact_id!r}"
-                    ) from exc
+                    raise InputStagingError(f"input references an artifact the platform does not have: {declaration.artifact_id!r}") from exc
                 continue
             source = Path(cast(str, declaration.source)).expanduser().resolve()
-            if (self.config.allowed_input_roots
-                    and not any(_within(source, root)
-                                for root in self.config.allowed_input_roots)):
-                    raise InputStagingError(
-                        f"host input is outside configured input roots: "
-                        f"{declaration.source!r}"
-                    )
+            if self.config.allowed_input_roots and not any(_within(source, root) for root in self.config.allowed_input_roots):
+                raise InputStagingError(f"host input is outside configured input roots: {declaration.source!r}")
             if declaration.required and not source.is_file():
-                raise InputStagingError(
-                    f"required input is not a readable file: "
-                    f"{declaration.source!r} (declared as "
-                    f"{declaration.destination!r})"
-                )
+                raise InputStagingError(f"required input is not a readable file: {declaration.source!r} (declared as {declaration.destination!r})")
 
-    def _stage_inputs(
-        self, task: TaskSpec, workspace: Path
-    ) -> tuple[tuple[StagedInput, ...], dict[str, Any] | None]:
+    def _stage_inputs(self, task: TaskSpec, workspace: Path) -> tuple[tuple[StagedInput, ...], dict[str, Any] | None]:
         if not task.staged_inputs:
             return (), None
 
         staged: list[StagedInput] = []
-        for declaration in task.staged_inputs:
+        for index, declaration in enumerate(task.staged_inputs):
             destination = workspace / declaration.destination
             if declaration.input_id is not None:
-                staged.append(self._stage_from_input(declaration, destination))
+                staged.append(self._stage_from_input(
+                    declaration, destination,
+                    source=task.labels.get(f"__platform_host_source_{index}"),
+                ))
                 continue
             if declaration.artifact_id is not None:
-                staged.append(
-                    self._stage_from_artifact(declaration, destination)
-                )
+                staged.append(self._stage_from_artifact(declaration, destination))
                 continue
             source = Path(cast(str, declaration.source)).expanduser().resolve()
             if not source.is_file():
                 if declaration.required:
-                    raise InputStagingError(
-                        f"required input disappeared before it could be staged: "
-                        f"{declaration.source!r}"
+                    raise InputStagingError(f"required input disappeared before it could be staged: {declaration.source!r}")
+                staged.append(
+                    StagedInput(
+                        destination=declaration.destination,
+                        source=declaration.source,
+                        present=False,
+                        size_bytes=0,
                     )
-                staged.append(StagedInput(
-                    destination=declaration.destination,
-                    source=declaration.source, present=False, size_bytes=0,
-                ))
+                )
                 continue
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, destination)
-            staged.append(StagedInput(
-                destination=declaration.destination,
-                source=declaration.source, present=True,
-                size_bytes=destination.stat().st_size,
-                sha256=sha256(destination),
-            ))
+            staged.append(
+                StagedInput(
+                    destination=declaration.destination,
+                    source=declaration.source,
+                    present=True,
+                    size_bytes=destination.stat().st_size,
+                    sha256=sha256(destination),
+                )
+            )
 
         manifest_path = workspace / INPUT_MANIFEST_FILENAME
-        manifest_path.write_text(json.dumps({
-            "schema_version": SCHEMA_VERSION,
-            # An identity document, not an audit record.  Where a file happened
-            # to live is not part of what it is: two runs that read the same
-            # bytes into the same destinations are running the same design even
-            # if one caller kept it under /tmp and the other on a shared volume.
-            # Including the source would make those two manifests differ, and
-            # the digest would then measure the caller's filing habits.  The
-            # source is recorded in ``runtime_inputs``, where it is provenance.
-            "inputs": [
-                {"destination": item.destination, "present": item.present,
-                 "size_bytes": item.size_bytes, "sha256": item.sha256}
-                for item in staged
-            ],
-        }, indent=2, sort_keys=True), encoding="utf-8")
+        manifest_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    # An identity document, not an audit record.  Where a file happened
+                    # to live is not part of what it is: two runs that read the same
+                    # bytes into the same destinations are running the same design even
+                    # if one caller kept it under /tmp and the other on a shared volume.
+                    # Including the source would make those two manifests differ, and
+                    # the digest would then measure the caller's filing habits.  The
+                    # source is recorded in ``runtime_inputs``, where it is provenance.
+                    "inputs": [
+                        {
+                            "destination": item.destination,
+                            "present": item.present,
+                            "size_bytes": item.size_bytes,
+                            "sha256": item.sha256,
+                        }
+                        for item in staged
+                    ],
+                },
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
         return tuple(staged), {
             "path": manifest_path,
             "sha256": sha256(manifest_path),
@@ -401,9 +445,7 @@ class WorkflowRuntime:
             },
         }
 
-    def _stage_from_artifact(
-        self, declaration: InputFile, destination: Path
-    ) -> StagedInput:
+    def _stage_from_artifact(self, declaration: InputFile, destination: Path) -> StagedInput:
         """Place bytes the platform already holds, and check them as they land.
 
         The copy is verified against the artifact's own record rather than
@@ -413,66 +455,79 @@ class WorkflowRuntime:
         checked.
         """
         try:
-            artifact = self.store.materialize_artifact(
-                cast(str, declaration.artifact_id), destination
-            )
+            artifact = self.store.materialize_artifact(cast(str, declaration.artifact_id), destination)
         except RuntimeStoreError as exc:
             if declaration.required:
                 raise InputStagingError(str(exc)) from exc
             return StagedInput(
-                destination=declaration.destination, present=False, size_bytes=0,
+                destination=declaration.destination,
+                present=False,
+                size_bytes=0,
                 source_artifact_id=declaration.artifact_id,
             )
         digest = sha256(destination)
         size_bytes = destination.stat().st_size
         if digest != artifact.sha256 or size_bytes != artifact.size_bytes:
             raise InputStagingError(
-                f"artifact {declaration.artifact_id!r} does not match its own "
-                f"record: recorded {artifact.sha256} ({artifact.size_bytes} "
-                f"bytes), copied {digest} ({size_bytes} bytes)"
+                f"artifact {declaration.artifact_id!r} does not match its own record: recorded {artifact.sha256} ({artifact.size_bytes} bytes), copied {digest} ({size_bytes} bytes)"
             )
         return StagedInput(
-            destination=declaration.destination, present=True,
-            size_bytes=size_bytes, sha256=digest,
+            destination=declaration.destination,
+            present=True,
+            size_bytes=size_bytes,
+            sha256=digest,
             source_artifact_id=declaration.artifact_id,
         )
 
-    def _stage_from_input(
-        self, declaration: InputFile, destination: Path
-    ) -> StagedInput:
+    def _stage_from_input(self, declaration: InputFile, destination: Path,
+                          *, source: str | None = None) -> StagedInput:
         try:
             uploaded = self.store.materialize_input(cast(str, declaration.input_id), destination)
         except RuntimeStoreError as exc:
             if declaration.required:
                 raise InputStagingError(str(exc)) from exc
-            return StagedInput(destination=declaration.destination, present=False,
-                               size_bytes=0, source_input_id=declaration.input_id)
+            return StagedInput(
+                destination=declaration.destination,
+                present=False,
+                size_bytes=0,
+                source_input_id=declaration.input_id,
+            )
         digest = sha256(destination)
         size_bytes = destination.stat().st_size
         if digest != uploaded.sha256 or size_bytes != uploaded.size_bytes:
-            raise InputStagingError(f"uploaded input {declaration.input_id!r} does not "
-                                    f"match its record: {uploaded.sha256} ({uploaded.size_bytes}), "
-                                    f"copied {digest} ({size_bytes})")
-        return StagedInput(destination=declaration.destination, present=True,
-                           size_bytes=size_bytes, sha256=digest,
-                           source_input_id=declaration.input_id)
+            raise InputStagingError(f"uploaded input {declaration.input_id!r} does not match its record: {uploaded.sha256} ({uploaded.size_bytes}), copied {digest} ({size_bytes})")
+        if source is not None and not Path(source).is_file():
+            raise InputStagingError(f"required input disappeared before it could be staged: {source!r}")
+        return StagedInput(
+            destination=declaration.destination,
+            present=True,
+            size_bytes=size_bytes,
+            sha256=digest,
+            source=source,
+            source_input_id=declaration.input_id,
+        )
 
     # -- execution --------------------------------------------------------
 
     def execute_once(
-        self, run_id: str, *,
+        self,
+        run_id: str,
+        *,
         on_line: Callable[[str], None] | None = None,
         external_cancel_requested: Callable[[], bool] | None = None,
     ) -> RunRecord:
         """Advance a run by at most one attempt."""
         run, _ = self.execute_once_reporting(
-            run_id, on_line=on_line,
+            run_id,
+            on_line=on_line,
             external_cancel_requested=external_cancel_requested,
         )
         return run
 
     def execute_once_reporting(
-        self, run_id: str, *,
+        self,
+        run_id: str,
+        *,
         on_line: Callable[[str], None] | None = None,
         external_cancel_requested: Callable[[], bool] | None = None,
     ) -> tuple[RunRecord, bool]:
@@ -497,7 +552,8 @@ class WorkflowRuntime:
             return run, False
 
         manifest = self.resolver.resolve(
-            stage.plugin_id, version=stage.plugin_version,
+            stage.plugin_id,
+            version=stage.plugin_version,
             arch=platform.machine(),
         )
         previous = self.store.list_attempts(stage.stage_run_id)
@@ -505,15 +561,14 @@ class WorkflowRuntime:
         if manifest.requirements.resumable and previous:
             workspace = Path(previous[-1].workspace)
         else:
-            workspace = (
-                self.config.workspace_root / run_id / stage.stage_run_id
-                / f"attempt-{attempt_number}"
-            )
+            workspace = self.config.workspace_root / run_id / stage.stage_run_id / f"attempt-{attempt_number}"
         try:
             reservation = self.config.reservation_for(run.task_spec)
             attempt = self.store.start_attempt(
-                stage.stage_run_id, worker_id=self.config.worker_id,
-                workspace=workspace, lease_seconds=self.config.lease_seconds,
+                stage.stage_run_id,
+                worker_id=self.config.worker_id,
+                workspace=workspace,
+                lease_seconds=self.config.lease_seconds,
                 resources=reservation,
                 capacity_cpu_cores=self.config.capacity_cpu_cores,
                 capacity_memory_bytes=self.config.capacity_memory_bytes,
@@ -521,6 +576,7 @@ class WorkflowRuntime:
             )
             if attempt is None:
                 return self.store.get_run(run_id), False
+            touch_worker(self.store, self.config.worker_id, attempt_id=attempt.attempt_id)
             try:
                 workspace.mkdir(parents=True, exist_ok=True)
             except OSError as exc:
@@ -530,47 +586,59 @@ class WorkflowRuntime:
             return self.store.get_run(run_id), False
 
         pulse = _LeasePulse(
-            self.store, run_id, attempt.attempt_id,
+            self.store,
+            run_id,
+            attempt.attempt_id,
             worker_id=self.config.worker_id,
             lease_seconds=self.config.lease_seconds,
             external_cancel_requested=external_cancel_requested,
         )
         observer = ProgressObserver(
-            self.store, run_id=run_id, stage_run_id=stage.stage_run_id,
-            attempt_id=attempt.attempt_id, marker=manifest.progress_marker,
+            self.store,
+            run_id=run_id,
+            stage_run_id=stage.stage_run_id,
+            attempt_id=attempt.attempt_id,
+            marker=manifest.progress_marker,
             producer=f"adapter:{manifest.plugin_id}@{manifest.plugin_version}",
             downstream=on_line,
         )
 
         try:
             self._run_attempt(
-                run, stage, attempt, manifest, workspace, pulse, observer,
+                run,
+                stage,
+                attempt,
+                manifest,
+                workspace,
+                pulse,
+                observer,
             )
         except Exception as exc:  # noqa: BLE001 - terminalize runtime failures
             self._record_runtime_failure(run, attempt, exc)
         finally:
             observer.record_summary()
+            touch_worker(self.store, self.config.worker_id)
         return self.store.get_run(run_id), True
 
     def _run_attempt(
-        self, run: RunRecord, stage: StageRun, attempt: Attempt,
-        manifest: PluginManifest, workspace: Path,
-        pulse: _LeasePulse, observer: ProgressObserver,
+        self,
+        run: RunRecord,
+        stage: StageRun,
+        attempt: Attempt,
+        manifest: PluginManifest,
+        workspace: Path,
+        pulse: _LeasePulse,
+        observer: ProgressObserver,
     ) -> None:
-        environment = dict(
-            self.environment_resolver(run) if self.environment_resolver else {}
-        )
+        environment = dict(self.environment_resolver(run) if self.environment_resolver else {})
         # Staged before anything else runs, and recorded before the adapter
         # starts: what an attempt was given is evidence even if the adapter
         # then crashes, and a failed attempt that read the wrong design is
         # exactly the case where that evidence matters most.
-        staged_inputs, input_manifest = self._stage_inputs(
-            run.task_spec, workspace
-        )
+        staged_inputs, input_manifest = self._stage_inputs(run.task_spec, workspace)
         self.store.record_inputs(attempt.attempt_id, staged_inputs)
-        receipt = self._write_protocol_receipt(
-            manifest, run, attempt, workspace, environment
-        )
+        self._verify_input_manifest(run.task_spec, staged_inputs)
+        receipt = self._write_protocol_receipt(manifest, run, attempt, workspace, environment)
 
         # Admission and enforcement must use the same effective request.  A
         # task that omits resources still reserves the configured default, so
@@ -578,55 +646,63 @@ class WorkflowRuntime:
         # capacity story purely accounting: the process could use more than
         # the reservation it consumed.
         execution = self.adapter.execute(
-            manifest, run.task_spec, workspace=workspace,
-            cancel_requested=pulse, on_line=observer, environment=environment,
-            limits=self.config.reservation_for(run.task_spec),
+            manifest,
+            run.task_spec,
+            workspace=workspace,
+            cancel_requested=pulse,
+            on_line=observer,
+            environment=environment,
+            limits=(self.config.reservation_for(run.task_spec) if self.adapter.supports_limits() else run.task_spec.resources),
             on_started=lambda pid, pgid, ticks: self.store.attach_process(
-                attempt.attempt_id, worker_id=self.config.worker_id,
-                process_id=pid, process_group_id=pgid,
+                attempt.attempt_id,
+                worker_id=self.config.worker_id,
+                process_id=pid,
+                process_group_id=pgid,
                 process_start_ticks=ticks,
             ),
         )
         self._reject_forged_authority(execution)
+        # Keep the small platform evidence files outside the mutable workspace
+        # so a later bundle export remains possible after workspace cleanup.
+        for filename in (
+            "adapter_request.json",
+            "adapter_result.json",
+            "adapter.log",
+            INPUT_MANIFEST_FILENAME,
+            "runtime_protocol_receipt.json",
+        ):
+            self.store.snapshot_evidence(attempt.attempt_id, workspace, filename)
 
         for written in (receipt, input_manifest):
             if written is not None and written["sha256"] != sha256(written["path"]):
-                raise RuntimeStoreError(
-                    f"adapter modified the platform's own "
-                    f"{written['declaration']['kind']}"
-                )
+                raise RuntimeStoreError(f"adapter modified the platform's own {written['declaration']['kind']}")
 
         # The receipt and the input manifest are the platform's own
         # bookkeeping, so they are the only declarations allowed to carry a
         # reserved kind.
         runtime_artifacts = validate_artifact_declarations(
-            workspace, manifest,
-            tuple(
-                written["declaration"]
-                for written in (input_manifest, receipt)
-                if written is not None
-            ),
-            expected_kinds=(), require_expected=False, allow_reserved=True,
+            workspace,
+            manifest,
+            tuple(written["declaration"] for written in (input_manifest, receipt) if written is not None),
+            expected_kinds=(),
+            require_expected=False,
+            allow_reserved=True,
         )
-        evaluator_artifacts, evaluator_metrics = self._evaluate(
-            execution, manifest, run, workspace, attempt.attempt_id
-        )
-        registered = (
-            *runtime_artifacts, *execution.artifacts, *evaluator_artifacts
-        )
-        registered_ids = self.store.register_artifacts(
-            attempt.attempt_id, workspace, registered
-        )
+        evaluator_artifacts, evaluator_metrics = self._evaluate(execution, manifest, run, workspace, attempt.attempt_id)
+        occupied = {str(item["store_key"]) for item in (*runtime_artifacts, *execution.artifacts, *evaluator_artifacts)}
+        collected = self._collect_manifest_artifacts(workspace, manifest, occupied)
+        registered = (*runtime_artifacts, *execution.artifacts, *evaluator_artifacts, *collected)
+        registered_ids = self.store.register_artifacts(attempt.attempt_id, workspace, registered)
         if execution.result.status is not RuntimeStatus.SUCCEEDED:
             evidence_error = self._register_failure_evidence(attempt)
             if evidence_error is not None:
-                raise RuntimeStoreError(
-                    f"could not preserve failure evidence: {evidence_error}"
-                )
+                raise RuntimeStoreError(f"could not preserve failure evidence: {evidence_error}")
         if execution.result.status is RuntimeStatus.SUCCEEDED:
             self._register_metrics(
-                attempt, (*execution.result.metrics, *evaluator_metrics),
-                registered, registered_ids,
+                attempt,
+                (*execution.result.metrics, *evaluator_metrics),
+                registered,
+                registered_ids,
             )
 
         self.store.finish_attempt(
@@ -640,18 +716,50 @@ class WorkflowRuntime:
         )
         if self._should_retry(run, attempt, execution):
             self.store.schedule_retry(
-                run.run_id, stage.stage_run_id,
+                run.run_id,
+                stage.stage_run_id,
                 reason=f"retrying: {_terminal_reason(execution.result)}",
             )
             return
         self.store.transition_run(
-            run.run_id, execution.result.status,
+            run.run_id,
+            execution.result.status,
             reason=_terminal_reason(execution.result),
         )
 
     @staticmethod
+    def _collect_manifest_artifacts(workspace: Path, manifest: PluginManifest,
+                                    occupied: set[str]) -> tuple[dict[str, Any], ...]:
+        """Collect files a Toolkit explicitly marks as platform custody."""
+        collected: list[dict[str, Any]] = []
+        for rule in manifest.artifact_rules:
+            patterns = rule.get("patterns", rule.get("pattern"))
+            if patterns is None or not rule.get("collect", True):
+                continue
+            if isinstance(patterns, str):
+                patterns = (patterns,)
+            if not isinstance(patterns, (list, tuple)):
+                raise RuntimeStoreError("artifact collection patterns must be strings")
+            matches = {path.resolve() for pattern in patterns for path in workspace.glob(str(pattern)) if path.is_file()}
+            if not matches and rule.get("required"):
+                raise RuntimeStoreError(f"required artifact collection matched nothing: {patterns!r}")
+            for path in sorted(matches):
+                try:
+                    relative = path.relative_to(workspace).as_posix()
+                except ValueError as exc:
+                    raise RuntimeStoreError("artifact collection escaped workspace") from exc
+                if relative in occupied:
+                    continue
+                occupied.add(relative)
+                collected.append({"kind": str(rule["kind"]), "store_key": relative,
+                                  "metadata": {"producer": "toolkit_manifest", "collected": True}})
+        return tuple(collected)
+
+    @staticmethod
     def _should_retry(
-        run: RunRecord, attempt: Attempt, execution: AdapterExecution,
+        run: RunRecord,
+        attempt: Attempt,
+        execution: AdapterExecution,
     ) -> bool:
         """Whether a failed attempt has another attempt left in its budget.
 
@@ -673,8 +781,12 @@ class WorkflowRuntime:
         return attempt.attempt_number < run.task_spec.max_attempts
 
     def _write_protocol_receipt(
-        self, manifest: PluginManifest, run: RunRecord, attempt: Attempt,
-        workspace: Path, environment: dict[str, str],
+        self,
+        manifest: PluginManifest,
+        run: RunRecord,
+        attempt: Attempt,
+        workspace: Path,
+        environment: dict[str, str],
     ) -> dict[str, Any] | None:
         """Freeze the experiment protocol into the attempt workspace.
 
@@ -687,17 +799,20 @@ class WorkflowRuntime:
             return None
         protocol = run.task_spec.inputs.get("experiment_protocol")
         if not isinstance(protocol, dict):
-            raise RuntimeStoreError(
-                f"{manifest.plugin_id!r} requires an immutable "
-                f"experiment_protocol in inputs"
-            )
+            raise RuntimeStoreError(f"{manifest.plugin_id!r} requires an immutable experiment_protocol in inputs")
         path = workspace / "runtime_protocol_receipt.json"
-        path.write_text(json.dumps({
-            "schema_version": 1,
-            "protocol": protocol,
-            "run_id": run.run_id,
-            "attempt_id": attempt.attempt_id,
-        }, sort_keys=True), encoding="utf-8")
+        path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "protocol": protocol,
+                    "run_id": run.run_id,
+                    "attempt_id": attempt.attempt_id,
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
 
         variable = requirements.environment_receipt_variable
         assert variable is not None  # guaranteed by RuntimeRequirements.validate
@@ -710,8 +825,7 @@ class WorkflowRuntime:
             "declaration": {
                 "kind": RECEIPT_ARTIFACT_KIND,
                 "path": path.name,
-                "metadata": {"producer": "runtime",
-                             "attempt_id": attempt.attempt_id},
+                "metadata": {"producer": "runtime", "attempt_id": attempt.attempt_id},
             },
         }
 
@@ -720,24 +834,20 @@ class WorkflowRuntime:
         """An adapter may not manufacture the kernel's or evaluator's authority."""
         for item in execution.result.artifacts:
             if item.get("kind") == RECEIPT_ARTIFACT_KIND:
-                raise RuntimeStoreError(
-                    f"adapter declared runtime-reserved artifact kind "
-                    f"{RECEIPT_ARTIFACT_KIND!r}"
-                )
+                raise RuntimeStoreError(f"adapter declared runtime-reserved artifact kind {RECEIPT_ARTIFACT_KIND!r}")
             metadata = item.get("metadata") or {}
             if metadata.get("official_qor") is not None:
-                raise RuntimeStoreError(
-                    "adapter declared a metric the platform reserves for the "
-                    "protected evaluator"
-                )
+                raise RuntimeStoreError("adapter declared a metric the platform reserves for the protected evaluator")
             if str(metadata.get("producer", "")).startswith("protected-"):
-                raise RuntimeStoreError(
-                    "adapter claimed a protected-evaluator producer identity"
-                )
+                raise RuntimeStoreError("adapter claimed a protected-evaluator producer identity")
 
     def _evaluate(
-        self, execution: AdapterExecution, manifest: PluginManifest,
-        run: RunRecord, workspace: Path, attempt_id: str,
+        self,
+        execution: AdapterExecution,
+        manifest: PluginManifest,
+        run: RunRecord,
+        workspace: Path,
+        attempt_id: str,
     ) -> tuple[tuple[dict[str, Any], ...], tuple[Metric, ...]]:
         if execution.result.status is not RuntimeStatus.SUCCEEDED:
             return (), ()
@@ -745,36 +855,40 @@ class WorkflowRuntime:
             if manifest.requirements.require_protected_evaluation:
                 raise RuntimeStoreError("protected evaluator is unavailable")
             return (), ()
-        verdict: Verdict = self.protected_evaluator.evaluate(EvaluationRequest(
-            manifest=manifest, task=run.task_spec, workspace=str(workspace),
-            attempt_id=attempt_id, declared_artifacts=(),
-        ))
+        verdict: Verdict = self.protected_evaluator.evaluate(
+            EvaluationRequest(
+                manifest=manifest,
+                task=run.task_spec,
+                workspace=str(workspace),
+                attempt_id=attempt_id,
+                declared_artifacts=(),
+            )
+        )
         verdict.validate()
         if verdict.status is VerdictStatus.REJECTED:
-            raise RuntimeStoreError(
-                f"protected evaluator rejected the run: {verdict.reason}"
-            )
+            raise RuntimeStoreError(f"protected evaluator rejected the run: {verdict.reason}")
         artifacts = validate_artifact_declarations(
-            workspace, manifest,
-            [{"kind": a.kind, "path": a.path, "metadata": a.metadata}
-             for a in verdict.artifacts],
-            expected_kinds=(), require_expected=False,
+            workspace,
+            manifest,
+            [{"kind": a.kind, "path": a.path, "metadata": a.metadata} for a in verdict.artifacts],
+            expected_kinds=(),
+            require_expected=False,
         )
         return artifacts, verdict.metrics
 
     def _register_metrics(
-        self, attempt: Attempt, raw_metrics: tuple[dict[str, Any] | Metric, ...],
-        registered: tuple[dict[str, Any], ...], registered_ids: list[str],
+        self,
+        attempt: Attempt,
+        raw_metrics: tuple[dict[str, Any] | Metric, ...],
+        registered: tuple[dict[str, Any], ...],
+        registered_ids: list[str],
     ) -> None:
         """Attach each metric to the artifact it was read from.
 
         A metric whose source cannot be resolved is a protocol error: the
         platform will not store a number it cannot trace.
         """
-        by_store_key = {
-            item["store_key"]: artifact_id
-            for item, artifact_id in zip(registered, registered_ids)
-        }
+        by_store_key = {item["store_key"]: artifact_id for item, artifact_id in zip(registered, registered_ids)}
         metrics = []
         for raw in raw_metrics:
             item = raw.to_dict() if isinstance(raw, Metric) else dict(raw)
@@ -783,10 +897,7 @@ class WorkflowRuntime:
             if source_key is not None:
                 artifact_id = by_store_key.get(source_key)
                 if artifact_id is None:
-                    raise RuntimeStoreError(
-                        f"metric {item.get('name')!r} references an "
-                        f"unregistered artifact {source_key!r}"
-                    )
+                    raise RuntimeStoreError(f"metric {item.get('name')!r} references an unregistered artifact {source_key!r}")
                 item["source_artifact_id"] = artifact_id
             item["parser_id"] = context.pop("parser_id", None)
             item["parser_version"] = context.pop("parser_version", None)
@@ -795,9 +906,7 @@ class WorkflowRuntime:
             metrics.append(Metric(**item))
         self.store.register_metrics(attempt.attempt_id, metrics)
 
-    def _record_runtime_failure(
-        self, run: RunRecord, attempt: Attempt, exc: Exception
-    ) -> None:
+    def _record_runtime_failure(self, run: RunRecord, attempt: Attempt, exc: Exception) -> None:
         """Terminate both the attempt and the run.
 
         Failing only the attempt leaves the run stuck in RUNNING forever, which
@@ -813,8 +922,10 @@ class WorkflowRuntime:
             failure["evidence_error"] = evidence_error
         try:
             self.store.finish_attempt(
-                attempt.attempt_id, AttemptStatus.FAILED,
-                exit_code=1, failure=failure,
+                attempt.attempt_id,
+                AttemptStatus.FAILED,
+                exit_code=1,
+                failure=failure,
             )
         except InvalidTransition:
             # A lease monitor may already have moved RUNNING to LOST.  LOST is
@@ -824,7 +935,8 @@ class WorkflowRuntime:
             current = self.store.get_run(run.run_id)
             if current.status is RuntimeStatus.RUNNING:
                 self.store.transition_run(
-                    run.run_id, RuntimeStatus.FAILED,
+                    run.run_id,
+                    RuntimeStatus.FAILED,
                     reason=failure["category"],
                 )
         except InvalidTransition:
@@ -833,26 +945,41 @@ class WorkflowRuntime:
     def _register_failure_evidence(self, attempt: Attempt) -> str | None:
         declarations = []
         workspace = Path(attempt.workspace)
-        existing = {
-            artifact.store_key
-            for artifact in self.store.list_artifacts(attempt.attempt_id)
-        }
+        existing = {artifact.store_key for artifact in self.store.list_artifacts(attempt.attempt_id)}
         for filename, kind in FAILURE_EVIDENCE_FILES:
             if filename not in existing and (workspace / filename).is_file():
-                declarations.append({
-                    "kind": kind,
-                    "store_key": filename,
-                    "metadata": {"producer": "runtime", "failure_evidence": True},
-                })
+                declarations.append(
+                    {
+                        "kind": kind,
+                        "store_key": filename,
+                        "metadata": {"producer": "runtime", "failure_evidence": True},
+                    }
+                )
         if not declarations:
             return None
         try:
             self.store.register_artifacts(
-                attempt.attempt_id, workspace, declarations,
+                attempt.attempt_id,
+                workspace,
+                declarations,
             )
         except (OSError, RuntimeStoreError, ValueError) as evidence_exc:
             return f"{type(evidence_exc).__name__}: {evidence_exc}"
         return None
+
+    def _verify_input_manifest(self, task: TaskSpec, staged: tuple[StagedInput, ...]) -> None:
+        entries = [
+            {
+                "destination": item.destination,
+                "present": item.present,
+                "sha256": item.sha256,
+                "size_bytes": item.size_bytes,
+            }
+            for item in staged
+        ]
+        digest = sha256(json.dumps(entries, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+        if task.input_manifest_sha256 and digest != task.input_manifest_sha256:
+            raise InputStagingError("input bytes changed after submission; execution was refused")
 
     # -- reads ------------------------------------------------------------
 
@@ -860,7 +987,12 @@ class WorkflowRuntime:
         return self.store.describe_run(run_id)
 
     def read_artifact_excerpt(
-        self, run_id: str, artifact_id: str, *, offset: int, max_bytes: int,
+        self,
+        run_id: str,
+        artifact_id: str,
+        *,
+        offset: int,
+        max_bytes: int,
     ) -> dict[str, Any]:
         """Read a registered artifact through the Runtime authority only.
 
@@ -873,30 +1005,20 @@ class WorkflowRuntime:
         the object store existed is still in its attempt workspace, and saying
         so is the store's job.
         """
-        if (not isinstance(offset, int) or isinstance(offset, bool) or offset < 0
-                or not isinstance(max_bytes, int) or isinstance(max_bytes, bool)
-                or not 0 < max_bytes <= 64 * 1024):
+        if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0 or not isinstance(max_bytes, int) or isinstance(max_bytes, bool) or not 0 < max_bytes <= 64 * 1024:
             raise ValueError("artifact excerpt bounds are invalid")
         view = self.describe(run_id)
         matches = [
-            (attempt, artifact)
-            for stage in view.get("stages", ())
-            for attempt in stage.get("attempts", ())
-            for artifact in attempt.get("artifacts", ())
-            if artifact.get("artifact_id") == artifact_id
+            (attempt, artifact) for stage in view.get("stages", ()) for attempt in stage.get("attempts", ()) for artifact in attempt.get("artifacts", ()) if artifact.get("artifact_id") == artifact_id
         ]
         if len(matches) != 1:
-            raise RuntimeStoreError(
-                f"artifact {artifact_id!r} is not registered in run {run_id!r}"
-            )
+            raise RuntimeStoreError(f"artifact {artifact_id!r} is not registered in run {run_id!r}")
         # The search above is a membership check: a caller authorised for this
         # run must not be able to read another run's artifact by quoting its id.
         _, artifact = matches[0]
         path = self.store.artifact_path(artifact_id)
         if sha256(path) != artifact["sha256"]:
-            raise RuntimeStoreError(
-                f"registered artifact {artifact_id!r} changed after registration"
-            )
+            raise RuntimeStoreError(f"registered artifact {artifact_id!r} changed after registration")
         with path.open("rb") as source:
             source.seek(offset)
             chunk = source.read(max_bytes)
@@ -926,8 +1048,13 @@ class _LeasePulse:
     """
 
     def __init__(
-        self, store: RuntimeStore, run_id: str, attempt_id: str, *,
-        worker_id: str, lease_seconds: int,
+        self,
+        store: RuntimeStore,
+        run_id: str,
+        attempt_id: str,
+        *,
+        worker_id: str,
+        lease_seconds: int,
         external_cancel_requested: Callable[[], bool] | None = None,
     ):
         self.store = store
@@ -939,8 +1066,7 @@ class _LeasePulse:
         self._last = 0.0
 
     def __call__(self) -> bool:
-        if (self.external_cancel_requested is not None
-                and self.external_cancel_requested()):
+        if self.external_cancel_requested is not None and self.external_cancel_requested():
             self.store.request_cancel(self.run_id)
             return True
         if self.store.get_run(self.run_id).status is RuntimeStatus.CANCEL_REQUESTED:
@@ -948,9 +1074,11 @@ class _LeasePulse:
         now = time.monotonic()
         if now - self._last >= max(1.0, self.lease_seconds / 3):
             self.store.heartbeat(
-                self.attempt_id, worker_id=self.worker_id,
+                self.attempt_id,
+                worker_id=self.worker_id,
                 lease_seconds=self.lease_seconds,
             )
+            touch_worker(self.store, self.worker_id, attempt_id=self.attempt_id)
             self._last = now
         return False
 

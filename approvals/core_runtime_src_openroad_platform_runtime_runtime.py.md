@@ -142,3 +142,16 @@ of the kernel.
 The export implementation lives in a separate runtime bundle module, keeping
 the lifecycle runtime focused on execution while exposing a single local ZIP
 artifact through the gateway.
+
+# 2026-09-24: frozen inputs and local evidence custody (977 -> 1105)
+
+Submission snapshots readable host inputs into the local object store and
+records the original path only as provenance. Execution stages that snapshot,
+so edits after submission cannot change the experiment. Admission and execution
+now use the same effective resource request, while stable evidence custody keeps
+bundle export possible after workspace cleanup. These are correctness boundaries
+for the single-server deployment; no EDA algorithm or plugin branch was added.
+
+The same boundary now supports manifest-declared collection patterns, so a
+Toolkit can identify important files it created without forcing the kernel to
+understand their contents.

@@ -121,11 +121,11 @@ class StagedInput:
         validate_relative_path(
             "input destination", self.destination, container="attempt workspace"
         )
-        sources = (self.source, self.source_artifact_id, self.source_input_id)
-        if sum(source is not None for source in sources) != 1:
-            raise ContractError(
-                "a staged input names exactly one place its bytes came from"
-            )
+        sources = (self.source_artifact_id, self.source_input_id)
+        if self.source is None and sum(source is not None for source in sources) != 1:
+            raise ContractError("a staged input names exactly one place its bytes came from")
+        if self.source is not None and sum(source is not None for source in sources) > 1:
+            raise ContractError("a staged input may have one provenance source")
         if self.source_input_id is not None:
             validate_identifier("staged source_input_id", self.source_input_id)
         if not isinstance(self.present, bool):

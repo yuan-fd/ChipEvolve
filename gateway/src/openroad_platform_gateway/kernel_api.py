@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from openroad_platform_contracts import ContractError, TaskSpec
@@ -27,11 +29,13 @@ from openroad_platform_runtime.bundle import export_run_bundle
 from .router import MAX_RESPONSE_BYTES, HttpError, Request, Response, Router
 
 #: Routes reachable without a session.  Anything else requires one.
-PUBLIC_PATHS = frozenset({
-    ("GET", "/kernel/health"),
-    ("POST", "/kernel/auth/register"),
-    ("POST", "/kernel/auth/login"),
-})
+PUBLIC_PATHS = frozenset(
+    {
+        ("GET", "/kernel/health"),
+        ("POST", "/kernel/auth/register"),
+        ("POST", "/kernel/auth/login"),
+    }
+)
 
 
 @dataclass
@@ -60,6 +64,7 @@ class KernelApi:
         router.get("/kernel/plugins", self._guarded(self.plugins))
 
         router.post("/kernel/inputs", self._guarded(self.ingest_input))
+        router.post("/kernel/inputs/chunk", self._guarded(self.ingest_input_chunk))
         router.post("/kernel/runs", self._guarded(self.submit_run))
         router.get("/kernel/runs", self._guarded(self.list_runs))
         router.get("/kernel/runs/{run_id}", self._guarded(self.get_run))
@@ -72,14 +77,21 @@ class KernelApi:
         router.get("/kernel/runs/{run_id}/timeline", self._guarded(self.timeline))
         router.get("/kernel/runs/{run_id}/resources", self._guarded(self.resources))
         router.get("/kernel/runs/{run_id}/logs", self._guarded(self.logs))
-        router.get("/kernel/runs/{run_id}/artifacts/{artifact_id}/excerpt",
-                   self._guarded(self.artifact_excerpt))
-        router.get("/kernel/runs/{run_id}/artifacts/{artifact_id}/download",
-                   self._guarded(self.artifact_download))
+        router.get(
+            "/kernel/runs/{run_id}/artifacts/{artifact_id}/excerpt",
+            self._guarded(self.artifact_excerpt),
+        )
+        router.get(
+            "/kernel/runs/{run_id}/artifacts/{artifact_id}/download",
+            self._guarded(self.artifact_download),
+        )
+        router.get(
+            "/kernel/runs/{run_id}/artifacts/{artifact_id}/chunk",
+            self._guarded(self.artifact_chunk),
+        )
         router.get("/kernel/graph", self._guarded(self.graph))
 
-    def _guarded(self, handler: Callable[[Request, AuthSession | None], Response]
-                 ) -> Callable[[Request], Response]:
+    def _guarded(self, handler: Callable[[Request, AuthSession | None], Response]) -> Callable[[Request], Response]:
         def wrapper(request: Request) -> Response:
             session = self._authenticate(request)
             # "This route needs no session" and "this caller has no session"
@@ -88,6 +100,7 @@ class KernelApi:
             if session is None and not self._is_public(request):
                 raise HttpError(401, "authentication required")
             return handler(request, session)
+
         return wrapper
 
     @staticmethod
@@ -109,18 +122,20 @@ class KernelApi:
     # -- health and catalogue ---------------------------------------------
 
     def health(self, request: Request, session: AuthSession | None) -> Response:
-        return Response.json({
-            "service": "kernel",
-            "status": "ok",
-            "plugins": len(self.registry.list()),
-            "admitted": sum(1 for p in self.registry.list() if p.executable),
-            "evaluator": {
-                "status": "ready" if self.evaluator_error is None else "unavailable",
-                **({"error": self.evaluator_error} if self.evaluator_error else {}),
-            },
-            "workers": worker_health(self.store),
-            "queue": queue_health(self.store),
-        })
+        return Response.json(
+            {
+                "service": "kernel",
+                "status": "ok",
+                "plugins": len(self.registry.list()),
+                "admitted": sum(1 for p in self.registry.list() if p.executable),
+                "evaluator": {
+                    "status": "ready" if self.evaluator_error is None else "unavailable",
+                    **({"error": self.evaluator_error} if self.evaluator_error else {}),
+                },
+                "workers": worker_health(self.store),
+                "queue": queue_health(self.store),
+            }
+        )
 
     def plugins(self, request: Request, session: AuthSession | None) -> Response:
         return Response.json({"plugins": self.registry.catalogue()})
@@ -134,14 +149,40 @@ class KernelApi:
             self.identity.bind_resource("input", uploaded.input_id, owner)
         return Response.json({"input": uploaded.to_dict()}, status=201)
 
+    def ingest_input_chunk(self, request: Request, session: AuthSession | None) -> Response:
+        if not isinstance(request.body, bytes):
+            raise HttpError(400, "input upload requires application/octet-stream")
+        upload_id = request.q("upload_id") or ""
+        if not re.fullmatch(r"[A-Za-z0-9_-]{16,128}", upload_id):
+            raise HttpError(400, "upload_id must be a random opaque token")
+        offset = request.q_int("offset", 0) or 0
+        if offset < 0:
+            raise HttpError(400, "offset must not be negative")
+        directory = self.store.objects_root / "uploads"
+        path = directory / upload_id
+        directory.mkdir(parents=True, exist_ok=True)
+        current = path.stat().st_size if path.is_file() else 0
+        if current != offset:
+            raise HttpError(409, f"upload offset is {current}, not {offset}")
+        with path.open("ab") as output:
+            output.write(request.body)
+        if not request.q_bool("final"):
+            return Response.json({"upload_id": upload_id, "offset": current + len(request.body)})
+        try:
+            uploaded = self.store.ingest_input_file(path)
+        finally:
+            path.unlink(missing_ok=True)
+        owner = session.user_id if session else self.local_user_id
+        if owner:
+            self.identity.bind_resource("input", uploaded.input_id, owner)
+        return Response.json({"input": uploaded.to_dict()}, status=201)
+
     # -- identity ---------------------------------------------------------
 
     def auth_register(self, request: Request, session: AuthSession | None) -> Response:
         body = _object(request)
         try:
-            auth, token = self.identity.register(
-                str(body.get("username") or ""), str(body.get("password") or "")
-            )
+            auth, token = self.identity.register(str(body.get("username") or ""), str(body.get("password") or ""))
         except ValueError as exc:
             raise HttpError(400, str(exc)) from exc
         return Response.json({"token": token, "session": auth.public()})
@@ -149,9 +190,7 @@ class KernelApi:
     def auth_login(self, request: Request, session: AuthSession | None) -> Response:
         body = _object(request)
         try:
-            auth, token = self.identity.login(
-                str(body.get("username") or ""), str(body.get("password") or "")
-            )
+            auth, token = self.identity.login(str(body.get("username") or ""), str(body.get("password") or ""))
         except ValueError as exc:
             # A wrong password is 401, not 400: the request was well formed.
             raise HttpError(401, str(exc)) from exc
@@ -179,6 +218,14 @@ class KernelApi:
             raise HttpError(400, str(exc)) from exc
 
         for declaration in task.staged_inputs:
+            if (declaration.source is not None and session is not None
+                    and Path(declaration.source).is_file()
+                    and session.username != "local-user"
+                    and not self.runtime.config.allowed_input_roots):
+                raise HttpError(
+                    400,
+                    "shared sessions must upload inputs or configure --input-root",
+                )
             if declaration.input_id is not None:
                 self._require_ownership("input", declaration.input_id, session)
             if declaration.artifact_id is not None:
@@ -190,11 +237,17 @@ class KernelApi:
 
         try:
             idempotency_key = request.q("idempotency_key")
-            run = (self.runtime.submit_idempotent(task, idempotency_key=idempotency_key)
-                   if request.q("idempotent") or idempotency_key
-                   else self.runtime.submit(task))
-        except (RegistryError, InputStagingError,
-                ResourceLimitsUnsupported, ValueError) as exc:
+            run = (
+                self.runtime.submit_idempotent(task, idempotency_key=idempotency_key)
+                if request.q("idempotent") or idempotency_key
+                else self.runtime.submit(task)
+            )
+        except (
+            RegistryError,
+            InputStagingError,
+            ResourceLimitsUnsupported,
+            ValueError,
+        ) as exc:
             # A task naming a capability that is not available, or inputs that
             # are not where it said, is the caller's mistake, not the server's.
             # Unhandled, this reached the client as a 500, which sends an
@@ -206,6 +259,12 @@ class KernelApi:
         owner = session.user_id if session else self.local_user_id
         if owner:
             self.identity.bind_resource("run", run.run_id, owner)
+            # Host files are frozen into platform-owned inputs during submit.
+            # Bind those generated records to the same caller before returning
+            # the run, so a later run cannot reuse them by guessing an id.
+            for declaration in run.task_spec.staged_inputs:
+                if declaration.input_id is not None:
+                    self.identity.bind_resource("input", declaration.input_id, owner)
         return Response.json({"run": self._run_detail(run.run_id)}, status=201)
 
     def list_runs(self, request: Request, session: AuthSession | None) -> Response:
@@ -239,25 +298,41 @@ class KernelApi:
 
     def design_tree(self, request: Request, session: AuthSession | None) -> Response:
         design_id = request.params["design_id"]
+        offset = request.q_int("offset", 0) or 0
+        limit = request.q_int("limit", 500) or 500
+        if not 1 <= limit <= 500:
+            raise HttpError(400, "limit must be between 1 and 500")
         owner_ids = None
         if session is not None and not session.developer:
             owner_ids = set(self.identity.resources_owned("run", session.user_id))
         summaries = self.index.runs(
-            design_id=design_id, owner_run_ids=owner_ids, limit=500,
+            design_id=design_id, owner_run_ids=owner_ids,
+            offset=offset, limit=min(limit + 1, 500),
         )
+        has_more = len(summaries) > limit or (limit == 500 and len(summaries) == 500)
+        summaries = summaries[:limit]
         revisions: dict[str, dict[str, Any]] = {}
         for summary in summaries:
             revision = summary.design_revision_id or "unversioned"
             node = self._run_detail(summary.run_id)
-            revisions.setdefault(revision, {
-                "design_revision_id": summary.design_revision_id,
-                "runs": [],
-            })["runs"].append(node)
-        return Response.json({
-            "design_id": design_id,
-            "revisions": list(revisions.values()),
-            "run_count": len(summaries),
-        })
+            revisions.setdefault(
+                revision,
+                {
+                    "design_revision_id": summary.design_revision_id,
+                    "runs": [],
+                },
+            )["runs"].append(node)
+        return Response.json(
+            {
+                "design_id": design_id,
+                "revisions": list(revisions.values()),
+                "run_count": len(summaries),
+                "offset": offset,
+                "limit": limit,
+                "has_more": has_more,
+                "next_offset": offset + limit if has_more else None,
+            }
+        )
 
     def _run_detail(self, run_id: str) -> dict[str, Any]:
         """The run, plus the one thing a queued run cannot currently say.
@@ -268,9 +343,7 @@ class KernelApi:
         so it says, rather than making an operator open the database to find out.
         """
         detail = self.index.run_detail(run_id)
-        detail["waiting_for"] = ResourceQuery(
-            self.store, self.runtime.config
-        ).waiting_for(run_id)
+        detail["waiting_for"] = ResourceQuery(self.store, self.runtime.config).waiting_for(run_id)
         return detail
 
     def cancel_run(self, request: Request, session: AuthSession | None) -> Response:
@@ -311,9 +384,16 @@ class KernelApi:
     def artifacts(self, request: Request, session: AuthSession | None) -> Response:
         run_id = request.params["run_id"]
         self._require_ownership("run", run_id, session)
-        return Response.json({"artifacts": ArtifactInventory(self.store).for_run(
-            run_id, category=request.q("category"), format=request.q("format"),
-            stage=request.q("stage"))})
+        return Response.json(
+            {
+                "artifacts": ArtifactInventory(self.store).for_run(
+                    run_id,
+                    category=request.q("category"),
+                    format=request.q("format"),
+                    stage=request.q("stage"),
+                )
+            }
+        )
 
     def timeline(self, request: Request, session: AuthSession | None) -> Response:
         run_id = request.params["run_id"]
@@ -324,9 +404,7 @@ class KernelApi:
         run_id = request.params["run_id"]
         self._require_ownership("run", run_id, session)
         try:
-            return Response.json({"resources": ResourceQuery(
-                self.store, self.runtime.config
-            ).run(run_id)})
+            return Response.json({"resources": ResourceQuery(self.store, self.runtime.config).run(run_id)})
         except RuntimeStoreError as exc:
             raise HttpError(404, str(exc)) from exc
 
@@ -335,23 +413,25 @@ class KernelApi:
         self._require_ownership("run", run_id, session)
         try:
             view = LogQuery(self.store).run(
-                run_id, offset=request.q_int("offset", 0) or 0,
+                run_id,
+                offset=request.q_int("offset", 0) or 0,
                 max_bytes=request.q_int("max_bytes"),
             )
         except (RuntimeStoreError, ValueError) as exc:
             raise HttpError(404 if isinstance(exc, RuntimeStoreError) else 400, str(exc)) from exc
         return Response.json({"logs": view})
 
-    def artifact_excerpt(self, request: Request,
-                         session: AuthSession | None) -> Response:
+    def artifact_excerpt(self, request: Request, session: AuthSession | None) -> Response:
         run_id = request.params["run_id"]
         self._require_ownership("run", run_id, session)
         offset = request.q_int("offset", 0) or 0
         max_bytes = request.q_int("max_bytes", 8192) or 8192
         try:
             excerpt = self.runtime.read_artifact_excerpt(
-                run_id, request.params["artifact_id"],
-                offset=offset, max_bytes=max_bytes,
+                run_id,
+                request.params["artifact_id"],
+                offset=offset,
+                max_bytes=max_bytes,
             )
         except RuntimeStoreError as exc:
             raise HttpError(404, str(exc)) from exc
@@ -359,14 +439,14 @@ class KernelApi:
             raise HttpError(400, str(exc)) from exc
         return Response.json(excerpt)
 
-    def artifact_download(self, request: Request,
-                          session: AuthSession | None) -> Response:
+    def artifact_download(self, request: Request, session: AuthSession | None) -> Response:
         run_id = request.params["run_id"]
         artifact_id = request.params["artifact_id"]
         self._require_ownership("run", run_id, session)
         detail = self.index.run_detail(run_id)
         artifacts = [
-            artifact for stage in detail.get("stages", ())
+            artifact
+            for stage in detail.get("stages", ())
             for attempt in stage.get("attempts", ())
             for artifact in attempt.get("artifacts", ())
             if artifact.get("artifact_id") == artifact_id
@@ -382,13 +462,30 @@ class KernelApi:
         except (OSError, RuntimeStoreError) as exc:
             raise HttpError(404, str(exc)) from exc
         from openroad_platform_runtime import sha256
+
         if len(content) != artifact["size_bytes"] or sha256(content) != artifact["sha256"]:
             raise HttpError(409, "artifact bytes no longer match the registered hash")
         return Response(
             body=content,
-            headers={"Content-Type": "application/octet-stream",
-                     "X-Artifact-SHA256": artifact["sha256"]},
+            headers={
+                "Content-Type": "application/octet-stream",
+                "X-Artifact-SHA256": artifact["sha256"],
+            },
         )
+
+    def artifact_chunk(self, request: Request, session: AuthSession | None) -> Response:
+        run_id = request.params["run_id"]
+        self._require_ownership("run", run_id, session)
+        offset = request.q_int("offset", 0) or 0
+        size = request.q_int("max_bytes", 64 * 1024) or 64 * 1024
+        try:
+            return Response.json(self.runtime.read_artifact_excerpt(
+                run_id, request.params["artifact_id"], offset=offset, max_bytes=size,
+            ))
+        except RuntimeStoreError as exc:
+            raise HttpError(404, str(exc)) from exc
+        except ValueError as exc:
+            raise HttpError(400, str(exc)) from exc
 
     def graph(self, request: Request, session: AuthSession | None) -> Response:
         run_ids = request.q_all("run_id")
@@ -398,17 +495,13 @@ class KernelApi:
             self._require_ownership("run", run_id, session)
         return Response.json({"graph": self.index.artifact_graph(run_ids).to_dict()})
 
-
-
     # -- ownership --------------------------------------------------------
 
-    def _require_ownership(self, resource_type: str, resource_id: str,
-                           session: AuthSession | None) -> None:
+    def _require_ownership(self, resource_type: str, resource_id: str, session: AuthSession | None) -> None:
         owner = session.user_id if session else self.local_user_id
         if owner is None:
             return
-        if not self.identity.owns_resource(resource_type, resource_id, owner,
-                                           developer_all=True):
+        if not self.identity.owns_resource(resource_type, resource_id, owner, developer_all=True):
             # 404, not 403: telling a caller that someone else's run exists is
             # itself a disclosure.
             raise HttpError(404, f"{resource_type} not found")

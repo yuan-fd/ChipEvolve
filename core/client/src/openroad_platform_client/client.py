@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import secrets
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -142,6 +143,24 @@ class KernelClient:
             raise TypeError("input content must be bytes")
         return self._call("POST", "/kernel/inputs", payload=content)["input"]
 
+    def upload_input_chunks(self, chunks: Sequence[bytes]) -> dict[str, Any]:
+        """Upload a potentially large input without one oversized request."""
+        upload_id = secrets.token_urlsafe(24)
+        offset = 0
+        result: dict[str, Any] | None = None
+        for index, chunk in enumerate(chunks):
+            if not isinstance(chunk, bytes):
+                raise TypeError("input chunks must be bytes")
+            result = self._call(
+                "POST", "/kernel/inputs/chunk", payload=chunk,
+                query={"upload_id": upload_id, "offset": offset,
+                       "final": "1" if index == len(chunks) - 1 else None},
+            )
+            offset = int(result.get("offset", offset + len(chunk)))
+        if result is None or "input" not in result:
+            raise ValueError("at least one input chunk is required")
+        return result["input"]
+
     # -- runs -------------------------------------------------------------
 
     def submit(self, task: Mapping[str, Any], *,
@@ -174,8 +193,10 @@ class KernelClient:
     def run(self, run_id: str) -> dict[str, Any]:
         return self._call("GET", f"/kernel/runs/{_seg(run_id)}")["run"]
 
-    def design_tree(self, design_id: str) -> dict[str, Any]:
-        return self._call("GET", f"/kernel/designs/{_seg(design_id)}/tree")
+    def design_tree(self, design_id: str, *, limit: int | None = None,
+                    offset: int = 0) -> dict[str, Any]:
+        return self._call("GET", f"/kernel/designs/{_seg(design_id)}/tree",
+                          query={"limit": limit, "offset": offset})
 
     def cancel(self, run_id: str) -> dict[str, Any]:
         return self._call("POST", f"/kernel/runs/{_seg(run_id)}/cancel")
@@ -234,6 +255,34 @@ class KernelClient:
             f"/kernel/runs/{_seg(run_id)}/artifacts/{_seg(artifact_id)}/download",
             want_bytes=True,
         )
+
+    def artifact_chunk(self, run_id: str, artifact_id: str, *, offset: int = 0,
+                       max_bytes: int = MAX_EXCERPT_BYTES) -> dict[str, Any]:
+        if not 0 < max_bytes <= MAX_EXCERPT_BYTES:
+            raise ValueError(f"max_bytes must be between 1 and {MAX_EXCERPT_BYTES}")
+        return self._call(
+            "GET", f"/kernel/runs/{_seg(run_id)}/artifacts/"
+            f"{_seg(artifact_id)}/chunk",
+            query={"offset": offset, "max_bytes": max_bytes},
+        )
+
+    def download_artifact_to(self, run_id: str, artifact_id: str,
+                             destination: str, *,
+                             chunk_size: int = MAX_EXCERPT_BYTES) -> dict[str, Any]:
+        import base64
+        offset = 0
+        digest = None
+        with open(destination, "wb") as output:
+            while True:
+                chunk = self.artifact_chunk(run_id, artifact_id, offset=offset,
+                                            max_bytes=chunk_size)
+                data = base64.b64decode(chunk["data_base64"])
+                output.write(data)
+                offset += len(data)
+                digest = chunk["sha256"]
+                if not chunk["truncated"]:
+                    break
+        return {"path": destination, "size_bytes": offset, "sha256": digest}
 
     def graph(self, run_ids: Sequence[str]) -> dict[str, Any]:
         return self._call("GET", "/kernel/graph",

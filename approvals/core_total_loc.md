@@ -417,3 +417,19 @@ present. This makes the exported execution envelope independently inspectable.
 The five platform evidence kinds are now explicitly reserved in the shared
 artifact contract. Toolkits cannot claim the same names and make their own
 files look like platform-generated failure evidence.
+
+# 2026-09-24: execution custody and worker reliability (8959 -> 9384)
+
+The kernel now keeps submitted host inputs in the object store, preserves
+platform evidence outside mutable workspaces, uses a consistent effective
+resource budget, records preflight failures as run events, and lets the worker
+scan past temporarily unsatisfiable queue entries. This is boundary behaviour
+needed for reliable local shared-service operation; no EDA algorithm or
+plugin-specific branch was added.
+
+The final increment also adds bounded artifact chunks and local upload chunks,
+keeping large EDA files outside one-request memory limits while retaining hash
+verification.
+
+The approval is reconciled at 9,396 lines after the final chunk transport
+implementation; the same scope and rationale apply.
