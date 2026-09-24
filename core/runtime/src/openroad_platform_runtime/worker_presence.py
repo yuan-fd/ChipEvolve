@@ -13,14 +13,23 @@ from .store import RuntimeStore
 def touch(store: RuntimeStore, worker_id: str, *, attempt_id: str | None = None) -> None:
     now = time.time()
     with store._lock:
+        active = store._connection.execute(
+            "SELECT attempt_id FROM runtime_attempts WHERE worker_id = ? "
+            "AND status = 'running' ORDER BY started_at",
+            (worker_id,),
+        ).fetchall()
+        active_ids = [str(row["attempt_id"]) for row in active]
+        if attempt_id is not None and attempt_id not in active_ids:
+            active_ids.insert(0, attempt_id)
+        current = active_ids[0] if active_ids else None
         store._connection.execute(
             "INSERT INTO runtime_workers "
             "(worker_id,pid,last_seen_at,current_attempt_id,state) VALUES (?,?,?,?,?) "
             "ON CONFLICT(worker_id) DO UPDATE SET pid=excluded.pid, "
             "last_seen_at=excluded.last_seen_at, "
             "current_attempt_id=excluded.current_attempt_id, state=excluded.state",
-            (worker_id, os.getpid(), now, attempt_id,
-             "running" if attempt_id else "idle"),
+            (worker_id, os.getpid(), now, current,
+             "running" if active_ids else "idle"),
         )
 
 
@@ -36,10 +45,20 @@ def snapshot(store: RuntimeStore, *, stale_after: float = 30.0) -> list[dict[str
             "worker_id": row["worker_id"], "pid": row["pid"],
             "last_seen_at": row["last_seen_at"],
             "current_attempt_id": row["current_attempt_id"],
+            "active_attempt_ids": _active_attempts(store, row["worker_id"]),
             "state": row["state"] if row["last_seen_at"] >= cutoff else "stale",
         }
         for row in rows
     ]
+
+
+def _active_attempts(store: RuntimeStore, worker_id: str) -> list[str]:
+    with store._lock:
+        rows = store._connection.execute(
+            "SELECT attempt_id FROM runtime_attempts WHERE worker_id = ? "
+            "AND status = 'running' ORDER BY started_at", (worker_id,)
+        ).fetchall()
+    return [str(row["attempt_id"]) for row in rows]
 
 
 def queue(store: RuntimeStore) -> dict[str, Any]:

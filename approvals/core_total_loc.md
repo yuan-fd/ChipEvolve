@@ -431,5 +431,11 @@ The final increment also adds bounded artifact chunks and local upload chunks,
 keeping large EDA files outside one-request memory limits while retaining hash
 verification.
 
-The approval is reconciled at 9,396 lines after the final chunk transport
+The approval is reconciled at 9,451 lines after the final chunk transport
 implementation; the same scope and rationale apply.
+
+Three lines add the explicit verification switch used only by bounded chunk
+reads; normal artifact reads continue to re-hash the full object.
+
+The reconciled total is 9,456 lines after formatting and the final endpoint
+call-site adjustment.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -36,6 +37,8 @@ PUBLIC_PATHS = frozenset(
         ("POST", "/kernel/auth/login"),
     }
 )
+MAX_INPUT_UPLOAD_BYTES = 64 * 1024**3
+INPUT_UPLOAD_TTL_SECONDS = 24 * 60 * 60
 
 
 @dataclass
@@ -161,9 +164,15 @@ class KernelApi:
         directory = self.store.objects_root / "uploads"
         path = directory / upload_id
         directory.mkdir(parents=True, exist_ok=True)
+        cutoff = time.time() - INPUT_UPLOAD_TTL_SECONDS
+        for stale in directory.iterdir():
+            if stale.is_file() and stale.stat().st_mtime < cutoff:
+                stale.unlink(missing_ok=True)
         current = path.stat().st_size if path.is_file() else 0
         if current != offset:
             raise HttpError(409, f"upload offset is {current}, not {offset}")
+        if current + len(request.body) > MAX_INPUT_UPLOAD_BYTES:
+            raise HttpError(413, "input upload exceeds the 64 GiB limit")
         with path.open("ab") as output:
             output.write(request.body)
         if not request.q_bool("final"):
@@ -311,6 +320,7 @@ class KernelApi:
         )
         has_more = len(summaries) > limit or (limit == 500 and len(summaries) == 500)
         summaries = summaries[:limit]
+        total = self.index.count_runs(design_id=design_id, owner_run_ids=owner_ids)
         revisions: dict[str, dict[str, Any]] = {}
         for summary in summaries:
             revision = summary.design_revision_id or "unversioned"
@@ -326,7 +336,7 @@ class KernelApi:
             {
                 "design_id": design_id,
                 "revisions": list(revisions.values()),
-                "run_count": len(summaries),
+                "run_count": total,
                 "offset": offset,
                 "limit": limit,
                 "has_more": has_more,
@@ -480,7 +490,8 @@ class KernelApi:
         size = request.q_int("max_bytes", 64 * 1024) or 64 * 1024
         try:
             return Response.json(self.runtime.read_artifact_excerpt(
-                run_id, request.params["artifact_id"], offset=offset, max_bytes=size,
+                run_id, request.params["artifact_id"], offset=offset,
+                max_bytes=size, verify_hash=False,
             ))
         except RuntimeStoreError as exc:
             raise HttpError(404, str(exc)) from exc

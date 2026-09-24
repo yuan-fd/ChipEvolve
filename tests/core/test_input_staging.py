@@ -247,7 +247,7 @@ def test_an_absent_optional_input_is_recorded_as_absent(tmp_path):
     assert not (Path(attempt.workspace) / "maybe.sdc").exists()
 
 
-def test_an_input_that_vanishes_after_submit_fails_the_attempt(tmp_path):
+def test_a_frozen_input_survives_source_deletion_after_submit(tmp_path):
     source = write_source(tmp_path, "design.v", "hello")
     rt = runtime(tmp_path)
     spec = task("vanish", InputFile(source=str(source), destination="design.v"))
@@ -256,10 +256,11 @@ def test_an_input_that_vanishes_after_submit_fails_the_attempt(tmp_path):
     source.unlink()
     finished = rt.execute_once(run.run_id)
 
-    assert finished.status is RuntimeStatus.FAILED
+    assert finished.status is RuntimeStatus.SUCCEEDED
     attempt = only_attempt(rt, run.run_id)
-    assert attempt.failure is not None
-    assert "InputStagingError" in attempt.failure["message"]
+    recorded = rt.store.list_inputs(attempt.attempt_id)[0]
+    assert recorded.source_input_id is not None
+    assert recorded.sha256
 
 
 def test_an_adapter_that_rewrites_the_input_manifest_fails(tmp_path):

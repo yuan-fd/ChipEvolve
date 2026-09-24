@@ -6,6 +6,7 @@
   "capabilities": ["script", "patch_benchmark"],
   "supported_arch": ["aarch64", "x86_64", "arm64"],
   "artifact_rules": [
-    {"kind": "report", "required": true}
+    {"kind": "report", "required": true},
+    {"kind": "eda_output", "patterns": ["**/*.def", "**/*.odb", "**/*.rpt", "**/*.checkpoint"], "collect": true, "required": false}
   ]
 }

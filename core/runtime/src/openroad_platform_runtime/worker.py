@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -89,6 +90,16 @@ class RuntimeWorker:
         self.batch = batch
         self.on_cycle = on_cycle
 
+    def _runnable_candidates(self):
+        """Walk the whole waiting queue in bounded database pages."""
+        offset = 0
+        while True:
+            page = self.store.runnable_runs(limit=1000, offset=offset)
+            if not page:
+                return
+            yield from page
+            offset += len(page)
+
     # -- one cycle --------------------------------------------------------
 
     def cycle(self) -> CycleReport:
@@ -102,7 +113,7 @@ class RuntimeWorker:
         # cap on the number of queue rows inspected: a large first task must
         # not starve a small task behind it when capacity is temporarily full.
         advanced = 0
-        for run_id in self.store.runnable_runs(limit=min(1000, self.batch * 16)):
+        for run_id in self._runnable_candidates():
             if advanced >= self.batch:
                 break
             try:
@@ -164,7 +175,8 @@ class RuntimeWorker:
                 touch(self.store, self.runtime.config.worker_id)
                 report.reclaimed = len(self.store.reclaim_expired_attempts())
                 report.cancelled = self._finish_abandoned_cancellations()
-                for run_id in self.store.runnable_runs(limit=min(1000, self.batch * 16)) if not stop.is_set() else ():
+                candidates = self._runnable_candidates() if not stop.is_set() else ()
+                for run_id in candidates:
                     if len(active) >= self.batch or run_id in active:
                         continue
                     active.add(run_id)
@@ -173,6 +185,8 @@ class RuntimeWorker:
                     self.on_cycle(report)
                 if not report.did_work and not active:
                     stop.wait(self.idle_seconds)
+                elif stop.is_set():
+                    time.sleep(min(self.idle_seconds, 0.05))
                 else:
                     stop.wait(min(self.idle_seconds, 0.05))
 

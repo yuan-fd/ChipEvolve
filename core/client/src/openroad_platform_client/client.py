@@ -270,19 +270,25 @@ class KernelClient:
                              destination: str, *,
                              chunk_size: int = MAX_EXCERPT_BYTES) -> dict[str, Any]:
         import base64
+        import hashlib
         offset = 0
         digest = None
+        hasher = hashlib.sha256()
         with open(destination, "wb") as output:
             while True:
                 chunk = self.artifact_chunk(run_id, artifact_id, offset=offset,
                                             max_bytes=chunk_size)
                 data = base64.b64decode(chunk["data_base64"])
                 output.write(data)
+                hasher.update(data)
                 offset += len(data)
                 digest = chunk["sha256"]
                 if not chunk["truncated"]:
                     break
-        return {"path": destination, "size_bytes": offset, "sha256": digest}
+        measured = hasher.hexdigest()
+        if digest != measured:
+            raise KernelError("downloaded artifact failed SHA-256 verification")
+        return {"path": destination, "size_bytes": offset, "sha256": measured}
 
     def graph(self, run_ids: Sequence[str]) -> dict[str, Any]:
         return self._call("GET", "/kernel/graph",

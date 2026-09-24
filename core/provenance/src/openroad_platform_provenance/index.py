@@ -197,6 +197,17 @@ class EvidenceIndex:
             attempts=attempts, artifacts=artifacts, metrics=metrics,
         )
 
+    def count_runs(self, **filters: Any) -> int:
+        """Count all matching runs without the presentation page limit."""
+        total = 0
+        offset = 0
+        while True:
+            page = self.runs(limit=MAX_RUN_LIMIT, offset=offset, **filters)
+            total += len(page)
+            if len(page) < MAX_RUN_LIMIT:
+                return total
+            offset += len(page)
+
     def run_detail(self, run_id: str) -> dict[str, Any]:
         return self.store.describe_run(run_id)
 

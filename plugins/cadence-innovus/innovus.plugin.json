@@ -9,7 +9,8 @@
   "artifact_rules": [
     {"kind": "toolchain", "required": true},
     {"kind": "tool_log", "required": true},
-    {"kind": "script_receipt", "required": false}
+    {"kind": "script_receipt", "required": false},
+    {"kind": "eda_output", "patterns": ["**/*.odb", "**/*.odb.gz", "**/*.def", "**/*.def.gz", "**/*.rpt", "**/*.report", "**/*.checkpoint", "**/*.enc"], "collect": true, "required": false}
   ],
   "toolkit": {
     "toolkit_id": "cadence-innovus",

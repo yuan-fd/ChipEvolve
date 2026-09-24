@@ -496,8 +496,6 @@ class WorkflowRuntime:
         size_bytes = destination.stat().st_size
         if digest != uploaded.sha256 or size_bytes != uploaded.size_bytes:
             raise InputStagingError(f"uploaded input {declaration.input_id!r} does not match its record: {uploaded.sha256} ({uploaded.size_bytes}), copied {digest} ({size_bytes})")
-        if source is not None and not Path(source).is_file():
-            raise InputStagingError(f"required input disappeared before it could be staged: {source!r}")
         return StagedInput(
             destination=declaration.destination,
             present=True,
@@ -993,6 +991,7 @@ class WorkflowRuntime:
         *,
         offset: int,
         max_bytes: int,
+        verify_hash: bool = True,
     ) -> dict[str, Any]:
         """Read a registered artifact through the Runtime authority only.
 
@@ -1017,7 +1016,7 @@ class WorkflowRuntime:
         # run must not be able to read another run's artifact by quoting its id.
         _, artifact = matches[0]
         path = self.store.artifact_path(artifact_id)
-        if sha256(path) != artifact["sha256"]:
+        if verify_hash and sha256(path) != artifact["sha256"]:
             raise RuntimeStoreError(f"registered artifact {artifact_id!r} changed after registration")
         with path.open("rb") as source:
             source.seek(offset)

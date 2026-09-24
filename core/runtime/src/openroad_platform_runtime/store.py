@@ -913,18 +913,18 @@ class RuntimeStore:
             # Another path settled it first.  Whatever it decided stands.
             return False
         return True
-    def runnable_runs(self, *, limit: int = 50) -> list[str]:
+    def runnable_runs(self, *, limit: int = 50, offset: int = 0) -> list[str]:
         """Run ids that have a stage a worker may claim.
         A single query rather than a scan of every run: a worker polls this on
         every cycle, and a poll that reads the whole history would get slower
         for the rest of the platform's life.
         """
-        if not 1 <= limit <= 1000:
+        if not 1 <= limit <= 1000 or offset < 0:
             raise RuntimeStoreError("limit must be between 1 and 1000")
         with self._lock:
             rows = self._connection.execute(
-                "SELECT DISTINCT r.run_id, r.created_at FROM runtime_runs r JOIN runtime_stage_runs s ON s.run_id = r.run_id WHERE s.status IN ('queued', 'retry_wait') AND r.status IN ('queued', 'preparing', 'running', 'retry_wait') ORDER BY r.created_at LIMIT ?",
-                (limit,),
+                "SELECT DISTINCT r.run_id, r.created_at FROM runtime_runs r JOIN runtime_stage_runs s ON s.run_id = r.run_id WHERE s.status IN ('queued', 'retry_wait') AND r.status IN ('queued', 'preparing', 'running', 'retry_wait') ORDER BY r.created_at LIMIT ? OFFSET ?",
+                (limit, offset),
             ).fetchall()
         return [row["run_id"] for row in rows]
     def abandoned_cancellations(self, *, limit: int = 50) -> list[str]:
